@@ -61,7 +61,24 @@ jobs:
           [ "$fail" = 0 ] && echo "lint OK ($(find backend/v -name '*.php' | wc -l) files)"
           exit $fail
       - name: run the feed test suite
-        run: php backend/v/tests/run.php
+        # the suite prints "N failed" plus one line per failing assertion; those lines become
+        # annotations because step logs are not readable from every tooling path (and a red X with no
+        # message is how a backend test rots for a week)
+        run: |
+          set +e
+          out=$(php backend/v/tests/run.php 2>&1)
+          rc=$?
+          set -e
+          echo "$out" | tail -40
+          if [ "$rc" != 0 ]; then
+            echo '```' >> "$GITHUB_STEP_SUMMARY"; echo "$out" | tail -60 >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "$out" | grep -E "^  FAIL|^PHP (Parse|Fatal) error" | sed 's/^ *//' | head -20 | while IFS= read -r line; do
+              echo "::error::php ${{ matrix.php }}: $line"
+            done
+            echo "::error::php ${{ matrix.php }}: suite exit $rc"
+          fi
+          exit $rc
 
   theme:
     name: palette mirrors + resources
@@ -71,7 +88,11 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
       - name: three mirrors must agree
-        run: python3 tools/check-theme.py
+        run: |
+          if ! python3 tools/check-theme.py; then
+            echo '::error::palette mirrors disagree - see tools/check-theme.py (Color.kt vs values(-night)/colors.xml vs design/preview CSS)'
+            exit 1
+          fi
       - name: every res XML must parse
         run: |
           python3 - <<'PY'

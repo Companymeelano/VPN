@@ -232,7 +232,7 @@ object CoreProfiles {
                     val al = (n.alpn ?: tune.alpn).ifBlank { null }
                     if (al != null) put("alpn", org.json.JSONArray().apply { al.split(",").forEach { put(it.trim()) } })
                     if (tune.ech) put("ech", org.json.JSONObject().put("enabled", true))
-                }
+                })
         }
         val net = org.json.JSONObject()
         (n.path ?: n.hostHeader ?: n.serviceNameOf())?.let {
