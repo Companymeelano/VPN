@@ -48,6 +48,12 @@ import ir.meelano.vpn.data.Prefs
 import ir.meelano.vpn.ui.theme.Meelano
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.border
 
 /**
  * The list. VIP and free share one row anatomy on purpose: one shape means the fetch, the cache and
@@ -162,37 +168,15 @@ fun ServerListSheet(
 
             Spacer(Modifier.height(6.dp))
 
-            // "auto" is a row, not a checkbox buried in settings: it is the choice most users want
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
-                    .padding(horizontal = 12.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(if (AppSettings.autoSelect) Meelano.Accent.copy(alpha = 0.08f) else Color.Transparent)
-                    .clickable { AppSettings.setAutoSelect(ctx, !AppSettings.autoSelect) }
-                    .padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    Modifier
-                        .size(26.dp)
-                        .clip(RoundedCornerShape(13.dp))
-                        .background(if (AppSettings.autoSelect) Meelano.Accent else Color.White.copy(alpha = 0.08f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        if (AppSettings.autoSelect) "✓" else "A",
-                        color = if (AppSettings.autoSelect) Meelano.AccentInk else Meelano.Muted,
-                        fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                    )
-                }
-                Spacer(Modifier.size(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.seg_auto), fontSize = 14.sp, color = Meelano.Text, fontWeight = FontWeight.SemiBold)
-                    Text(stringResource(R.string.auto_desc), fontSize = 11.sp, color = Meelano.MutedFaint)
-                }
-            }
+            // "auto" is a row, not a checkbox buried in settings: it is the choice most users want.
+            // The switch is the state (never a "✓" character, which is a font-failure waiting to happen),
+            // and the whole row is the target, with the same press light the settings rows use.
+            AutoRow(
+                on = AppSettings.autoSelect,
+                onChange = { AppSettings.setAutoSelect(ctx, it) },
+                title = stringResource(R.string.seg_auto),
+                body = stringResource(R.string.auto_desc),
+            )
 
             Spacer(Modifier.height(2.dp))
 
@@ -230,13 +214,14 @@ fun ServerListSheet(
                     stringResource(R.string.last_update, relTime(vm.generatedAt(if (seg == SEG_FREE) "free" else "vip"))),
                     fontSize = 11.sp, color = Meelano.MutedFaint, modifier = Modifier.weight(1f),
                 )
-                Text(
-                    stringResource(R.string.row_retest),
-                    fontSize = 12.sp, color = Meelano.Accent, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { vm.refreshBoth() }
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                MeelanoButton(
+                    label = stringResource(R.string.row_retest),
+                    onClick = { vm.refreshBoth() },
+                    tone = BtnTone.Tonal,
+                    size = BtnSize.Small,
+                    iconRes = R.drawable.ic_refresh,
+                    enabled = !syncing,
+                    loading = syncing,
                 )
             }
         }
@@ -303,6 +288,51 @@ private fun EmptyState(vip: Boolean, onRetry: () -> Unit) {
         onAction = onRetry,
         iconRes = if (vip) R.drawable.ic_shield else R.drawable.ic_bolt,
     )
+}
+
+@Composable
+private fun AutoRow(on: Boolean, onChange: (Boolean) -> Unit, title: String, body: String) {
+    val src = remember { MutableInteractionSource() }
+    val pressed by src.collectIsPressedAsState()
+    val shrink by animateFloatAsState(if (pressed) 0.994f else 1f, label = "autoRow")
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
+            .scale(shrink)
+            .clip(shape)
+            .background(
+                Brush.verticalGradient(
+                    if (on) {
+                        listOf(Meelano.Accent.copy(alpha = if (pressed) 0.18f else 0.13f), Meelano.Accent.copy(alpha = 0.05f))
+                    } else {
+                        listOf(
+                            if (pressed) Color.White.copy(alpha = 0.08f) else Color.Transparent,
+                            if (pressed) Color.Black.copy(alpha = 0.12f) else Color.Transparent,
+                        )
+                    },
+                ),
+                shape,
+            )
+            .border(1.dp, if (on) Meelano.Accent.copy(alpha = 0.34f) else Color.Transparent, shape)
+            .clickable(interactionSource = src, indication = null) { onChange(!on) }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                fontSize = 14.sp,
+                color = if (on) Meelano.Text else Meelano.Muted,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(body, fontSize = 11.sp, color = Meelano.MutedFaint, maxLines = 2, lineHeight = 16.sp)
+        }
+        Spacer(Modifier.size(12.dp))
+        MeelanoSwitch(checked = on, onChange = onChange)
+    }
 }
 
 /** grade order: A first. Shared with the row sort in this sheet and the auto-pick in VpnViewModel. */
