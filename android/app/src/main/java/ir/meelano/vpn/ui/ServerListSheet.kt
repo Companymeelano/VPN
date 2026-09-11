@@ -305,7 +305,8 @@ private fun EmptyState(vip: Boolean, onRetry: () -> Unit) {
     )
 }
 
-/** internal fun gradeRank(g: String) = when (g) { "A" -> 0; "B" -> 1; "C" -> 2; else -> 3 }
+/** grade order: A first. Shared with the row sort in this sheet and the auto-pick in VpnViewModel. */
+internal fun gradeRank(g: String) = when (g) { "A" -> 0; "B" -> 1; "C" -> 2; else -> 3 }
 
 /** Persian relative time; "لحظاتی پیش" beats a raw timestamp because nobody reads a clock under stress */
 internal fun relTime(ts: Long): String {

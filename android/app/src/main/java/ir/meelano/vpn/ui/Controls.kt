@@ -1,6 +1,7 @@
 package ir.meelano.vpn.ui
 
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -119,7 +120,7 @@ private fun faceOverlay(pressed: Boolean): Brush = Brush.verticalGradient(
     1f to Color.Black.copy(alpha = if (pressed) 0.14f else 0.26f),
 )
 
-private fun pressSpring(): Spring<Float> = spring(
+private fun pressSpring(): SpringSpec<Float> = spring(
     dampingRatio = Spring.DampingRatioMediumBouncy,
     stiffness = 680f,
 )
@@ -225,8 +226,10 @@ fun MeelanoButton(
                 if (glow) {
                     Modifier
                         .drawBehind {
-                            val c = Offset(size.width / 2f, size.height / 2f)
-                            val rad = maxOf(size.width, size.height) * 0.62f
+                            // `this.size`, not `size`: the button has a `size: BtnSize` parameter and a
+                            // local parameter outranks the DrawScope receiver, so the bare name is the enum
+                            val c = Offset(this.size.width / 2f, this.size.height / 2f)
+                            val rad = maxOf(this.size.width, this.size.height) * 0.62f
                             val a = lift * breath.value
                             drawRect(
                                 brush = Brush.radialGradient(
@@ -478,8 +481,8 @@ fun MeelanoChip(
                                 brush = Brush.radialGradient(
                                     0f to Meelano.Accent.copy(alpha = 0.20f),
                                     1f to Color.Transparent,
-                                    center = Offset(size.width / 2f, size.height / 2f),
-                                    radius = maxOf(size.width, size.height) * 0.7f,
+                                    center = Offset(this.size.width / 2f, this.size.height / 2f),
+                                    radius = maxOf(this.size.width, this.size.height) * 0.7f,
                                 ),
                             )
                         }
@@ -767,8 +770,8 @@ fun StateDot(on: Boolean, label: String = "", modifier: Modifier = Modifier) {
                             brush = Brush.radialGradient(
                                 0f to Meelano.Accent.copy(alpha = 0.55f),
                                 1f to Color.Transparent,
-                                center = Offset(size.width / 2f, size.height / 2f),
-                                radius = maxOf(size.width, size.height) / 2f,
+                                center = Offset(this.size.width / 2f, this.size.height / 2f),
+                                radius = maxOf(this.size.width, this.size.height) / 2f,
                             ),
                         )
                     }
