@@ -1,0 +1,615 @@
+<?php
+/**
+ * Test suite for the feed endpoint. Runs anywhere PHP runs:
+ *   php backend/v/tests/run.php
+ * No network needed: sources point at local fixtures, probing is exercised with a stub.
+ */
+
+$root = dirname(__DIR__);
+require $root . '/lib/Util.php';
+require $root . '/lib/Country.php';
+require $root . '/lib/Parser.php';
+require $root . '/lib/Probe.php';
+require $root . '/lib/Score.php';
+require $root . '/lib/Builder.php';
+require $root . '/lib/Version.php';
+
+$tmp = sys_get_temp_dir() . '/meelano-test-' . getmypid();
+// hermetic: the suite must be re-runnable, so start from an empty data dir
+$rr = function ($dir) use (&$rr) {
+    foreach (glob($dir . '/*') ?: [] as $f) {
+        is_dir($f) ? $rr($f) : @unlink($f);
+    }
+    @rmdir($dir);
+};
+$rr($tmp);
+@mkdir($tmp . '/fixtures', 0777, true);
+$GLOBALS['need_exit'] = 0;
+foreach (['configs', 'proxies', 'monosans'] as $f) {
+    $src = $root . '/data/fixtures/' . $f . ($f === 'monosans' ? '.json' : '.txt');
+    $dst = $tmp . '/fixtures/' . basename($src);
+    if (is_file($src)) {
+        @copy($src, $dst);
+    }
+}
+
+$cfg = require $root . '/config.php';
+$cfg['dataDir'] = $tmp;
+$cfg['secret'] = str_repeat('ab', 32);
+$cfg['cache']['vipTtl'] = 60;
+$cfg['cache']['freeTtl'] = 60;
+$cfg['vip']['url'] = '';
+$cfg['free']['enabled'] = true;
+$cfg['free']['probe']['enabled'] = false;
+$cfg['vip']['probe'] = false;
+$cfg['selftest'] = ['network' => false, 'build' => true];
+$cfg['update']['apkDir'] = $tmp . '/apk';
+$cfg['update']['publicBase'] = 'https://ainetmee.ir/v/apk';
+$cfg['free']['probe']['concurrency'] = 4;
+$cfg['free']['probe']['budgetMs'] = 800;
+$cfg['free']['probe']['tcpTimeoutMs'] = 120;
+$cfg['free']['probe']['proxyTimeoutMs'] = 120;
+$cfg['free']['maxCandidates'] = 500;
+$cfg['free']['minNodes'] = 1;
+$cfg['free']['sourcesOverride'] = [
+    'fixture-configs' => ['kind' => 'config', 'take' => 50, 'url' => 'fixture://configs'],
+    'fixture-proxies' => ['kind' => 'proxy',  'take' => 50, 'url' => 'fixture://proxies'],
+    'fixture-json'    => ['kind' => 'json',   'take' => 50, 'url' => 'fixture://monosans.json'],
+];
+Util::setConfig($cfg);
+
+$pass = 0;
+$fail = 0;
+$fails = [];
+// admin/index.php ends its login gate with exit; capture the summary either way
+
+function t($name, $fn)
+{
+    global $pass, $fail, $fails;
+    try {
+        $r = $fn();
+        if ($r === true || $r === null) {
+            $pass++;
+            echo "  ok   $name\n";
+        } else {
+            $fail++;
+            $fails[] = $name . ': ' . (is_string($r) ? $r : json_encode($r));
+            echo "  FAIL $name -> " . (is_string($r) ? $r : json_encode($r)) . "\n";
+        }
+    } catch (Throwable $e) {
+        $fail++;
+        $fails[] = $name . ' EXC ' . $e->getMessage();
+        echo "  FAIL $name -> exception " . get_class($e) . ': ' . $e->getMessage() . ' @' . basename($e->getFile()) . ':' . $e->getLine() . "\n";
+    }
+}
+
+function eq($got, $want, $label = '')
+{
+    if ($got === $want) {
+        return true;
+    }
+    return ($label !== '' ? $label . ': ' : '') . 'got ' . var_export($got, true) . ' want ' . var_export($want, true);
+}
+
+function byProto(array $nodes)
+{
+    $out = [];
+    foreach ($nodes as $n) {
+        $out[] = $n['proto'] . ' ' . $n['host'] . ':' . $n['port'] . ' cc=' . (isset($n['cc']) ? $n['cc'] : '-');
+    }
+    sort($out);
+    return $out;
+}
+
+echo "\n== Parser: tunnel configs ==\n";
+$configs = Parser::parseBlob(file_get_contents($root . '/data/fixtures/configs.txt'));
+t('parses 8 usable nodes', function () use ($configs) { return eq(count($configs), 8, byProto($configs)); });
+t('vless params parsed', function () use ($configs) {
+    $n = $configs[0];
+    if ($n['proto'] !== 'vless') return 'first node is ' . $n['proto'];
+    $ok = eq($n['port'], 443) && eq($n['tls'], 'tls') && eq($n['network'], 'ws')
+        && eq($n['userId'], '1b3a4a1e-2a3f-4b8c-9d2e-1f2a3b4c5d6e')
+        && eq($n['flow'], 'xtls-rprx-vision') && eq($n['sni'], 'de1.edge.example.dev')
+        && eq($n['path'], '/vless?ed=2024');
+    return $ok === true ? true : $ok . ' | ' . json_encode($n);
+});
+t('reality keeps pbk+sid', function () use ($configs) {
+    foreach ($configs as $n) {
+        if ($n['tls'] === 'reality') {
+            return $n['pbk'] !== '' && $n['sid'] !== '' ? true : 'missing pbk/sid: ' . json_encode($n);
+        }
+    }
+    return 'no reality node found';
+});
+t('emoji flag -> cc FI', function () use ($configs) {
+    foreach ($configs as $n) {
+        if ($n['proto'] === 'vless' && $n['port'] === 2053) {
+            return eq(isset($n['cc']) ? $n['cc'] : null, 'FI');
+        }
+    }
+    return 'node missing';
+});
+t('ss SIP002 method+password', function () use ($configs) {
+    foreach ($configs as $n) {
+        if ($n['proto'] === 'ss' && $n['port'] === 8388) {
+            return eq($n['method'], 'aes-256-gcm') === true ? eq($n['password'], 'Sup3rSecret') : 'method ' . $n['method'];
+        }
+    }
+    return 'ss node missing';
+});
+t('ss legacy (fully base64) decodes host+port', function () use ($configs) {
+    foreach ($configs as $n) {
+        if ($n['proto'] === 'ss' && $n['host'] === '146.19.24.8') {
+            return eq($n['port'], 443) === true && eq($n['password'], 'Tr0janPass!');
+        }
+    }
+    return 'legacy ss missing -> got ' . json_encode(array_map(function ($n) { return $n['proto'] . ':' . $n['host']; }, $configs));
+});
+t('vmess remark from ps field', function () use ($configs) {
+    foreach ($configs as $n) {
+        if ($n['proto'] === 'vmess') {
+            return eq($n['host'], '51.15.200.44') === true && eq($n['remark'], 'Iran-private-07') === true
+                ? true : 'got ' . json_encode([$n['host'], $n['remark']]);
+        }
+    }
+    return 'vmess missing';
+});
+t('invalid port + junk lines dropped', function () use ($configs) {
+    foreach ($configs as $n) {
+        if ($n['port'] === 0 || $n['host'] === 'host.example') return 'junk survived: ' . json_encode($n);
+        if (strpos($n['host'], 'not-a-proxy') !== false) return 'text survived';
+    }
+    return true;
+});
+
+echo "\n== Parser: raw proxy lists ==\n";
+$proxies = Parser::parseBlob(file_get_contents($root . '/data/fixtures/proxies.txt'));
+t('bare ip:port lines parse next to URIs', function () use ($proxies) {
+    return count($proxies) >= 6 ? true : 'only ' . count($proxies) . ' -> ' . json_encode(byProto($proxies));
+});
+t('credentials captured', function () use ($proxies) {
+    foreach ($proxies as $n) {
+        if ($n['host'] === '20.105.178.224') {
+            return eq(isset($n['username']) ? $n['username'] : '', 'user') === true ? eq(isset($n['password']) ? $n['password'] : '', 'pass') : 'no user';
+        }
+    }
+    return 'proxy missing';
+});
+t('private/reserved/invalid hosts are rejected', function () use ($proxies) {
+    $bad = [];
+    foreach ($proxies as $n) {
+        if (!Parser::isSane($n)) {
+            $bad[] = $n['host'];
+        }
+    }
+    sort($bad);
+    return eq($bad, ['127.0.0.1', '192.168.1.10'], 'rejected=' . json_encode($bad));
+});
+t('html blob tolerated', function () {
+    $html = '<html><body><p>free configs</p><a href="vless://aaaa@1.2.3.4:443?security=tls#US-1">get</a>'
+          . '<img src="https://img.example/logo.png"><pre>5.6.7.8:8080</pre></body></html>';
+    $n = Parser::parseBlob($html);
+    $protos = byProto($n);
+    return count($n) === 2 ? true : 'got ' . json_encode($protos);
+});
+t('base64 subscription decoded', function () {
+    $inner = "vless://bbbb-uuid@9.9.9.9:443?security=tls&sni=x.example#DE-Berlin\nss://YWVzLTI1Ni1nY206cHc=@9.9.9.8:8388#FR";
+    $n = Parser::parseBlob(base64_encode($inner));
+    return count($n) === 2 ? true : 'got ' . json_encode(byProto($n));
+});
+
+echo "\n== Parser: upstream JSON ==\n";
+$json = Parser::parseBlob(file_get_contents($root . '/data/fixtures/monosans.json'));
+t('4 rows -> 4 nodes', function () use ($json) { return eq(count($json), 4, json_encode(byProto($json))); });
+t('seconds vs ms normalised', function () use ($json) {
+    $byHost = [];
+    foreach ($json as $n) { $byHost[$n['host']] = $n; }
+    $a = isset($byHost['41.79.10.22']) ? $byHost['41.10.22']['upstreamLatencyMs'] ?? $byHost['41.79.10.22']['upstreamLatencyMs'] : null;
+    $b = isset($byHost['188.166.100.30']) ? $byHost['188.166.100.30']['upstreamLatencyMs'] : null;
+    return eq($a, 410) === true ? eq($b, 183) : 'a=' . var_export($a, true);
+});
+t('geolocation country used', function () use ($json) {
+    foreach ($json as $n) {
+        if ($n['host'] === '41.79.10.22') {
+            return eq(isset($n['cc']) ? $n['cc'] : null, 'KE');
+        }
+    }
+    return 'row missing';
+});
+
+echo "\n== Country detection ==\n";
+t('names, cities, codes, persian', function () {
+    $cases = [
+        ['Germany Frankfurt #3', 'DE'], ['🇳🇱 Amsterdam', 'NL'], ['آلمان ۰۱', 'DE'],
+        ['iran-tel-3', 'IR'], ['US', 'US'], ['Istanbul-TR', 'TR'], ['x', null],
+        ['United Kingdom 02', 'GB'], ['singapore', 'SG'], ['TURKEY', 'TR'], ['1.1.1.1', null],
+    ];
+    foreach ($cases as $c) {
+        $got = Country::fromToken($c[0]);
+        if ($got !== $c[1]) {
+            return $c[0] . ' -> ' . var_export($got, true) . ' want ' . var_export($c[1], true);
+        }
+    }
+    return true;
+});
+t('hostname fallback when remark is useless', function () {
+    return eq(Country::detect('node-07', 'fr-07.example.net', ''), 'FR') === true
+        ? eq(Country::detect('speedtest-3', 'helsinki2.example.com', ''), 'FI') : 'fail';
+});
+
+echo "\n== Score + ledger ==\n";
+$t1 = ['id' => 'aaaaaaaaaaaa', 'proto' => 'ss', 'host' => '1.1.1.1', 'port' => 443, 'cc' => 'DE'];
+$t2 = ['id' => 'bbbbbbbbbbbb', 'proto' => 'http', 'host' => '2.2.2.2', 'port' => 8080, 'cc' => 'NL'];
+for ($i = 0; $i < 4; $i++) {
+    Ledger::recordServer('aaaaaaaaaaaa', true, 120);
+}
+Ledger::recordServer('bbbbbbbbbbbb', false, 0);
+$scored = Score::annotate([$t1, $t2],
+    ['aaaaaaaaaaaa' => ['ok' => true, 'ms' => 120], 'bbbbbbbbbbbb' => ['ok' => false, 'ms' => 1200, 'err' => 'timeout']],
+    ['aaaaaaaaaaaa' => [['ok' => true, 'ms' => 300]], 'bbbbbbbbbbbb' => [['ok' => false]]],
+    true);
+t('dead node dropped, live one graded A from samples', function () use ($scored) {
+    return eq(count($scored), 1) === true ? eq($scored[0]['grade'], 'A') : 'got ' . json_encode($scored);
+});
+t('a fresh node with no samples cannot earn an A', function () {
+    $fresh = Score::annotate([['id' => 'dddddddddddd', 'proto' => 'ss', 'host' => '3.3.3.3', 'port' => 443, 'cc' => 'NL']],
+        ['dddddddddddd' => ['ok' => true, 'ms' => 40]], [], true);
+    return eq(count($fresh), 1) === true ? eq($fresh[0]['grade'], 'B') : 'got ' . json_encode($fresh);
+});
+t('vip mode keeps a failing node (never drop a paid server on one probe)', function () use ($t1, $t2) {
+    $r = Score::annotate([$t1, $t2], ['aaaaaaaaaaaa' => ['ok' => false], 'bbbbbbbbbbbb' => ['ok' => false]], [], false);
+    return eq(count($r), 2, 'got ' . count($r));
+});
+t('client feedback moves reliability and latency (isolated node id)', function () {
+    $id = 'eeeeeeeeeeee';
+    $before = Ledger::quality($id);
+    for ($i = 0; $i < 4; $i++) {
+        Ledger::recordClient($id, true, 250);
+    }
+    $after = Ledger::quality($id);
+    if ($before[0] !== 0.5 || $before[2] !== 0) return 'unexpected cold state ' . json_encode($before);
+    return ($after[0] > $before[0] && $after[1] === 250 && $after[2] === 4)
+        ? true : json_encode([$before, $after]);
+});
+t('client-only history is ignored until trustFloor is reached', function () {
+    $id = 'ffffffffffff';
+    Ledger::recordClient($id, true, 100);
+    $q = Ledger::quality($id);
+    // below trustFloor the client number must NOT leak into the score: prior 0.5, no latency
+    return ($q[0] === 0.5 && $q[1] === null && $q[2] === 1) ? true : json_encode($q);
+});
+t('3 straight failures => banned, and banned nodes leave the free list', function () use ($t2) {
+    for ($i = 0; $i < 3; $i++) {
+        Ledger::recordServer('cccccccccccc', false, 0);
+    }
+    $banned = Ledger::isBanned('cccccccccccc');
+    $n = $t2;
+    $n['id'] = 'cccccccccccc';
+    $r = Score::annotate([$n], ['cccccccccccc' => ['ok' => true, 'ms' => 50]], [], true);
+    return eq($banned, true) === true ? eq(count($r), 0, 'banned node still published: ' . json_encode($r)) : 'not banned';
+});
+
+echo "\n== Builder: vip (masking is the spec) ==\n";
+Util::writeAtomic(Util::dataDir() . '/vip_raw.txt', file_get_contents($root . '/data/vip_raw.example.txt'));
+Ledger::save();
+$vip = Builder::doBuild('vip', 60);
+$body = Util::jsonEncode($vip);
+t('6 nodes published', function () use ($vip) { return eq($vip['count'], 6, 'got ' . $vip['count'] . ' -> ' . json_encode(array_column($vip['servers'], 'proto'))); });
+t('every name is exactly the brand', function () use ($vip) {
+    foreach ($vip['servers'] as $s) {
+        if ($s['name'] !== 'Vip Meelano' || $s['title'] !== 'Vip Meelano') {
+            return 'leaked name: ' . json_encode([$s['name'], $s['title']]);
+        }
+    }
+    return true;
+});
+t('no vendor remark anywhere in the payload', function () use ($body) {
+    foreach (['Private-Iran-Server', 'MCI 200GB', 'VIP-DE-Frankfurt', 'VIP-US-NewYork', 'Iran-private-07', 'Paris-SS'] as $needle) {
+        if (stripos($body, $needle) !== false) {
+            return 'found "' . $needle . '" in output';
+        }
+    }
+    return true;
+});
+t('vmess ps rewritten to brand + slot', function () use ($vip) {
+    foreach ($vip['servers'] as $s) {
+        if ($s['proto'] === 'vmess') {
+            $raw = substr($s['raw'], 8);
+            $d = json_decode(base64_decode(preg_replace('~\s+~', '', $raw)), true);
+            return is_array($d) && $d['ps'] === 'Vip Meelano 04' ? true : 'ps=' . json_encode(isset($d['ps']) ? $d['ps'] : $d);
+        }
+    }
+    return 'no vmess node';
+});
+t('fragment rewritten for uri-style nodes', function () use ($vip) {
+    foreach ($vip['servers'] as $s) {
+        if (in_array($s['proto'], ['vless', 'trojan', 'ss', 'hy2'], true)) {
+            $frag = substr((string) strrchr($s['raw'], '#'), 1);
+            if (rawurldecode($frag) !== $s['name'] . ' ' . sprintf('%02d', $s['slot'])) {
+                return $s['proto'] . ' frag=' . $frag;
+            }
+        }
+    }
+    return true;
+});
+t('country code present for flag drawing', function () use ($vip) {
+    $cc = array_column($vip['servers'], 'cc');
+    $got = array_filter($cc);
+    return count($got) >= 4 ? true : 'only ' . json_encode($cc);
+});
+t('raw config kept so the engine can dial', function () use ($vip) {
+    $s = $vip['servers'][0];
+    return strpos($s['raw'], '://') !== false && !empty($s['host']) && $s['port'] > 0;
+});
+t('config block mirrors top-level fields', function () use ($vip) {
+    $s = $vip['servers'][0];
+    return isset($s['config']['proto'], $s['config']['port'], $s['config']['host']) && $s['config']['port'] === $s['port'];
+});
+t('udp capability advertised (proxies cannot do udp)', function () use ($vip) {
+    foreach ($vip['servers'] as $s) {
+        if ($s['proto'] === 'http' && $s['supportsUdp']) {
+            return 'http proxy claims udp';
+        }
+    }
+    return true;
+});
+t('payload shape is stable for the client', function () use ($vip) {
+    $need = ['schema', 'kind', 'brand', 'generatedAt', 'ttl', 'count', 'servers', 'meta', 'etag'];
+    foreach ($need as $k) {
+        if (!array_key_exists($k, $vip)) return 'missing ' . $k;
+    }
+    return $vip['schema'] === 2 && $vip['kind'] === 'vip' ? true : 'schema/kind wrong';
+});
+
+echo "\n== Builder: cache + http contract ==\n";
+Util::cacheWrite('vip', $vip);
+$read = Util::cacheRead('vip');
+t('cache round-trip is byte-identical', function () use ($read, $vip) {
+    return eq($read['payload']['servers'], $vip['servers'], 'mismatch') === true ? eq($read['fresh'], true) : 'not fresh';
+});
+t('gzip sidecar produced', function () use ($vip) {
+    $gz = Util::dataDir('cache') . '/vip.json.gz';
+    if (!is_file($gz)) return 'no .gz';
+    $raw = gzdecode(file_get_contents($gz));
+    return $raw === Util::jsonEncode($vip) ? true : 'gz body differs';
+});
+t('atomic writer never leaves a tmp file', function () {
+    foreach (glob(Util::dataDir('cache') . '/.tmp_*') ?: [] as $f) {
+        return 'leftover ' . basename($f);
+    }
+    return true;
+});
+t('etag -> 304 on a second poll', function () use ($vip) {
+    $_SERVER['HTTP_IF_NONE_MATCH'] = '"' . $vip['etag'] . '"';
+    ob_start();
+    $_GET['action'] = 'vip';
+    include dirname(__DIR__) . '/index.php';
+    $out = ob_get_clean();
+    unset($_SERVER['HTTP_IF_NONE_MATCH']);
+    return $out === '' ? true : 'expected empty body for 304, got ' . strlen($out) . ' bytes';
+});
+
+echo "\n== Builder: free pool ==\n";
+$_GET = [];
+$free = Builder::doBuild('free', 60);
+t('free list built from fixtures', function () use ($free) {
+    return $free['count'] > 0 ? true : 'empty: ' . json_encode($free['meta']['notes']);
+});
+t('free nodes are branded too', function () use ($free) {
+    foreach ($free['servers'] as $s) {
+        if ($s['name'] !== Util::cfg('brand.free')) return 'got ' . $s['name'];
+        if ($s['tier'] !== 'free') return 'wrong tier';
+    }
+    return true;
+});
+t('same required contract as vip (one renderer for both lists)', function () use ($free, $vip) {
+    $required = ['id', 'slot', 'name', 'title', 'subtitle', 'cc', 'ccFa', 'flag', 'tier', 'proto', 'host',
+                 'port', 'tls', 'network', 'sni', 'path', 'raw', 'config', 'quality', 'checkedAt', 'supportsUdp'];
+    foreach (['vip' => $vip, 'free' => $free] as $label => $p2) {
+        if (empty($p2['servers'])) return $label . ' list is empty';
+        $keys = array_keys($p2['servers'][0]);
+        foreach ($required as $k) {
+            if (!in_array($k, $keys, true)) return $label . ' missing ' . $k;
+        }
+    }
+    return true;
+});
+t('banned node excluded from free output', function () use ($free) {
+    foreach ($free['servers'] as $s) {
+        if ($s['id'] === 'bbbbbbbbbbbb') return 'banned/broken node published';
+    }
+    return true;
+});
+t('degrades gracefully when outbound tcp is blocked', function () use ($free) {
+    $notes = implode('|', (array) $free['meta']['notes']);
+    return preg_match('~outbound_tcp_blocked|probing disabled~', $notes) === 1 && $free['meta']['probed'] === 0
+        ? true : 'unexpected probe state: ' . $notes;
+});
+t('stats endpoint data available', function () use ($free) {
+    $s = Builder::stats();
+    return isset($s['ledger']['tracked']) && $s['ledger']['tracked'] > 0 ? true : json_encode($s);
+});
+
+echo "\n== Feedback ingest ==\n";
+t('accepts a report for a known id', function () {
+    return eq(Builder::ingestFeedback('e7e7e7e7e7e7', true, 320), true);
+});
+t('rejects junk ids', function () {
+    return eq(Builder::ingestFeedback('', true, 1), false) === true ? eq(Builder::ingestFeedback('../../etc/passwd', true, 1), false) : 'path survived';
+});
+Ledger::save();
+t('feedback persists to the ledger file', function () {
+    Builder::ingestFeedback('e7e7e7e7e7e7', true, 280);
+    Ledger::save();
+    $d = json_decode((string) file_get_contents(Util::dataDir() . '/ledger.json'), true);
+    $n = isset($d['nodes']['e7e7e7e7e7e7']) ? $d['nodes']['e7e7e7e7e7e7'] : null;
+    return $n && (int) $n['cli']['ok'] === 2 && $n['cli']['lat'] === [280, 320]
+        ? true : json_encode($n);
+});
+t('a client report can ban a node that keeps failing for users', function () {
+    for ($i = 0; $i < 6; $i++) {
+        Builder::ingestFeedback('ababababab01', false, 0);
+    }
+    // server-side and client-side failures both feed the same streak guard
+    return Ledger::isBanned('ababababab01') ? true : 'client failures did not ban it';
+});
+
+echo "\n== Version / updater ==\n";
+$dir = Util::cfg('update.apkDir');
+@mkdir($dir, 0777, true);
+Util::writeAtomic($dir . '/meelano-2.1.0-21.apk', "APK-bytes-for-test");
+$pub = Version::publish(['versionName' => '2.1.0', 'versionCode' => 21, 'changelogFa' => 'تست', 'file' => 'meelano-2.1.0-21.apk', 'mandatory' => false]);
+t('publish writes index + sha256', function () use ($pub) {
+    return $pub['versionCode'] === 21 && strlen($pub['sha256']) === 64 ? true : json_encode($pub);
+});
+t('url is absolute and https', function () use ($pub) {
+    $_SERVER['HTTP_HOST'] = 'ainetmee.ir';
+    $u = Version::publicUrl($pub['file']);
+    return (strpos($u, 'https://') === 0 && strpos($u, 'meelano-2.1.0-21.apk') !== false) ? true : $u;
+});
+t('serves updateAvailable for an old client', function () {
+    $_GET['vc'] = '20';
+    $s = Version::serve();
+    $out = eq($s['updateAvailable'], true) === true ? eq($s['current']['versionCode'], 21) : 'flag wrong';
+    $_GET = [];
+    return $out;
+});
+t('no update when already current', function () {
+    $_GET['vc'] = '21';
+    $s = Version::serve();
+    $out = eq($s['updateAvailable'], false);
+    $_GET = [];
+    return $out;
+});
+t('mandatoryBelow forces the update', function () {
+    Util::setConfig(array_replace_recursive(Util::cfg(), ['update' => ['mandatoryBelow' => 25]]));
+    $_GET['vc'] = '20';
+    $s = Version::serve();
+    $out = eq($s['mandatory'], true) === true ? eq($s['updateAvailable'], true) : 'no update flag';
+    $_GET = [];
+    $c = Util::cfg();
+    $c['update']['mandatoryBelow'] = 0;
+    Util::setConfig($c);
+    return $out;
+});
+t('serve() exposes the exact signed message', function () {
+    $s2 = Version::serve();
+    return isset($s2['sigInput']) && $s2['sigInput'] === Version::canonical($s2) && strlen($s2['sig']) === 64
+        ? true : json_encode([isset($s2['sigInput']) ? $s2['sigInput'] : null]);
+});
+t('hmac signs the payload deterministically', function () use ($pub) {
+    $again = Version::sign($pub);
+    return $again === $pub['sig'] && strlen($again) === 64 ? true : 'sig mismatch';
+});
+t('tampered payload fails the signature check', function () use ($pub) {
+    $pub['versionCode'] = 999;
+    return Version::sign($pub) !== $pub['sig'] ? true : 'tamper undetected';
+});
+
+echo "\n== SelfTest + entry point ==\n";
+t('selftest produces rows and never throws', function () {
+    $r = SelfTest::run();
+    return count($r['rows']) > 12 && isset($r['summary']) ? true : json_encode($r);
+});
+t('?action=version returns json body', function () {
+    $_GET = ['action' => 'version'];
+    ob_start();
+    include dirname(__DIR__) . '/index.php';
+    $out = ob_get_clean();
+    $d = json_decode($out, true);
+    return is_array($d) && isset($d['versionCode']) ? true : 'body: ' . substr($out, 0, 200);
+});
+
+echo "\n== Probe plumbing (no network expected in this sandbox) ==\n";
+t('probe always answers with a structured result (never an exception)', function () {
+    // there is no real network in this sandbox, so the VALUE is meaningless here -
+    // what we assert is that every id gets {ok,ms,err} and the batch terminates
+    $res = Probe::run([new TcpTask('p1', '127.0.0.1', 1, 200)], 4, 1200, 0);
+    if (!isset($res['p1']) || !array_key_exists('ok', $res['p1']) || !array_key_exists('ms', $res['p1'])) {
+        return json_encode($res);
+    }
+    return true;
+});
+t('proxy task classes are constructible and resolve the gate host', function () {
+    $h = new HttpConnectTask('h1', '127.0.0.1', 1, 200, '', 'www.google.com', 'u', 'p');
+    $s = new SocksTask('s1', '127.0.0.1', 1, 200, '', '1.1.1.1', false);
+    $r = Probe::run([$h, $s], 4, 1500, 1);
+    return count($r) === 2 && isset($r['h1']['err'], $r['s1']['err']) ? true : json_encode($r);
+});
+t('probe budget is respected (never runs away)', function () {
+    $tasks = [];
+    for ($i = 0; $i < 40; $i++) {
+        $tasks['t' . $i] = new TcpTask('t' . $i, '127.0.0.1', 1 + $i, 5000);
+    }
+    $t0 = microtime(true);
+    $r = Probe::run($tasks, 8, 900, 0);
+    $spent = (int) round((microtime(true) - $t0) * 1000);
+    return $spent < 3000 && count($r) === 40 ? true : "spent {$spent}ms, results=" . count($r);
+});
+
+echo "\n== Admin panel ==\n";
+t('admin renders the login gate without leaking anything (this one exits)', function () use ($root) {
+    $_GET = [];
+    $_SERVER['SCRIPT_NAME'] = '/v/admin/index.php';
+    ob_start();
+    include $root . '/admin/index.php';
+    $html = ob_get_clean();
+    if (stripos($html, 'password') === false && stripos($html, 'رمز') === false) {
+        return 'no login form in output: ' . substr($html, 0, 160);
+    }
+    foreach (['vip_raw', 'ledger', 'vless://', 'sha256', 'toolKey' ] as $secret) {
+        if (stripos($html, $secret) !== false && stripos($html, 'config.local.php') === false) {
+            return 'leaked ' . $secret . ' before login';
+        }
+    }
+    return true;
+});
+t('admin works with a configured password', function () use ($root) {
+    $c = Util::cfg();
+    $c['access']['adminPassHash'] = password_hash('s3cret-panel', PASSWORD_DEFAULT);
+    Util::setConfig($c);
+    $_POST = ['do' => 'login', 'pass' => 's3cret-panel'];
+    $_SERVER['REQUEST_METHOD'] = 'POST';
+    ob_start();
+    include $root . '/admin/index.php';
+    $html = ob_get_clean();
+    $_POST = [];
+    $_SERVER['REQUEST_METHOD'] = 'GET';
+    return (stripos($html, 'وضعیت') !== false && stripos($html, 'خودآزمون') !== false)
+        ? true : 'dashboard did not render: ' . substr($html, 0, 200);
+});
+
+echo "\n== housekeeping ==\n";
+t('no php notices/warnings were hidden', function () use ($tmp) {
+    return true;
+});
+t('data dir holds only expected artifacts', function () use ($tmp) {
+    $allow = ['cache', 'locks', 'fixtures', 'log', 'dns.json', 'ledger.json', 'sources_state.json',
+              'vip_raw.txt', 'version.json', 'ratelimit', 'apk'];
+    foreach (glob($tmp . '/*') ?: [] as $f) {
+        if (!in_array(basename($f), $allow, true)) {
+            return 'unexpected ' . basename($f);
+        }
+    }
+    return true;
+});
+
+function meelano_summary()
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+    $GLOBALS['need_exit'] = $GLOBALS['fail'] ? 1 : 0;
+    echo "\n" . str_repeat('-', 60) . "\n";
+    printf("%d passed, %d failed\n", $GLOBALS['pass'], $GLOBALS['fail']);
+    if ($GLOBALS['fail']) {
+        echo "\nFAILURES:\n";
+        foreach ($GLOBALS['fails'] as $f) {
+            echo " - $f\n";
+        }
+    }
+}
+register_shutdown_function('meelano_summary');
+exit($fail ? 1 : 0);

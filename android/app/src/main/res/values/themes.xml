@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Theme-less by design: Compose draws everything. This only fixes what the system window shows
+      before the first frame, so a cold start never flashes white (that white flash is what makes a
+      300 ms launch feel like a hang).
+    -->
+    <style name="Theme.Meelano" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:colorBackground">@color/bg</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowActivityTransitions">true</item>
+        <item name="android:windowAnimationStyle">@style/Animation.Meelano</item>
+    </style>
+
+    <!-- enter decelerates, exit accelerates: matches the 200/150 ms Compose tokens -->
+    <style name="Animation.Meelano" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/enter_sheet</item>
+        <item name="android:activityCloseExitAnimation">@anim/exit_sheet</item>
+    </style>
+</resources>

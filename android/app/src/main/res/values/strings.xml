@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Persian-first. A few hard rules baked into this file:
+  - "اتصال" for the primary action in every state (changing the verb makes the control feel broken
+    when the label moves);
+  - never the word "قطع" as a button — the disconnect action is the same control, not a second one;
+  - full-width digits (۴۲) for human-facing text, Latin tabular digits for anything measured
+    (latency, MB/s) because the tabular font only has Latin glyphs and mixed digits look worse;
+  - no exclamation marks in errors, no blame.
+-->
+<resources>
+    <string name="app_name">میلانو وی‌پی‌ان</string>
+    <string name="app_short">میلانو</string>
+    <string name="brand_vip">Vip Meelano</string>
+
+    <!-- control core -->
+    <string name="action_connect">اتصال</string>
+    <string name="action_disconnect">قطع</string>
+    <string name="action_cancel">لغو</string>
+    <string name="status_idle">آماده‌ی اتصال</string>
+    <string name="status_connecting">در حال اتصال</string>
+    <string name="status_connected">وصل است</string>
+    <string name="status_reconnecting">وصل مجدد</string>
+    <string name="status_failed">وصل نشد</string>
+    <string name="phase_profile">آماده‌سازی پروفایل</string>
+    <string name="phase_dns">تنظیم DNS</string>
+    <string name="phase_handshake">دست‌دادن با سرور</string>
+    <string name="phase_tunnel">باز کردن تونل</string>
+    <string name="phase_verify">بررسی ترافیک</string>
+    <string name="phase_failed">خطا</string>
+    <string name="download">↓ دریافت</string>
+    <string name="upload">↑ ارسال</string>
+    <string name="session">سشن</string>
+    <string name="retry">تلاش دوباره</string>
+    <string name="show_log">مشاهده جزئیات</string>
+    <string name="copy_log">کپی برای پشتیبانی</string>
+
+    <!-- server list -->
+    <string name="sheet_servers">انتخاب سرور</string>
+    <string name="seg_vip">وی‌آی‌پی</string>
+    <string name="seg_free">رایگان</string>
+    <string name="seg_auto">خودکار</string>
+    <string name="filter_all">همه</string>
+    <string name="filter_near">نزدیک</string>
+    <string name="filter_fast">سریع</string>
+    <string name="filter_works">کار می‌کند</string>
+    <string name="row_latency">پینگ</string>
+    <string name="row_best">بهترین</string>
+    <string name="row_slow">سریع نیست</string>
+    <string name="row_down">قطعی</string>
+    <string name="row_locked">ویژه</string>
+    <string name="row_pin">سنجاق کردن</string>
+    <string name="row_unpin">برداشتن سنجاق</string>
+    <string name="row_copy">کپی کانفیگ</string>
+    <string name="row_retest">تست دوباره</string>
+    <string name="row_copied">کانفیگ کپی شد</string>
+    <string name="auto_desc">هر ۲۴ ساعت یک بار بهترین نود را انتخاب کن</string>
+    <string name="empty_free_title">فعلاً نود آزادی نیست که تست را رد نکرده باشد</string>
+    <string name="empty_free_body">لیست رایگان هر چند دقیقه عوض می‌شود. «تست دوباره» را بزن تا فهرست تازه بگیریم.</string>
+    <string name="empty_vip_title">لیست ویژه به اپ نرسید</string>
+    <string name="empty_vip_body">اینترنت را چک کن؛ اگر وصل است، از پشتیبانی بخواه فایل را دوباره بسازد.</string>
+    <string name="last_update">آخرین به‌روزرسانی فهرست: %1$s</string>
+
+    <!-- onboarding / trust -->
+    <string name="ob_title">آماده‌ایم</string>
+    <string name="ob_perm_title">یک اجازه، همان اول</string>
+    <string name="ob_perm_body">برای ساختن تونل، اندروید اجازه‌ی ساخت VPN را می‌خواهد. پنجره‌ی سیستم را «مجاز» بزن؛ بعدی دیگر نمی‌آید.</string>
+    <string name="ob_battery_title">وقتی اپ را می‌بندی، تونل باید بماند</string>
+    <string name="ob_battery_body">«بدون بهینه‌سازی باتری» را انتخاب کن تا اتصال در پس‌زمینه زنده بماند.</string>
+    <string name="ob_done">شروع</string>
+
+    <!-- settings -->
+    <string name="settings">تنظیمات</string>
+    <string name="set_keepalive">حالت هوشمند اتصال</string>
+    <string name="set_keepalive_body">قطع در لحظه‌ی بستن اپ کابوس کاربر است. وصل می‌مانیم؛ روی وای‌فای ضعیف یک‌بار با تأخیر دوباره وصل می‌شویم.</string>
+    <string name="set_killswitch">Kill Switch</string>
+    <string name="set_killswitch_body">اگر تونل رفت، ترافیک تا برگشتنش بیرون نمی‌رود.</string>
+    <string name="set_dns">DNS امن</string>
+    <string name="set_dns_body">ترافیک DNS داخل تونل می‌رود؛ DNS سرور ارائه‌دهنده استفاده نمی‌شود.</string>
+    <string name="set_reduced">کاهش انیمیشن</string>
+    <string name="set_reduced_body">حلقه‌ها آرام و بدون حرکت می‌شوند؛ برای باتری و حس روانی.</string>
+    <string name="set_lang">زبان</string>
+    <string name="set_theme">پوسته</string>
+    <string name="theme_system">سیستم</string>
+    <string name="theme_dark">تیره</string>
+    <string name="theme_light">روشن</string>
+    <string name="set_update">بروزرسانی خودکار</string>
+    <string name="set_update_body">فایل نسخه را چک کن و موقع Wi‑Fi خودش نصب کند.</string>
+    <string name="set_feedback">ارسال گزارش وضعیت</string>
+    <string name="set_feedback_body">فقط نتیجه‌ی تست هر نود (موفق/ناموفق و زمان). بدون آی‌پی، بدون دستگاه.</string>
+    <string name="set_reset">پاک‌سازی تنظیمات و حافظه</string>
+    <string name="set_version">نسخه %1$s (%2$d)</string>
+    <string name="set_server_count">%1$d نود آماده</string>
+
+    <!-- update -->
+    <string name="upd_title">نسخه‌ی جدید آماده است</string>
+    <string name="upd_body">حجم %1$s · تغییرات: %2$s</string>
+    <string name="upd_now">همین الان</string>
+    <string name="upd_wifi">وقتی Wi‑Fi رسید</string>
+    <string name="upd_skipping">این نسخه را رد می‌کنم</string>
+    <string name="upd_mandatory">برای ادامه‌ی کار اپ باید به‌روز شود</string>
+    <string name="upd_verifying">بررسی سلامت فایل</string>
+    <string name="upd_downloading">دریافت %1$d٪</string>
+    <string name="upd_ready">آماده‌ی نصب — یک تأیید لازم است</string>
+    <string name="upd_corrupt">فایل نصب سالم نبود؛ دوباره تلاش می‌کنیم</string>
+    <string name="upd_noperm">اجازه‌ی نصب از این منبع را روشن کن</string>
+    <string name="upd_open_settings">تنظیمات</string>
+
+    <!-- notifications -->
+    <string name="notif_ch_state">وضعیت اتصال</string>
+    <string name="notif_ch_state_desc">نشان می‌دهد VPN وصل است؛ اندروید با این کانال تونل را زنده نگه می‌دارد</string>
+    <string name="notif_ch_update">بروزرسانی</string>
+    <string name="notif_update_title">VPN میلانو وصل است</string>
+    <string name="notif_updating">در حال دریافت نسخه‌ی جدید</string>
+    <string name="notif_open">باز کردن</string>
+    <string name="notif_disconnect">قطع</string>
+    <string name="tile_label">میلانو VPN</string>
+    <string name="tile_off">خاموش</string>
+    <string name="tile_on">وصل</string>
+    <string name="tile_connecting">در حال اتصال…</string>
+
+    <!-- shared -->
+    <string name="cd_power">کلید اتصال و قطع</string>
+    <string name="cd_flag">پرچم کشور</string>
+    <string name="close">بستن</string>
+    <string name="ok">باشه</string>
+</resources>

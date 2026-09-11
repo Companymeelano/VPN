@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      Three layers, one mark. Background is flat (no gradient: it bands after the launcher's
+      66% safe-zone crop), foreground is the monoline glyph, and the monochrome layer makes
+      Themed Icons on Android 13+ look native instead of a sticker.
+      Raster fallbacks for API < 26 live in mipmap-xxxhdpi/ic_launcher_legacy.png (48dp) and
+      are exported from design/preview/assets/ic-launcher.png — see android/README.md.
+    -->
+    <background android:drawable="@color/bg" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
+</adaptive-icon>

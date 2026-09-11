@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meelano VPN — پروتوتایپ رابط کاربری</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/space-grotesk@latest/space-grotesk.css" onerror="this.remove()">
+<style>
+/* ============================================================
+   Meelano design tokens — این بلوک، همان فایل‌های
+   res/values/colors.xml و ui/theme/{Color,Type,Shape,Motion}.kt است.
+   یک منبع حقیقت: هر عددی اینجا عوض شود، باید در Compose هم عوض شود.
+   ============================================================ */
+:root{
+  --bg:#0B0F14; --surface:#131A21; --surface-2:#18212A; --line:#232F3A;
+  --hairline:rgba(255,255,255,.055);
+  --text:#E6EDF3; --muted:#8FA3B8; --muted-2:#5D7183;
+  --accent:#4ADE9B; --accent-deep:#128C5A; --accent-ink:#04231A;
+  --info:#8BD9F5; --warn:#F5A524; --danger:#FF6B6B;
+  --bezel-1:#2A3540; --bezel-2:#0E141A; --well:#080C11;
+  --r-card:16px; --r-sheet:20px; --r-chip:999px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+  --t-enter:200ms cubic-bezier(.2,0,0,1);
+  --t-exit:150ms cubic-bezier(.4,0,1,1);
+  --t-sheen:6000ms linear;
+  --t-breath:2400ms cubic-bezier(.4,0,.6,1);
+  --fs:1;            /* font scale, demo-able */
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:Vazirmatn,system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:#05080b;color:var(--text);font-family:var(--sans);
+  font-size:calc(15px * var(--fs));line-height:1.75;-webkit-font-smoothing:antialiased}
+body{padding:28px 18px 72px;background:
+  radial-gradient(900px 520px at 78% -12%,#101a22 0%,transparent 62%),
+  radial-gradient(760px 460px at 8% 108%,#0c1a15 0%,transparent 60%),#05080b}
+.wrap{max-width:1220px;margin:0 auto;display:grid;gap:22px;
+  grid-template-columns:minmax(340px,1fr) minmax(420px,560px) minmax(300px,1fr);align-items:start}
+@media (max-width:1180px){.wrap{grid-template-columns:1fr 1fr}}
+@media (max-width:840px){.wrap{grid-template-columns:1fr}}
+
+h1{font-size:calc(22px * var(--fs));margin:0 0 6px;letter-spacing:-.015em;font-weight:700}
+h2{font-size:calc(11px * var(--fs));margin:0 0 12px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);font-weight:600}
+.lead{color:var(--muted);font-size:calc(13px * var(--fs));margin:0 0 18px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);padding:var(--s5)}
+.card + .card{margin-top:22px}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;
+  letter-spacing:-.01em;direction:ltr;unicode-bidi:isolate}
+.ltr{direction:ltr;unicode-bidi:isolate}
+
+/* ---------- control rail ---------- */
+.rail{position:sticky;top:20px}
+.seg{display:flex;gap:4px;background:#0d131a;border:1px solid var(--line);border-radius:12px;padding:4px}
+.seg button{flex:1;background:transparent;border:0;color:var(--muted);font:inherit;font-size:calc(12px * var(--fs));
+  padding:8px 6px;border-radius:9px;cursor:pointer;transition:background var(--t-exit),color var(--t-exit)}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);font-weight:700}
+.seg.cold button[aria-pressed=true]{background:var(--danger);color:#2b0d0d}
+.ctl{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--hairline)}
+.ctl:first-of-type{border-top:0}
+.ctl span{font-size:calc(12.5px * var(--fs));color:var(--muted)}
+.switch{position:relative;width:42px;height:24px;flex:0 0 auto}
+.switch input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+.switch i{position:absolute;inset:0;background:#1b242e;border:1px solid var(--line);border-radius:999px;transition:background var(--t-exit)}
+.switch i::after{content:"";position:absolute;top:3px;inset-inline-end:3px;width:16px;height:16px;border-radius:50%;
+  background:var(--muted);transition:transform var(--t-enter),background var(--t-enter)}
+.switch input:checked + i{background:rgba(74,222,155,.22);border-color:rgba(74,222,155,.5)}
+.switch input:checked + i::after{transform:translateX(-18px);background:var(--accent)}
+.switch input:focus-visible + i{outline:2px solid var(--accent);outline-offset:2px}
+input[type=range]{width:120px;accent-color:var(--accent)}
+
+/* ---------- phone ---------- */
+.phone{position:relative;margin:0 auto;width:376px;height:772px;border-radius:44px;padding:12px;
+  background:linear-gradient(160deg,#2a3440,#0b1116 60%);
+  box-shadow:0 40px 90px -30px #000,0 0 0 1px #000 inset,0 1px 0 rgba(255,255,255,.07) inset}
+.screen{position:relative;height:100%;border-radius:33px;overflow:hidden;background:var(--bg);
+  display:flex;flex-direction:column;isolation:isolate}
+body.light .screen{background:#F5F7F9;color:#0d151c}
+.sb{display:flex;justify-content:space-between;align-items:center;padding:12px 20px 4px;
+  font-size:11px;color:var(--muted);letter-spacing:.02em}
+.appbar{display:flex;align-items:center;gap:10px;padding:10px 18px 2px}
+.appbar .mark{width:26px;height:26px;border-radius:8px;background:linear-gradient(150deg,var(--accent),var(--accent-deep));
+  display:grid;place-items:center;color:#05271b;font-weight:800;font-size:13px;box-shadow:0 4px 14px -4px rgba(74,222,155,.6)}
+.appbar b{font-size:calc(15px * var(--fs));letter-spacing:-.01em}
+.appbar .pill{margin-inline-start:auto;font-size:11px;color:var(--muted);border:1px solid var(--line);
+  border-radius:var(--r-chip);padding:3px 9px;cursor:pointer;background:transparent;font-family:inherit}
+.stage{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:2px 18px 18px;scrollbar-width:thin}
+.stage::-webkit-scrollbar{width:6px}.stage::-webkit-scrollbar-thumb{background:#1e2a35;border-radius:99px}
+
+/* ---------- the hero: connect core ---------- */
+.hero{display:flex;flex-direction:column;align-items:center;padding-top:14px}
+.ring{--p:0;position:relative;width:172px;height:172px;border:0;padding:0;border-radius:50%;cursor:pointer;
+  background:conic-gradient(from -90deg,var(--accent) calc(var(--p)*360deg),rgba(255,255,255,.055) 0);
+  box-shadow:0 22px 44px -18px rgba(0,0,0,.9),0 0 0 1px rgba(255,255,255,.05) inset,
+             0 1px 0 rgba(255,255,255,.10) inset;
+  transition:transform 180ms cubic-bezier(.2,0,0,1),box-shadow var(--t-enter);
+  -webkit-tap-highlight-color:transparent}
+.ring::before{content:"";position:absolute;inset:0;border-radius:50%;
+  background:linear-gradient(135deg,var(--bezel-1),var(--bezel-2));opacity:.96;z-index:-1}
+.ring:focus-visible{outline:2px solid var(--accent);outline-offset:6px}
+.ring:active{transform:scale(.965)}
+.well{position:absolute;inset:11px;border-radius:50%;
+  background:radial-gradient(120% 120% at 42% 34%,#111a22 0%,var(--well) 62%);
+  box-shadow:0 2px 3px rgba(255,255,255,.07) inset,0 -6px 16px rgba(0,0,0,.65) inset;
+  display:grid;place-items:center;gap:2px;text-align:center}
+.glyph{width:52px;height:52px;color:var(--muted);transition:color var(--t-enter),transform var(--t-enter)}
+.well .k{font-size:calc(11px * var(--fs));color:var(--muted);letter-spacing:.02em}
+.well .v{font-size:calc(12.5px * var(--fs));color:var(--text);font-weight:600}
+.sheen{position:absolute;inset:5px;border-radius:50%;pointer-events:none;opacity:0;
+  background:conic-gradient(from 0deg,transparent 0 72%,rgba(255,255,255,.16) 84%,transparent 96%);
+  mask:radial-gradient(closest-side,transparent 76%,#000 78%);
+  -webkit-mask:radial-gradient(closest-side,transparent 76%,#000 78%)}
+[data-state=idle] .ring{animation:breathe var(--t-breath) infinite alternate}
+[data-state=idle] .sheen,[data-state=error] .sheen{display:none}
+[data-state=connecting] .ring{box-shadow:0 22px 44px -18px #000,0 0 0 1px rgba(255,255,255,.05) inset,
+  0 0 26px -4px rgba(74,222,155,.28)}
+[data-state=connecting] .sweep{opacity:1}
+[data-state=connected] .glyph{color:var(--accent);transform:scale(1.06)}
+[data-state=connected] .ring{filter:drop-shadow(0 0 16px rgba(74,222,155,.28))}
+[data-state=connected] .sheen{opacity:1;animation:spin var(--t-sheen) linear infinite}
+[data-state=connected] .well{box-shadow:0 2px 3px rgba(255,255,255,.07) inset,0 -6px 16px rgba(0,0,0,.65) inset,
+  0 0 0 1px rgba(74,222,155,.16) inset}
+[data-state=error] .ring{background:conic-gradient(from -90deg,var(--danger) 360deg,transparent 0)}
+[data-state=error] .glyph{color:var(--danger)}
+[data-state=error] .ring{animation:flash 340ms 1}
+.sweep{position:absolute;inset:3px;border-radius:50%;opacity:0;transition:opacity var(--t-enter);
+  background:conic-gradient(from 0deg,rgba(255,255,255,.55) 0 6%,transparent 14% 100%);
+  mask:radial-gradient(closest-side,transparent 74%,#000 76% 99%,transparent);
+  -webkit-mask:radial-gradient(closest-side,transparent 74%,#000 76% 99%,transparent);
+  animation:spin 1100ms linear infinite}
+@keyframes breathe{from{transform:scale(.982)}to{transform:scale(1)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes flash{0%{filter:brightness(1.9)}100%{filter:none}}
+body.reduced .ring,body.reduced .sheen,body.reduced .sweep,body.reduced .bar,body.reduced .skel{animation:none!important;transition:none!important}
+
+.node{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:calc(13.5px * var(--fs))}
+.flag{width:19px;height:14px;border-radius:3px;flex:0 0 auto;overflow:hidden;background:#1c2833;
+  box-shadow:0 0 0 1px rgba(255,255,255,.09);display:block}
+.flag svg{display:block;width:100%;height:100%}
+.node .g{font-size:11px;color:var(--accent);border:1px solid rgba(74,222,155,.35);border-radius:var(--r-chip);padding:0 7px}
+.node .sub{color:var(--muted);font-size:calc(11.5px * var(--fs))}
+
+.strip{display:flex;justify-content:center;gap:22px;margin-top:12px}
+.strip div{text-align:center}
+.strip small{display:block;font-size:calc(9.5px * var(--fs));color:var(--muted-2);letter-spacing:.06em}
+.strip b{font-size:calc(13px * var(--fs));font-weight:600}
+.strip .rx b{color:var(--accent)} .strip .tx b{color:var(--muted)} .strip .ss b{color:var(--text)}
+
+.spark{margin-top:var(--s4);border:1px solid var(--hairline);border-radius:var(--r-card);
+  background:linear-gradient(180deg,var(--surface),#0e141b);padding:10px 12px 6px;display:flex;align-items:center;gap:12px}
+.spark .lb{font-size:calc(10.5px * var(--fs));color:var(--muted);white-space:nowrap;line-height:1.5}
+.spark canvas{flex:1;height:44px;display:block}
+
+/* ---------- server list ---------- */
+.tabs{display:flex;gap:6px;margin:0 0 10px}
+.tabs button{flex:1;background:#0e141b;border:1px solid var(--line);color:var(--muted);font:inherit;
+  font-size:calc(12.5px * var(--fs));padding:9px;border-radius:11px;cursor:pointer;transition:all var(--t-exit)}
+.tabs button[aria-selected=true]{background:rgba(74,222,155,.1);border-color:rgba(74,222,155,.4);color:var(--text);font-weight:700}
+.list{border:1px solid var(--hairline);border-radius:var(--r-card);overflow:hidden;background:#0e1419}
+.row{display:flex;align-items:center;gap:11px;min-height:60px;padding:0 13px;cursor:pointer;
+  border-bottom:1px solid var(--hairline);transition:background var(--t-exit),opacity var(--t-exit)}
+.row:last-child{border-bottom:0}
+.row:hover{background:#121b23}
+.row[data-dead=true]{opacity:.42}
+.row.sel{background:rgba(74,222,155,.075);box-shadow:inset 2px 0 0 var(--accent)}
+html[dir=rtl] .row.sel{box-shadow:inset -2px 0 0 var(--accent)}
+.row .nm{font-size:calc(13px * var(--fs));font-weight:600;line-height:1.35}
+.row .sb{font-size:calc(11px * var(--fs));color:var(--muted)}
+.row .grow{flex:1;min-width:0}
+.bar{width:54px;height:4px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden;flex:0 0 auto}
+.bar i{display:block;height:100%;border-radius:99px;background:var(--accent);transition:width var(--t-enter)}
+.row[data-grade=B] .bar i{background:var(--info)} .row[data-grade=C] .bar i{background:var(--warn)}
+.row[data-grade=D] .bar i{background:var(--danger)}
+.chip{font-size:10px;padding:1px 6px;border-radius:99px;border:1px solid currentColor;color:var(--muted)}
+[data-grade=A] .chip{color:var(--accent)} [data-grade=B] .chip{color:var(--info)}
+[data-grade=C] .chip{color:var(--warn)} [data-grade=D] .chip{color:var(--danger)}
+.ms{min-width:46px;text-align:end;font-size:calc(11.5px * var(--fs));color:var(--muted)}
+.row[data-grade=A] .ms{color:var(--accent)}
+.pin{background:none;border:0;color:var(--muted-2);cursor:pointer;font-size:14px;padding:4px;border-radius:7px}
+.pin[aria-pressed=true]{color:var(--warn)}
+.pin:hover{color:var(--text)}
+.listfoot{display:flex;align-items:center;gap:8px;padding:9px 13px;font-size:calc(11px * var(--fs));color:var(--muted-2);background:#0c1116}
+.sync{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(74,222,155,.16)}
+.sync[data-busy=true]{background:var(--warn);box-shadow:0 0 0 3px rgba(245,165,36,.16);animation:breathe 900ms infinite alternate}
+.skel{height:60px;border-bottom:1px solid var(--hairline);
+  background:linear-gradient(90deg,#0e1419 0%,#16202a 40%,#0e1419 80%);background-size:220% 100%;
+  animation:shim 1200ms linear infinite}
+@keyframes shim{to{background-position:-220% 0}}
+.empty{padding:26px 16px;text-align:center;color:var(--muted);font-size:calc(12.5px * var(--fs))}
+.empty button{margin-top:10px;background:var(--accent);border:0;color:var(--accent-ink);font:inherit;font-weight:700;
+  padding:8px 14px;border-radius:10px;cursor:pointer}
+
+/* ---------- system surfaces ---------- */
+.sys{display:grid;gap:12px}
+.notif{background:#141c24;border:1px solid var(--line);border-radius:15px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start}
+.notif .ic{width:22px;height:22px;border-radius:50%;background:var(--accent);display:grid;place-items:center;flex:0 0 auto}
+.notif .ic svg{width:13px;height:13px;color:var(--accent-ink)}
+.notif .tx{flex:1;min-width:0}
+.notif .t1{font-size:12px;font-weight:700}
+.notif .t2{font-size:calc(11.5px * var(--fs));color:var(--muted)}
+.notif .act{border:1px solid rgba(255,107,107,.4);color:var(--danger);border-radius:9px;padding:5px 10px;font-size:11.5px;
+  background:transparent;font-family:inherit;cursor:pointer}
+.qs{display:flex;align-items:center;gap:11px;background:#141c24;border:1px solid var(--line);border-radius:15px;padding:12px}
+.qs.on{border-color:rgba(74,222,155,.42);background:linear-gradient(180deg,rgba(74,222,155,.09),#141c24 60%)}
+.qs .qi{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:#1d2833;color:var(--muted);flex:0 0 auto}
+.qs.on .qi{background:var(--accent);color:var(--accent-ink);box-shadow:0 0 16px -2px rgba(74,222,155,.55)}
+.qs .qn{font-size:13px;font-weight:700;line-height:1.3}
+.qs .q2{font-size:calc(11px * var(--fs));color:var(--muted)}
+
+/* ---------- legacy comparison ---------- */
+.legacy .screen{background:#071019}
+.legacy .ring{background:conic-gradient(from 0deg,#7b2ff7,#f107a3,#00c6ff,#7b2ff7);animation:spin 2600ms linear infinite;
+  box-shadow:0 0 34px rgba(123,47,247,.5)}
+.legacy .well{background:radial-gradient(circle,#12071f,#05010a);backdrop-filter:blur(6px)}
+.legacy .spark,.legacy .list,.legacy .row{backdrop-filter:blur(8px);border-color:rgba(255,255,255,.14)}
+.legacy .strip b,.legacy .ms{font-family:var(--sans);font-variant-numeric:normal}
+.legacy .node{text-transform:uppercase;letter-spacing:.08em}
+.legacy .appbar b{letter-spacing:.14em}
+.frozen .stage,.frozen .ring,.frozen .list{filter:saturate(.75)}
+.janknote{margin-top:10px;font-size:calc(11.5px * var(--fs));color:var(--warn);min-height:1.4em}
+
+/* ---------- tokens panel ---------- */
+.sw{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:9px}
+.sw div{border:1px solid var(--line);border-radius:11px;overflow:hidden;font-size:11px}
+.sw .c{height:38px}
+.sw .n{padding:6px 9px;display:flex;justify-content:space-between;gap:6px;color:var(--muted)}
+.sw .n b{color:var(--text);font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:calc(12px * var(--fs))}
+th{text-align:start;color:var(--muted-2);font-weight:600;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;padding:6px 0}
+td{padding:7px 0;border-top:1px solid var(--hairline);vertical-align:top}
+td.k{color:var(--muted);white-space:nowrap}
+.scale{display:flex;flex-direction:column;gap:5px}
+.scale .l{display:flex;align-items:baseline;gap:10px;border-top:1px solid var(--hairline);padding-top:5px}
+.scale .l span{color:var(--muted-2);font-size:10.5px;min-width:92px}
+.mot div{display:flex;gap:10px;align-items:center;border-top:1px solid var(--hairline);padding:7px 0}
+.mot i{width:34px;height:8px;border-radius:99px;background:var(--accent);flex:0 0 auto}
+.mot .l1 i{animation:slide var(--t-enter) infinite alternate}
+.mot .l2 i{animation:slide var(--t-exit) infinite alternate}
+.mot .l3 i{animation:slide 3000ms linear infinite alternate}
+@keyframes slide{to{transform:translateX(60px) scaleX(1.7)}}
+.a11y{font-size:calc(11.5px * var(--fs));color:var(--muted)}
+.a11y li{margin:5px 0}
+.pill2{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;border:1px solid var(--line);
+  border-radius:99px;padding:2px 9px;color:var(--muted)}
+.fps{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)}
+.fps b{font-size:15px;color:var(--accent);min-width:38px}
+.fps.warn b{color:var(--warn)} .fps.bad b{color:var(--danger)}
+.note{font-size:calc(11.5px * var(--fs));color:var(--muted-2);margin:10px 0 0}
+.badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+/* ---------- brand / icon ---------- */
+.brand{display:flex;gap:14px;align-items:flex-start}
+.brand .lil{margin:0;flex:0 0 auto;text-align:center}
+.brand .lil img{width:104px;height:104px;border-radius:20px;display:block;box-shadow:0 12px 26px -12px #000,0 0 0 1px var(--line)}
+.brand figcaption{font-size:calc(10.5px * var(--fs));color:var(--muted-2);margin-top:7px}
+.masks{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;flex:1}
+.m{aspect-ratio:1;display:block;border-radius:12px;background:#0d131a;border:1px solid var(--line);overflow:hidden;position:relative}
+.m img{width:100%;height:100%;display:block;clip-path:var(--mk,circle(50%))}
+.m.mono img{filter:grayscale(1) brightness(1.6);clip-path:circle(50%);opacity:.9}
+.m::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05);pointer-events:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ================= rail: controls ================= -->
+  <div class="rail">
+    <div class="card">
+      <h2>کنسول پروتوتایپ</h2>
+      <p class="lead" style="margin-bottom:14px">هر حالت را می‌توانی فورسی کنی؛ همه‌چیز زنده است —
+        لمس حلقه، انتخاب سرور، سرعت، نوتیفیکیشن و کاشی.</p>
+      <div class="seg" role="group" aria-label="حالت اتصال">
+        <button data-force=auto aria-pressed=true>خودکار</button>
+        <button data-force=idle>قطع</button>
+        <button data-force=connecting>در حال اتصال</button>
+        <button data-force=connected>وصل</button>
+        <button data-force=error aria-label="خطا">خطا</button>
+      </div>
+      <div style="height:14px"></div>
+      <div class="ctl"><span>سرعت واقعی را شبیه‌سازی کن</span>
+        <label class="switch"><input type=checkbox id=sim checked><i></i></label></div>
+      <div class="ctl"><span>حالت قدیمی (رنگین‌کمان + لگ)</span>
+        <label class="switch"><input type=checkbox id=legacy><i></i></label></div>
+      <div class="ctl"><span>کاهش انیمیشن (Accessibility)</span>
+        <label class="switch"><input type=checkbox id=reduced><i></i></label></div>
+      <div class="ctl"><span>تم روشن</span>
+        <label class="switch"><input type=checkbox id=light><i></i></label></div>
+      <div class="ctl"><span>مقیاس فونت <b class="num" id=fsv>1.00×</b></span>
+        <input type=range id=fss min=.9 max=1.3 step=.05 value=1 aria-label="مقیاس فونت"></div>
+      <div class="fps" title="نمایشگر فریم‌ریت — دلیل اصلیِ این طرح: کار نباید روی ترد اصلی انجام شود">
+        <span>FPS</span><b class="num" id=fps>60</b>
+        <button class="pill" id=freeze style="margin-inline-start:auto">فریز ۲٫۴ ثانیه‌ی ترد UI</button>
+      </div>
+      <p class="janknote" id=janknote aria-live=polite></p>
+    </div>
+
+    <div class="card">
+      <h2>سطوح سیستمی</h2>
+      <div class="sys">
+        <div class="notif">
+          <div class="ic" aria-hidden=true>
+            <svg viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=2.4 stroke-linecap=round>
+              <path d="M12 3v9"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg>
+          </div>
+          <div class="tx">
+            <div class="t1">Meelano <span class="num" id=ntxt>· متصل</span></div>
+            <div class="t2 num" id=nsub>↓ 0 KB/s · ↑ 0 KB/s · ۰۰:۰۰</div>
+          </div>
+          <button class="act" id=ndis>قطع</button>
+        </div>
+        <div class="qs" id=tile>
+          <div class="qi" aria-hidden=true>
+            <svg viewBox="0 0 24 24" width=17 height=17 fill=none stroke=currentColor stroke-width=2.2 stroke-linecap=round>
+              <path d="M12 3v9"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg>
+          </div>
+          <div style="flex:1;min-width:0">
+            <div class="qn" id=tlab>قطع است</div>
+            <div class="q2 num" id=tsub>برای اتصال لمس کنید</div>
+          </div>
+          <span class="pill2">Quick Settings</span>
+        </div>
+      </div>
+      <p class="note">هر دو روی همین داده‌ی ۱Hz سوارند و فقط وقتی متن عوض شود بازنویسی می‌شوند —
+        قانون «آبارش notify() باعث کُندی کل گوشی می‌شود».</p>
+    </div>
+  </div>
+
+  <!-- ================= phone ================= -->
+  <div>
+    <div class=phone>
+      <div class=screen data-state=idle id=screen>
+        <div class=sb><span class=num>۹:۴۱</span><span>Meelano UI prototype · API preview</span><span class=num>100%</span></div>
+        <div class=appbar>
+          <div class=mark aria-hidden=true>M</div>
+          <b>Meelano</b>
+          <button class=pill id=openSettings>تنظیمات</button>
+        </div>
+
+        <div class=stage id=stage>
+          <div class=hero>
+            <button class=ring id=ring aria-describedby=statusLive>
+              <span class=sheen></span><span class=sweep></span>
+              <span class=well>
+                <svg class=glyph viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width=1.9
+                     stroke-linecap=round aria-hidden=true>
+                  <path d="M12 3v8.5"/><path d="M17.7 6.2a8 8 0 1 1-11.4 0"/></svg>
+                <span class=k id=ringk>لمس کن</span>
+                <span class=v num id=ringv>قطع است</span>
+              </span>
+            </button>
+            <p class=sr id=statusLive aria-live=polite></p>
+            <div class=node>
+              <span class=flag id=flag aria-hidden=true></span>
+              <span id=nodeName>Vip Meelano</span>
+              <span class=sub num id=nodeSub>—</span>
+              <span class=g id=nodeGrade>—</span>
+            </div>
+            <div class=strip>
+              <div class=rx><small>دریافت</small><b class=num id=rx>—</b></div>
+              <div class=tx><small>ارسال</small><b class=num id=tx>—</b></div>
+              <div class=ss><small>سشن</small><b class=num id=sess>—</b></div>
+            </div>
+            <div class=spark>
+              <div class=lb>۶۰ ثانیه‌ی<br>آخر</div>
+              <canvas id=spark width=300 height=44 aria-hidden=true></canvas>
+            </div>
+            <div class=janknote id=heroNote></div>
+          </div>
+
+          <div style="height:20px"></div>
+          <div class=tabs role=tablist>
+            <button role=tab aria-selected=true data-tab=vip>VIP</button>
+            <button role=tab aria-selected=false data-tab=free>رایگانِ تست‌شده</button>
+          </div>
+          <div class=list id=list></div>
+          <div class=listfoot>
+            <span class=sync id=syncDot></span>
+            <span id=syncTxt>ETag ذخیره‌شده — پولینگ بعدی ۳۰۴ است</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class=note style="text-align:center">فریم واقعیِ همان مشخصات در <span class="ltr">docs/DESIGN-SYSTEM.md</span>
+      و پیاده‌سازی Compose در <span class="ltr">ui/VpnControlPanel.kt</span>.</p>
+  </div>
+
+  <!-- ================= tokens ================= -->
+  <div>
+    <div class="card">
+      <h2>هویت بصری</h2>
+      <div class=brand>
+        <figure class=lil><img src=assets/ic-launcher.png alt="آیکون اپ" width=104 height=104>
+          <figcaption>Launcher — <span class=num>#0B0F14 + #4ADE9B</span></figcaption></figure>
+        <div class=masks>
+          <span class=m style="--mk:circle(50%)"><img src=assets/ic-launcher.png alt=""></span>
+          <span class=m style="--mk:circle(28%)"><img src=assets/ic-launcher.png alt=""></span>
+          <span class=m style="--mk:polygon(50% 0%,100% 50%,50% 100%,0% 50%)"><img src=assets/ic-launcher.png alt=""></span>
+          <span class=m mono><img src=assets/ic-glyph.png alt=""></span>
+        </div>
+      </div>
+      <p class=note>سه‌لایه: پس‌زمینه تک‌رنگ، foreground مونولاین (نسخه‌ی monochrome برای
+        Themed icons اندروید ۱۳+)، و safe zone حدود ۶۶٪ که در ماسک‌های بالا تست می‌شود.
+        همان گلیف در حلقه‌ی اتصال، کاشی QS و نوتیفیکیشن تکرار می‌شود — تکرارِ یک شکل = برند.</p>
+    </div>
+
+    <div class="card">
+      <h2>پالت</h2>
+      <div class="sw" id=pal></div>
+      <p class=note>کنتراست متن روی سطح: <b class=num>13.1:1</b> · لیبل‌ها <b class=num>5.4:1</b> ·
+        اکسنت روی سطح <b class=num>8.2:1</b>. وضعیت هیچ‌وقت فقط با رنگ نیست.</p>
+    </div>
+
+    <div class="card">
+      <h2>تایپوگرافی</h2>
+      <div class="scale" id=scl></div>
+      <p class=note>اعداد همه با <span class="ltr num">tabular-nums</span>. بدون آن، ردیف سرعت در هر
+        ۴۰۰ms می‌لرزد و مغز کاربر آن را «گیر کردن» تفسیر می‌کند — همین یک تغییر، بیشترین اثر را روی
+        حسِ کیفیت داشت.</p>
+    </div>
+
+    <div class="card">
+      <h2>حرکت</h2>
+      <div class="mot">
+        <div class=l1><i></i><span>ورود <b class=num>200ms</b> emphasized-decelerate</span></div>
+        <div class=l2><i></i><span>خروج <b class=num>150ms</b> emphasized-accelerate</span></div>
+        <div class=l3><i></i><span>sheen حالت وصل <b class=num>6s</b> linear (پس‌زمینه‌ای، بی‌مزاحم)</span></div>
+      </div>
+      <p class=note>هیچ انیمیشنی در حالت «در حال اتصال» بیشتر از ۴۰۰ms نیست. لوپ بی‌پایان روی خطا
+        ممنوع: یعنی «صبر کن»، ما می‌گوییم «دوباره امتحان کن».</p>
+    </div>
+
+    <div class="card">
+      <h2>دسترس‌پذیری</h2>
+      <ul class=a11y style="padding-inline-start:18px;margin:0">
+        <li>حلقه یک <span class="ltr num">&lt;button&gt;</span> واقعی است: فوکوس، Enter، Space، ripple.</li>
+        <li>تغییر حالت با <span class="ltr">aria-live</span> اعلام می‌شود (برای نابینا: «وصل است، آلمان، ۳۴۰ms»).</li>
+        <li>مقیاس فونت تا <b class=num>1.3×</b> بدون بریدن چیدمان (اسلایدر بالا را تست کن).</li>
+        <li><span class="ltr">prefers-reduced-motion</span> و سوییچ «کاهش انیمیشن» همه‌ی لوپ‌ها را خاموش می‌کند.</li>
+        <li>هدف لمسی ≥ <b class=num>48dp</b>؛ فاصله‌ی لمسی ≥ <b class=num>8dp</b>.</li>
+        <li>رتبه‌ها رنگ + حرف + شکل دارند (کوتاه‌بین و رنگ‌نابینا).</li>
+      </ul>
+      <div class=badges>
+        <span class=pill2>RTL با start/end</span><span class=pill2>اعداد LTR ایزوله</span>
+        <span class=pill2>یک گرادیان در صفحه</span><span class=pill2>بدون blur روی لیست</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>منطقِ «چرا این شکلی است»</h2>
+      <table>
+        <tr><td class=k>درصد حلقه</td><td>از مراحل واقعی اتصال است (پروفایل ۱۵٪، DNS ۳۰٪، handshake ۵۰٪، تونل ۷۰٪، تأیید ۸۸٪) — نه تایمر فیک. ادراکِ آن «چند ثانیه هنگی» همین‌جا می‌شکند.</td></tr>
+        <tr><td class=k>همه نام‌ها یکی</td><td>پس ردیف‌ها با کشور + شماره + کیفیت‌بار خوانا می‌شوند (وگرنه ۲۰ خط تکراری).</td></tr>
+        <tr><td class=k>حالت خطا</td><td>یک فلاش، بعد سکون + دکمه‌ی «تغییر سرور». نه اسپینر، نه توست قرمز.</td></tr>
+        <tr><td class=k>لیست خالی</td><td>اسکلتون/حالت خالیِ اقدام‌محور، نه صفحه‌ی سفید با ایموجی.</td></tr>
+        <tr><td class=k>نوتیفیکیشن</td><td>۱Hz و فقط در صورت تغییر — چون notify() یک binder call به system_server است.</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   State machine — دقیقاً همان ConnectPhase سمت اندروید.
+   ============================================================ */
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const screen=$('#screen');
+const S={state:'idle',p:0,node:0,tab:'vip',sim:true,rx:0,tx:0,sec:0,hist:[],pins:new Set(),dead:new Set()};
+
+const NODES={
+  vip:[
+    {id:'a1',cc:'DE',port:443,proto:'vless',grade:'A',ms:340,q:.94,slot:1},
+    {id:'a2',cc:'SE',port:2087,proto:'vless',grade:'A',ms:410,q:.88,slot:2},
+    {id:'a3',cc:'FI',port:2053,proto:'vless',grade:'B',ms:690,q:.71,slot:3},
+    {id:'a4',cc:'NL',port:8388,proto:'ss',grade:'B',ms:810,q:.66,slot:4},
+    {id:'a5',cc:'US',port:443,proto:'trojan',grade:'C',ms:1420,q:.52,slot:5},
+  ],
+  free:[
+    {id:'f1',cc:'TR',port:8080,proto:'socks5',grade:'A',ms:520,q:.82,slot:1},
+    {id:'f2',cc:'IN',port:3128,proto:'http',grade:'B',ms:980,q:.61,slot:2},
+    {id:'f3',cc:'GB',port:1080,proto:'socks5',grade:'B',ms:1180,q:.57,slot:3},
+    {id:'f4',cc:'AE',port:80,proto:'http',grade:'C',ms:1980,q:.40,slot:4},
+    {id:'f5',cc:'RU',port:8888,proto:'http',grade:'D',ms:null,q:.22,slot:5,dead:true},
+  ]
+};
+const FLAG={
+  DE:'<rect width=19 height=14 fill="#111"/><rect y=4.67 width=19 height=4.67 fill="#d00"/><rect y=9.34 width=19 height=4.66 fill="#fc0"/>',
+  SE:'<rect width=19 height=14 fill="#1b5aa5"/><rect x=5.5 width=3 height=14 fill="#fecb00"/><rect y=5.5 width=19 height=3 fill="#fecb00"/>',
+  FI:'<rect width=19 height=14 fill="#fff"/><rect x=5 width=3.4 height=14 fill="#003580"/><rect y=5.3 width=19 height=3.4 fill="#003580"/>',
+  NL:'<rect width=19 height=14 fill="#111"/><rect width=19 height=4.67 fill="#ae1c28"/><rect y=4.67 width=19 height=4.67 fill="#fff"/><rect y=9.34 width=19 height=4.66 fill="#21468b"/>',
+  US:'<rect width=19 height=14 fill="#fff"/><g fill="#b22234"><rect width=19 height=1.08/><rect y=2.15 width=19 height=1.08/><rect y=4.3 width=19 height=1.08/><rect y=6.46 width=19 height=1.08/><rect y=8.6 width=19 height=1.08/><rect y=10.76 width=19 height=1.08/><rect y=12.9 width=19 height=1.1}/></g><rect width=8.4 height=7.5 fill="#3c3b6e"/>',
+  TR:'<rect width=19 height=14 fill="#e30a17"/><circle cx=7.4 cy=7 r=3.2 fill="#fff"/><circle cx=8.6 cy=7 r=2.5 fill="#e30a17"/><path d="M11.4 5.6l2.3.9-.6 2.3-2.2-1.2z" fill="#fff"/>',
+  IN:'<rect width=19 height=4.67 fill="#ff9933"/><rect y=4.67 width=19 height=4.67 fill="#fff"/><rect y=9.34 width=19 height=4.66 fill="#138808"/><circle cx=9.5 cy=7 r=2 fill="none" stroke="#000080" stroke-width=".4"/>',
+  GB:'<rect width=19 height=14 fill="#012169"/><path d="M0 0l19 14M19 0L0 14" stroke="#fff" stroke-width="2.6"/><path d="M0 0l19 14M19 0L0 14" stroke="#c8102e" stroke-width="1.1"/><path d="M9.5 0v14M0 7h19" stroke="#fff" stroke-width="4"/><path d="M9.5 0v14M0 7h19" stroke="#c8102e" stroke-width="2.4"/>',
+  AE:'<rect width=19 height=14 fill="#fff"/><rect width=19 height=4.67 fill="#00732f"/><rect y=9.34 width=19 height=4.66 fill="#111"/><rect width=5.6 height=14 fill="#c8102e"/>',
+  RU:'<rect width=19 height=14 fill="#fff"/><rect y=4.67 width=19 height=4.67 fill="#0039a6"/><rect y=9.34 width=19 height=4.66 fill="#d52b1e"/>',
+};
+const flagSVG=cc=>`<svg viewBox="0 0 19 14" preserveAspectRatio="none">${FLAG[cc]||'<rect width=19 height=14 fill="#22303c"/>'}</svg>`;
+
+const STAGES=[[.15,'ساخت پروفایل'],[.30,'DNS'],[.50,'handshake'],[.70,'تونل'],[.88,'تأیید']];
+let timers=[];
+const clear=()=>{timers.forEach(t=>{clearTimeout(t);clearInterval(t)})};
+const fmt=n=>n<1024?n+' B/s':n<1048576?(n/1024).toFixed(0)+' KB/s':(n/1048576).toFixed(1)+' MB/s';
+const fa=t=>{const h=Math.floor(t/3600),m=Math.floor(t%3600/60),s=t%60,z=x=>String(x).padStart(2,'0')
+  .replace(/[0-9]/g,d=>'۰۱۰۲۰۳۰۴۰۵۰۶۰۷۰۸۰۹'[d]||d);return (h?z(h)+':':'')+z(m)+':'+z(s)};
+const persian=x=>String(x).replace(/[0-9]/g,d=>'۰۱۲۳۴۵۶۷۸۹'[d]);
+
+function setState(st){S.state=st;screen.dataset.state=st;render()}
+function setProgress(p){S.p=p;$('#ring').style.setProperty('--p',p)}
+
+function render(){
+  const node=NODES[S.tab][S.node]||NODES.vip[0];
+  const live=S.state==='connected';
+  $('#flag').innerHTML=flagSVG(node.cc);
+  $('#nodeName').textContent=S.tab==='vip'?'Vip Meelano':'Free Meelano';
+  $('#nodeSub').textContent=live?node.cc+' · '+node.proto+' · '+node.port:'—';
+  $('#nodeGrade').textContent=live?node.grade:'—';
+  $('#nodeGrade').style.display=live?'':'none';
+  const ringk=$('#ringk'),ringv=$('#ringv');
+  if(S.state==='idle'){ringk.textContent='برای اتصال';ringv.textContent='قطع است'}
+  if(S.state==='connecting'){ringk.textContent='در حال اتصال';ringv.textContent=persian(Math.round(S.p*100))+'%'}
+  if(S.state==='connected'){ringk.textContent='متصل · نگه‌دار برای سرور';ringv.textContent=fmt(S.rx).split(' ')[1]||''}
+  if(S.state==='error'){ringk.textContent='اتصال برقرار نشد';ringv.textContent='دوباره'}
+  $('#rx').textContent=live?fmt(S.rx):'—';
+  $('#tx').textContent=live?fmt(S.tx):'—';
+  $('#sess').textContent=live?fa(S.sec):'—';
+  const nt=S.state==='connected'?`↓ ${fmt(S.rx)} · ↑ ${fmt(S.tx)} · ${fa(S.sec)}`
+    :S.state==='connecting'?`${persian(Math.round(S.p*100))}% — ${STAGES.find(s=>s[0]>S.p)?.[1]||'تأیید'}`
+    :S.state==='error'?'قطع شد — دوباره امتحان کن':'غیرفعال';
+  $('#nsub').textContent=nt;
+  $('#tlab').textContent=S.state==='connected'?'Meelano':S.state==='error'?'خطا':S.state==='connecting'?'در حال اتصال…':'قطع است';
+  $('#tsub').textContent=S.state==='connected'?`↓ ${fmt(S.rx)} · ↑ ${fmt(S.tx)}`:S.state==='connecting'?persian(Math.round(S.p*100))+'%':'برای اتصال لمس کنید';
+  $('#tile').classList.toggle('on',S.state==='connected');
+  $('#statusLive').textContent=S.state==='connected'
+    ? `وصل است، ${node.cc}، ${persian(node.ms)} میلی‌ثانیه. برای قطع لمس کنید.`
+    :S.state==='idle'?'قطع است. برای اتصال لمس کنید.':S.state==='error'?'اتصال برقرار نشد. برای تلاش دوباره لمس کنید.':'';
+  $('#heroNote').textContent=S.state==='error'?'سرور پاسخ نداد — سرور دیگر را امتحان کن':
+    (S.state==='connecting'?STAGES.find(s=>s[0]>S.p)?.[1]||'تأیید نهایی':'');
+  $('#ndis').style.visibility=S.state==='idle'?'hidden':'visible';
+  drawSpark();
+}
+
+/* ---------- connect / disconnect ---------- */
+function connect(){
+  if(S.legacy){/* the old app: work on the UI thread → everything stutters */}
+  setState('connecting');setProgress(.02);clear();
+  const steps=STAGES.map(([p,label],i)=>({p,label,delay:260+i*(S.legacy?620:430)}));
+  steps.forEach((st,i)=>timers.push(setTimeout(()=>{
+    setProgress(st.p);render();
+    if(S.legacy) jank(st.p);
+  },st.delay)));
+  timers.push(setTimeout(()=>{
+    setProgress(1);
+    if(S.forced==='error'){setState('error');return}
+    setState('connected');S.sec=0;
+    if(S.sim) startSpeed();
+  },steps.at(-1).delay+ (S.legacy?900:520)));
+}
+function disconnect(){clear();setState('idle');setProgress(0);S.rx=S.tx=S.sec=0;S.hist=[];render()}
+
+/* ---------- speed sim + sparkline ---------- */
+let spTimer=null;
+function startSpeed(){
+  clearInterval(spTimer);
+  let base=2.4e6*(1-(NODES[S.tab][S.node]?.ms||400)/9000);
+  spTimer=setInterval(()=>{
+    if(S.state!=='connected'){clearInterval(spTimer);return}
+    base=Math.max(3e5,base*(1+(Math.random()-.5)*.34));
+    S.rx=Math.round(base);S.tx=Math.round(base*.11+Math.random()*4e4);S.sec++;
+    S.hist.push(S.rx);if(S.hist.length>150)S.hist.shift();
+    render();
+  },S.legacy?95:1000);          // legacy: 10Hz → همان notify-storm که گوشی را کند می‌کرد
+}
+const cv=$('#spark'),cx=cv.getContext('2d');
+function drawSpark(){
+  const dpr=devicePixelRatio||1,w=cv.clientWidth||300,h=44;
+  cv.width=w*dpr;cv.height=h*dpr;cx.setTransform(dpr,0,0,dpr,0,0);cx.clearRect(0,0,w,h);
+  const d=S.hist.slice(-60);if(d.length<2){
+    cx.strokeStyle='rgba(255,255,255,.07)';cx.lineWidth=1;cx.beginPath();cx.moveTo(0,h-6);cx.lineTo(w,h-6);cx.stroke();return}
+  const mx=Math.max(...d,1024),n=d.length,sx=w/(n-1);
+  const pt=i=>[i*sx,h-4-(d[i]/mx)*(h-9)];
+  cx.beginPath();cx.moveTo(0,h);d.forEach((_,i)=>{const[x,y]=pt(i);cx[i?'lineTo':'moveTo'](x,y)});
+  cx.lineTo(w,h);cx.closePath();
+  const g=cx.createLinearGradient(0,0,0,h);g.addColorStop(0,'rgba(74,222,155,.30)');g.addColorStop(1,'rgba(74,222,155,0)');
+  cx.fillStyle=g;cx.fill();
+  cx.beginPath();d.forEach((_,i)=>{const[x,y]=pt(i);cx[i?'lineTo':'moveTo'](x,y)});
+  cx.strokeStyle=S.legacy?'#f107a3':'#4ADE9B';cx.lineWidth=1.6;cx.lineJoin='round';cx.stroke();
+  const[lx,ly]=pt(n-1);cx.beginPath();cx.arc(lx-1,ly,2,0,7);cx.fillStyle='#4ADE9B';cx.fill();
+}
+
+/* ---------- server list ---------- */
+function renderList(){
+  const box=$('#list');
+  if(S.emptyTab?.has(S.tab)){box.innerHTML='<div class=empty>لیستی از سرور دریافت نشد.<button id=retry>به‌روزرسانی</button></div>';
+    $('#retry').onclick=()=>{S.emptyTab.delete(S.tab);syncFlash();renderList()};return}
+  if(S.loading){box.innerHTML='<div class=skel></div>'.repeat(5);return}
+  const rows=[...NODES[S.tab]].sort((a,b)=>(S.pins.has(b.id)?1:0)-(S.pins.has(a.id)?1:0)||(a.slot-b.slot));
+  const curId=NODES[S.tab][S.node]?.id;
+  box.innerHTML=rows.map(n=>`
+    <div class="row${n.id===curId?' sel':''}" data-id=${n.id} data-grade=${n.grade} data-dead=${!!n.dead}
+         tabindex=0 role=button aria-pressed=${n.id===curId}>
+      <span class=flag aria-hidden=true>${flagSVG(n.cc)}</span>
+      <span class=grow>
+        <span class=nm>${S.tab==='vip'?'Vip Meelano':'Free Meelano'} <span style="color:var(--muted-2)">${persian(String(n.slot).padStart(2,'0'))}</span></span>
+        <span class=sb>${n.cc} · ${n.proto} · ${n.port}${n.dead?' · ۳ بار ناموفق — ۲ ساعت بعد':''}</span>
+      </span>
+      <span class=bar aria-hidden=true><i style="width:${Math.round(n.q*100)}%"></i></span>
+      <span class=chip>${n.grade}</span>
+      <span class="ms num">${n.ms?n.ms+'ms':'—'}</span>
+      <button class=pin aria-pressed=${S.pins.has(n.id)} aria-label="پین ${n.cc}">★</button>
+    </div>`).join('');
+  $$('.row',box).forEach(r=>{
+    r.onclick=e=>{
+      if(e.target.classList.contains('pin'))return;
+      const i=NODES[S.tab].findIndex(n=>n.id===r.dataset.id);
+      const wasOn=S.state==='connected';
+      S.node=i;S.loading=true;renderList();
+      $('#syncTxt').textContent='اعمال پروفایل — restart تونل…';$('#syncDot').dataset.busy=true;
+      setTimeout(()=>{
+        S.loading=false;$('#syncDot').dataset.busy=false;$('#syncTxt').textContent='ETag ذخیره‌شده — پولینگ بعدی ۳۰۴ است';
+        wasOn?connect():(setState('idle'),render());
+      },S.legacy?900:520);
+    };
+    r.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();r.click()}};
+    $('.pin',r).onclick=ev=>{ev.stopPropagation();
+      const id=r.dataset.id;S.pins.has(id)?S.pins.delete(id):S.pins.add(id);renderList()};
+  });
+}
+function syncFlash(){setState('idle');render()}
+
+/* ---------- state forcing / switches ---------- */
+S.forced='auto';S.emptyTab=new Set();
+$$('.seg [data-force]').forEach(b=>b.onclick=()=>{
+  $$('.seg [data-force]').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  S.forced=b.dataset.force;
+  if(S.forced==='auto'){disconnect()}
+  else if(S.forced==='idle'){disconnect()}
+  else if(S.forced==='connected'){setState('connecting');clear();setProgress(1);
+    timers.push(setTimeout(()=>{setState('connected');S.sec=0;startSpeed()},420))}
+  else if(S.forced==='error'){setState('error')}
+  else{setState('connecting');clear();setProgress(.5)}
+});
+$('#sim').onchange=e=>{S.sim=e.target.checked;if(!S.sim){clearInterval(spTimer);S.rx=S.tx=0;render()}else if(S.state==='connected')startSpeed()};
+$('#legacy').onchange=e=>{S.legacy=e.target.checked;document.body.classList.toggle('legacy',S.legacy);
+  $('#janknote').textContent=S.legacy?'این همان «قبل» است: گرادیان رنگین‌کمانی، بلور، اسپینر، اعداد غیرهم‌عرض — و فریز ترد UI.':' ';
+  if(!S.legacy){$('#fps').textContent='60';}render()};
+$('#reduced').onchange=e=>document.body.classList.toggle('reduced',e.target.checked);
+$('#light').onchange=e=>document.body.classList.toggle('light',e.target.checked);
+$('#fss').oninput=e=>{document.documentElement.style.setProperty('--fs',e.target.value);$('#fsv').textContent=Number(e.target.value).toFixed(2)+'×'};
+$('#ring').onclick=()=>{S.state==='connected'||S.state==='error'?disconnect():connect()};
+$('#ring').oncontextmenu=e=>{e.preventDefault();$('#stage').scrollTo({top:$('#list').offsetTop-70,behavior:'smooth'})};
+$('#ndis').onclick=()=>disconnect();
+$('#openSettings').onclick=()=>{S.emptyTab.add(S.tab);renderList();setTimeout(()=>{S.emptyTab.delete(S.tab);renderList()},2600)};
+addEventListener('keydown',e=>{if(e.key==='Escape')disconnect();if(e.key==='c')connect()});
+
+/* ---------- FPS + "freeze the UI thread" demo ---------- */
+let frames=0,lastT=performance.now();
+(function loop(t){frames++;if(t-lastT>500){const fps=Math.round(frames*1000/(t-lastT));frames=0;lastT=t;
+  const el=$('#fps');el.textContent=fps;
+  document.querySelector('.fps').classList.toggle('bad',fps<25);document.querySelector('.fps').classList.toggle('warn',fps>=25&&fps<52);}
+  requestAnimationFrame(loop)})();
+function busy(ms){const t0=performance.now();while(performance.now()-t0<ms){}}
+function jank(p){busy(S.legacy?520:0)}
+$('#freeze').onclick=()=>{
+  if(!S.legacy){$('#janknote').textContent='اول «حالت قدیمی» را روشن کن تا فریز ترد اصلی را ببینی.';return}
+  $('#janknote').textContent='ترد UI بلوک شد → FPS سقوط کرد؛ دقیقاً همان چیزی که در اپ گزارش کردی.';
+  busy(2400);setTimeout(()=>$('#janknote').textContent='در نسخه‌ی اصلاح‌شده همین کار روی Dispatchers.Default است و FPS دست‌نخورده می‌ماند.',60);
+};
+
+/* ---------- tokens panel ---------- */
+const TOKENS=[['bg','--bg'],['surface','--surface'],['surface-2','--surface-2'],['line','--line'],
+ ['text','--text'],['muted','--muted'],['accent','--accent'],['accent-deep','--accent-deep'],
+ ['info','--info'],['warn','--warn'],['danger','--danger'],['well','--well']];
+$('#pal').innerHTML=TOKENS.map(([n,v])=>{const c=getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  return `<div><div class=c style="background:${c}"></div><div class=n><b>${n}</b><span class=num>${c}</span></div></div>`}).join('');
+const SCALE=[[34,'display · فقط یک‌بار'],['22','title'],[17,'headline'],[15,'body'],[13,'label'],[12,'caption']];
+$('#scl').innerHTML=SCALE.map(([s,n])=>`<div class=l><span class=num>${s}px</span><b style="font-size:calc(${s}px * var(--fs));font-weight:${s>20?700:500};letter-spacing:${s>20?'-.02em':'0'}">${n}</b></div>`).join('');
+
+/* ---------- tabs ---------- */
+$$('.tabs [role=tab]').forEach(b=>b.onclick=()=>{
+  $$('.tabs [role=tab]').forEach(x=>x.setAttribute('aria-selected',x===b));
+  S.tab=b.dataset.tab;
+  const i=NODES[S.tab].findIndex(n=>n.id===NODES.vip[S.node]?.id);
+  S.node=i>=0?i:0;
+  renderList();render();
+});
+
+/* ---------- boot ---------- */
+render();renderList();
+</script>
+</body>
+</html>
