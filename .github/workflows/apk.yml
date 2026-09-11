@@ -6,6 +6,8 @@ name: build apk
 # نحوه‌ی استفاده:
 #   1) Actions ▸ “build apk” ▸ Run workflow  (variant=debug برای تست روی گوشی)
 #   2) از Artifact دانلود کن: meelano-<name>-<code>-debug.apk
+#   2b) یا فقط یک تگ بزن:  git tag v2.0.0-beta.1 && git push origin v2.0.0-beta.1
+#       ⇒ بیلد گرفته می‌شود و Release با لینک مستقیم ساخته می‌شود (این خودکارترین راه است)
 #   3) برای ریلیز امضاشده: سه secret زیر را پر کن و variant=release بزن
 #        MEELANO_KEYSTORE_B64   -> base64 -w0 meelano.keystore
 #        MEELANO_KEY_PASS       -> keyPassword
@@ -18,6 +20,11 @@ name: build apk
 # خوانده شود — دو جا نگه‌داشتن نسخه، همان چیزی است که باعث می‌شود آپدیت خودکار بی‌صدا کار نکند.
 
 on:
+  push:
+    # «تگ بزن، APK با لینک دانلود منتشر می‌شود» — تنها ماشه‌ای که با توکن محدودِ محیط توسعه هم کار می‌کند،
+    # چون dispatch کردن workflow نیاز به اجازه‌ی actions:write دارد ولی push تگ نه.
+    tags: ['v*']
+    branches: [main]
   workflow_dispatch:
     inputs:
       variant:
@@ -60,7 +67,8 @@ on:
       - '.github/workflows/apk.yml'
 
 permissions:
-  contents: read
+  # contents:write فقط برای یک چیز لازم است: ساختن Release با asset. build چیزی را commit نمی‌کند.
+  contents: write
   pull-requests: write
 
 env:
@@ -208,26 +216,39 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "file=$out" >> "$GITHUB_OUTPUT"
           echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+          echo "size=$size" >> "$GITHUB_OUTPUT"
 
-      # فقط در اجرای دستی: یک Release با APK + آیکون ۵۱ + sha256، تا لینک دانلود ثابت داشته باشی
-      # (Artifact بعد از ۳۰ روز می‌میرد و به لاگین برای دیدن صفحه نیاز دارد؛ asset ریلیز لینک مستقیم است)
+      # Release با APK + sha256 + آیکون ۵۱۲. چرا Release و نه Artifact: artifact بعد از ۹۰ روز
+      # می‌میرد و صفحه‌اش برای هر دانلود دوباره redirect می‌کند؛ asset یک ریلیز لینک مستقیم و ثابت است
+      # که می‌شود آن را کپی کرد روی public_html/v/apk/ و به کاربران داد.
       - name: publish release
-        if: ${{ github.event_name == 'workflow_dispatch' && steps.out.outputs.file != '' }}
+        if: ${{ github.event_name != 'pull_request' && steps.out.outputs.file != '' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FILE: ${{ steps.out.outputs.file }}
           SHA: ${{ steps.out.outputs.sha256 }}
+          SIZE: ${{ steps.out.outputs.size }}
           VARIANT: ${{ inputs.variant || 'debug' }}
         run: |
           set -euo pipefail
-          tag="apk-$(date -u +%Y%m%d-%H%M)-${VARIANT}"
+          case "$GITHUB_REF" in
+            refs/tags/*) tag="${GITHUB_REF_NAME}" ;;
+            *) tag="apk-$(date -u +%Y%m%d-%H%M)-${VARIANT}" ;;
+          esac
           printf '%s  %s\n' "$SHA" "$FILE" > "$FILE.sha256"
-          notes="بیلد ${VARIANT} از ${GITHUB_SHA::7}. نصب: \`adb install -r ${FILE}\`
-          برای هاست: \`public_html/v/apk/${FILE%.apk}.apk\` (Version.php نسخه را از نام فایل می‌خواند).
-          sha256: \`$SHA\`"
+          pre=""
+          case "$tag" in *alpha*|*beta*|*rc*) pre="--prerelease" ;; esac
+          notes="بیلد \`${VARIANT}\` از کامیت \`${GITHUB_SHA::7}\` — تگ \`$tag\`
+          - حجم: \`$SIZE\` بایت · sha256: \`$SHA\`
+          - نصب روی گوشی: \`adb install -r $FILE\`
+          - برای آپدیت خودکار: فایل را با نام \`${FILE%-*}.apk\` در \`public_html/v/apk/\` بگذار
+            (بک‌اند از همان نام فایل versionCode/Name را می‌خواند: backend/v/lib/Version.php)
+          - این بیلد \`debug\`` است: با کلید debug امضا شده، برای تست روی گوشی؛ ریلیز کاربران را
+            با keystore خودت بساز (docs/ANDROID-BUILD.md §۴) و MEELANO_CORE_LINKED=true بزن."
           gh release create "$tag" "$FILE" "$FILE.sha256" design/preview/assets/ic-store-512.png \
-            --title "Meelano VPN — $FILE" --notes "$notes" --target "$GITHUB_SHA"
-          echo "### لینک دانلود" >> "$GITHUB_STEP_SUMMARY"
+            --title "Meelano VPN — $tag ($VARIANT)" --notes "$notes" --target "$GITHUB_SHA" $pre || \
+            gh release upload "$tag" "$FILE" "$FILE.sha256" --clobber
+          echo "### لینک دانلود APK" >> "$GITHUB_STEP_SUMMARY"
           echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/$FILE" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
