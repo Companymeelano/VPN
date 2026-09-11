@@ -237,7 +237,7 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
             .setShowWhen(false)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .addAction(0, "قطع اتصال", disconnect)
+            .addAction(0, getString(R.string.notif_disconnect), disconnect)
             .build()
     }
 

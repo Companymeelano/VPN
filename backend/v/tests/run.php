@@ -13,6 +13,8 @@ require $root . '/lib/Probe.php';
 require $root . '/lib/Score.php';
 require $root . '/lib/Builder.php';
 require $root . '/lib/Version.php';
+require $root . '/lib/Ai.php';
+require $root . '/lib/AiTune.php';
 
 $tmp = sys_get_temp_dir() . '/meelano-test-' . getmypid();
 // hermetic: the suite must be re-runnable, so start from an empty data dir
@@ -297,7 +299,10 @@ $body = Util::jsonEncode($vip);
 t('6 nodes published', function () use ($vip) { return eq($vip['count'], 6, 'got ' . $vip['count'] . ' -> ' . json_encode(array_column($vip['servers'], 'proto'))); });
 t('every name is exactly the brand', function () use ($vip) {
     foreach ($vip['servers'] as $s) {
-        if ($s['name'] !== 'Vip Meelano' || $s['title'] !== 'Vip Meelano') {
+        // the brand comes from config now (it is a product name, not a test constant): what this
+        // asserts is "name is exactly the brand and never the upstream vendor's label"
+        $want = (string) Util::cfg('brand.vip');
+        if ($s['name'] !== $want || $s['title'] !== $want) {
             return 'leaked name: ' . json_encode([$s['name'], $s['title']]);
         }
     }
@@ -316,7 +321,8 @@ t('vmess ps rewritten to brand + slot', function () use ($vip) {
         if ($s['proto'] === 'vmess') {
             $raw = substr($s['raw'], 8);
             $d = json_decode(base64_decode(preg_replace('~\s+~', '', $raw)), true);
-            return is_array($d) && $d['ps'] === 'Vip Meelano 04' ? true : 'ps=' . json_encode(isset($d['ps']) ? $d['ps'] : $d);
+            $want = Util::cfg('brand.vip') . ' 04';   // the brand is config, not a test constant
+            return is_array($d) && $d['ps'] === $want ? true : 'ps=' . json_encode(isset($d['ps']) ? $d['ps'] : $d);
         }
     }
     return 'no vmess node';
@@ -593,6 +599,198 @@ t('data dir holds only expected artifacts', function () use ($tmp) {
     }
     return true;
 });
+
+
+/* ------------------------------------------------------------------ AI tuning layer
+ * Everything here runs with ai.enabled = false (the shipped default): the point of these tests is
+ * that the tuner's *deterministic* half is correct and that the feed still builds with the model
+ * unavailable. The clamp tests cover what a model could send back; a real API call is never part of
+ * the suite (a test that needs a key is a test that gets deleted).
+ */
+t('ai is off by default and nothing is allowed', function () {
+    if (Ai::enabled()) {
+        return 'Ai::enabled() true with ai.enabled unset';
+    }
+    return eq(Ai::allowed(), false);
+});
+
+t('regimeFromFleet thresholds', function () {
+    $cases = [
+        [[], 'calm'],
+        [['tcpFail' => 0.05], 'calm'],
+        [['tcpFail' => 0.2], 'tight'],
+        [['tlsFail' => 0.4], 'tight'],
+        [['dnsPoisoned' => true], 'tight'],
+        [['tcpFail' => 0.7], 'blackout'],
+        [['regime' => 'blackout', 'tcpFail' => 0.0], 'blackout'],   // explicit vote wins
+        [['regime' => 'nonsense', 'tcpFail' => 0.2], 'tight'],       // garbage vote ignored
+    ];
+    foreach ($cases as $c) {
+        $got = AiTune::regimeFromFleet($c[0]);
+        if ($got !== $c[1]) {
+            return 'for ' . json_encode($c[0]) . ' got ' . $got . ' want ' . $c[1];
+        }
+    }
+    return true;
+});
+
+t('standard ports only are trusted', function () {
+    if (!AiTune::isGoodPort(443) || !AiTune::isGoodPort(8443) || AiTune::isGoodPort(8080) || AiTune::isGoodPort(0)) {
+        return 'port classification wrong';
+    }
+    return true;
+});
+
+t('reality never carries an extra mux layer', function () {
+    $p = AiTune::heuristic(['id' => 'a1', 'proto' => 'vless', 'tls' => 'reality', 'network' => 'tcp', 'port' => 443, 'tier' => 'vip'], 'calm', []);
+    if (!isset($p['mux']) || $p['mux'] !== false) {
+        return 'mux should be forced off, got ' . json_encode($p);
+    }
+    if ((int) $p['fragSize'] !== 0) {
+        return 'calm reality must not fragment, got ' . $p['fragSize'];
+    }
+    return eq((int) $p['mtu'], 1280, 'mtu');
+});
+
+t('blackout fragments everything and keeps NAT alive', function () {
+    $p = AiTune::heuristic(['id' => 'b2', 'proto' => 'vless', 'tls' => '', 'network' => 'tcp', 'port' => 8080, 'tier' => 'free'], 'blackout', []);
+    if ((int) $p['fragCount'] !== 3 || $p['fragStrategy'] !== 'random' || (int) $p['keepAliveSec'] !== 10) {
+        return json_encode($p);
+    }
+    if ((int) $p['fragSize'] < 100) {
+        return 'fragSize too small: ' . $p['fragSize'];
+    }
+    if ($p['ech'] !== false) {
+        return 'free nodes cannot be assumed to publish HTTPS records';
+    }
+    return true;
+});
+
+t('udp transports skip tcp-style fragmentation', function () {
+    $p = AiTune::heuristic(['id' => 'c3', 'proto' => 'hysteria2', 'tls' => 'tls', 'network' => 'tcp', 'port' => 443, 'tier' => 'vip'], 'tight', []);
+    if ((int) $p['fragSize'] !== 0 || (int) $p['mtu'] !== 1200 || (int) $p['keepAliveSec'] !== 10) {
+        return json_encode($p);
+    }
+    return true;
+});
+
+t('grpc gets multi-mode, not mux', function () {
+    $p = AiTune::heuristic(['id' => 'd4', 'proto' => 'vless', 'tls' => 'tls', 'network' => 'grpc', 'port' => 443, 'tier' => 'vip'], 'tight', []);
+    if ($p['mux'] !== false || $p['grpcMode'] !== 'multi') {
+        return json_encode($p);
+    }
+    return true;
+});
+
+t('grade D nodes lose mux (window contention)', function () {
+    $p = AiTune::heuristic(['id' => 'e5', 'proto' => 'ss', 'tls' => '', 'network' => 'tcp', 'port' => 443, 'tier' => 'free', 'grade' => 'D'], 'tight', []);
+    return $p['mux'] === false ? true : json_encode($p);
+});
+
+t('no empty or null keys reach the payload', function () {
+    $p = AiTune::heuristic(['id' => 'f6', 'proto' => 'vless', 'tls' => 'reality', 'network' => 'tcp', 'port' => 443, 'tier' => 'vip'], 'calm', []);
+    foreach ($p as $k => $v) {
+        if ($v === '' || $v === null) {
+            return 'empty value for ' . $k;
+        }
+    }
+    return true;
+});
+
+t('clamp enforces ranges, enums and unknown-key drop', function () {
+    $schema = AiTune::patchSchema();
+    $c = Ai::clamp([
+        'fragSize' => 999999, 'fragCount' => 0, 'mux' => 'yes', 'fingerprint' => 'chrome-exfil',
+        'mtu' => 1280, 'evil' => 'rm -rf', 'alpn' => "h3;rm\x07", 'keepAliveSec' => -50,
+    ], $schema);
+    if ((int) $c['fragSize'] !== 16384) { return 'fragSize not clamped: ' . $c['fragSize']; }
+    if (!array_key_exists('fragCount', $c) || (int) $c['fragCount'] !== 1) { return 'fragCount 0 must clamp up to 1, got ' . json_encode(isset($c['fragCount']) ? $c['fragCount'] : null); }
+    if (isset($c['fingerprint'])) { return 'unknown enum value must be dropped, got ' . $c['fingerprint']; }
+    if (isset($c['evil'])) { return 'schema must drop unknown keys'; }
+    if ((int) $c['mtu'] !== 1280) { return 'valid value must pass through'; }
+    if ($c['mux'] !== true) { return 'bool coercion failed'; }
+    if (strpos($c['alpn'], "\x07") !== false || strpos($c['alpn'], ';') === false) { return 'string sanitising wrong: ' . json_encode($c['alpn']); }
+    if ((int) $c['keepAliveSec'] !== 0) { return 'negative keepalive must clamp to 0, got ' . $c['keepAliveSec']; }
+    return true;
+});
+
+t('clamp: fragCount 0 becomes 1 (not 0)', function () {
+    $c = Ai::clamp(['fragCount' => 0], AiTune::patchSchema());
+    return eq((int) $c['fragCount'], 1);
+});
+
+t('advice falls back to the canned table', function () {
+    $a = AiTune::advice('tls_timeout', ['regime' => 'tight']);
+    if (empty($a['body']) || $a['action'] !== 'fragment_on') { return json_encode($a); }
+    if (empty($a['canned'])) { return 'ai is off, so canned must be true'; }
+    $b = AiTune::advice('zzz-unknown', ['regime' => 'blackout']);
+    if (strpos($b['body'], 'قطعی') === false) { return 'blackout wording missing: ' . $b['body']; }
+    return true;
+});
+
+t('feed still builds with the tuner on and the ai off', function () use ($root, $tmp) {
+    $cfg = Util::cfg();
+    $cfg['tune']['enabled'] = true;
+    Util::setConfig($cfg);
+    $build = Builder::doBuild('vip', 60);
+    if (!isset($build['servers']) || !$build['servers']) {
+        return 'no servers in the vip build';
+    }
+    if ($build['meta']['tunedBy'] !== 'heuristic') {
+        return 'tunedBy should be heuristic while ai is off, got ' . $build['meta']['tunedBy'];
+    }
+    $patched = 0;
+    foreach ($build['servers'] as $s) {
+        if (!isset($s['tune'])) {
+            continue;
+        }
+        $patched++;
+        if (isset($s['tune']['mtu']) && ((int) $s['tune']['mtu'] < 576 || (int) $s['tune']['mtu'] > 9000)) {
+            return 'tune.mtu out of range in payload: ' . $s['tune']['mtu'];
+        }
+        if (isset($s['tune']['why'])) {
+            return 'admin notes must not ship to clients';
+        }
+    }
+    if ($patched === 0) {
+        return 'no node got a patch - the tuner never ran';
+    }
+    if ((int) $build['meta']['tuned'] < $patched) {
+        return 'meta.tuned undercounts';
+    }
+    return true;
+});
+
+t('block evidence folds with decay and votes', function () {
+    $path = Util::dataDir() . '/block.json';
+    @unlink($path);
+    $_GET = [];
+    // lives on Builder, not on the router: including index.php in a test would run the dispatcher
+    Builder::foldBlockEvidence(['tcpFail' => 1.0, 'tlsFail' => 1.0, 'dnsPoisoned' => true, 'rtt' => 400, 'probes' => 5], 'blackout');
+    $j = json_decode((string) file_get_contents($path), true);
+    if (!is_array($j) || (float) $j['tcpFail'] < 0.2) { return 'tcpFail not folded: ' . json_encode($j); }
+    if (empty($j['votes']['blackout'])) { return 'vote not recorded'; }
+    Builder::foldBlockEvidence(['tcpFail' => 0.0, 'tlsFail' => 0.0], 'calm');
+    $j2 = json_decode((string) file_get_contents($path), true);
+    if ((float) $j2['tcpFail'] >= (float) $j['tcpFail']) { return 'ewma did not decay'; }
+    if (!isset($j2['votes']['calm']) || !isset($j2['votes']['blackout'])) { return 'both votes must exist: ' . json_encode($j2['votes']); }
+    return true;
+});
+
+t('fleet evidence reads block.json into the tuner', function () {
+    $cfg = Util::cfg();
+    $cfg['tune']['minVotesForRegime'] = 1;
+    Util::setConfig($cfg);
+    $r = new ReflectionClass('Builder');
+    $m = $r->getMethod('fleetEvidence');
+    $m->setAccessible(true);
+    $fleet = $m->invoke(null, 'vip');
+    if (!isset($fleet['tcpFail']) || !is_float($fleet['tcpFail'])) {
+        return 'fleet shape wrong: ' . json_encode($fleet);
+    }
+    return in_array($fleet['regime'], ['calm', 'tight', 'blackout', ''], true) ? true : 'bad regime: ' . $fleet['regime'];
+});
+
 
 function meelano_summary()
 {

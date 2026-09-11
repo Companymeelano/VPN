@@ -116,7 +116,9 @@ data class Palette(
             surface = Color(0xFFFFFFFF),
             surfaceHigh = Color(0xFFEDF1F5),
             line = Color(0xFFDDE4EA),
-            hairline = Color(0x0E000000),
+            // ink-tinted, not pure black: a 5.5% black line on #F5F7F9 goes grey-green and looks like a
+            // printing defect, while the same alpha of the text colour reads as a clean edge.
+            hairline = Color(0x0E0D151C),
             well = Color(0xFFE9EEF3),
             bezelTop = Color(0xFFFFFFFF),
             bezelBottom = Color(0xFFCFD8E0),

@@ -8,10 +8,10 @@
  */
 
 $config = [
-    'appName'   => 'Meelano VPN',
+    'appName'   => 'M•A VPN',
     'brand'     => [
-        'vip'  => 'Vip Meelano',   // <-- the ONLY name the app must show for VIP nodes
-        'free' => 'Free Meelano',  // <-- same idea for the tested free pool
+        'vip'  => 'Vip M•A',   // <-- the ONLY name the app must show for VIP nodes (never the upstream's)
+        'free' => 'Free M•A',  // <-- same idea for the tested free pool
     ],
     'timezone'  => 'Asia/Tehran',
     'dataDir'   => __DIR__ . '/data',
@@ -131,6 +131,61 @@ $config = [
         'mandatoryBelow' => 0,
         // APK downloads MUST be https:// — plain http allows a MITM to swap the APK.
         'requireHttpsForApk' => true,
+    ],
+
+    /*
+     * Transport tuning. The heuristic (lib/AiTune.php::heuristic) always runs; the AI only refines it.
+     * Turning tune.enabled off returns the feed to its pre-AI shape byte for byte, which is the
+     * rollback path and the answer to "I do not want a model touching my config".
+     */
+    'tune'      => [
+        'enabled'            => true,
+        'ewmaAlpha'          => 0.25,   // how fast client evidence replaces the old verdict
+        'minVotesForRegime'  => 3,      // do not move the fleet on one user's bad evening
+        'evidenceMaxAge'     => 3600,   // after an hour of silence, stop trusting the regime vote
+    ],
+
+    /*
+     * The AI layer. OFF by default on purpose: nothing in the feed may depend on it.
+     * Per-task routing is the point - tune/regime/rank are mechanical and want a cheap model; advice
+     * is user-facing Persian and wants a better one; support triage (admin only) can be the expensive
+     * one because it runs a few times a day.
+     */
+    'ai'        => [
+        'enabled'        => false,
+        'default'        => 'openai',
+        'timeoutSeconds' => 8,
+        'maxResponseBytes' => 262144,
+        'dailyTokenCap'  => 400000,
+        'dailyUsdCapCents' => 60,
+        'breakerSeconds' => 600,
+        'minConfidence'  => 25,
+        'providers'      => [
+            'openai' => [
+                'kind' => 'openai', 'base' => 'https://api.openai.com/v1',
+                'key' => '', 'model' => 'gpt-4o-mini',
+                'priceIn' => 0.15, 'priceOut' => 0.6,
+            ],
+            'anthropic' => [
+                'kind' => 'anthropic', 'base' => 'https://api.anthropic.com',
+                'key' => '', 'model' => 'claude-3-5-haiku-latest',
+                'priceIn' => 0.8, 'priceOut' => 4.0,
+            ],
+            // a model you run yourself: private, free, and the only one that keeps working when a
+            // provider decides to block Iranian IPs (which is a real failure mode here)
+            'ollama' => [
+                'kind' => 'ollama', 'base' => 'http://127.0.0.1:11434',
+                'key' => '', 'model' => 'llama3.1:8b', 'priceIn' => 0, 'priceOut' => 0,
+            ],
+        ],
+        'tasks' => [
+            'tune'   => ['enabled' => true,  'provider' => 'openai', 'maxNodes' => 40, 'temperature' => 0.1, 'maxTokens' => 900],
+            'regime' => ['enabled' => true,  'provider' => 'openai', 'temperature' => 0.2, 'maxTokens' => 400],
+            'rank'   => ['enabled' => false, 'provider' => 'openai', 'temperature' => 0.1, 'maxTokens' => 500],
+            'advice' => ['enabled' => true,  'provider' => 'openai', 'temperature' => 0.4, 'maxTokens' => 220],
+        ],
+        'cacheTtl' => ['tune' => 900, 'regime' => 600, 'rank' => 1800, 'advice' => 3600],
+        'rank'     => ['min' => 0.85, 'max' => 1.15],
     ],
 
     'selftest' => [

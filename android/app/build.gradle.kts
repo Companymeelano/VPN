@@ -65,8 +65,8 @@ android {
         // scheme: major*100000 + minor*100 + patch  ->  2.1.0 = 201_000. It is arithmetic, not a date,
         // because a date code (20240911) overflows the int some tooling prints and it tells you nothing
         // about which build is newer when two are built on the same day.
-        versionCode = 201_000
-        versionName = "2.1.0"
+        versionCode = 202_000
+        versionName = "2.2.0"
 
         resourceConfigurations += listOf("fa", "en")
         vectorDrawables.useSupportLibrary = true

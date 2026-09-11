@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Meelano VPN — app manifest.
+  M•A VPN (package ir.meelano.vpn) — app manifest.
 
   Four things in here exist because of the two bugs this project is fixing (app killed on close +
   a multi-second hang right after connect), so they are commented with the reason, not the flag:

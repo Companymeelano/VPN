@@ -143,6 +143,22 @@ fun HomeScreen(vm: VpnViewModel) {
                     onOpenSheet = { servers = true },
                 )
 
+                /*
+                 * The moment of truth. A failed connect is the one screen where a user decides whether
+                 * this app is worth keeping, and "خطا occurred" tells them nothing. One line of
+                 * diagnosis + one button that changes a real setting (AdviceCard.kt) — fetched from the
+                 * server, which sees the whole fleet, never invented locally.
+                 */
+                (phase as? ConnectPhase.Failed)?.let { f ->
+                    AdviceCard(
+                        err = f.reason,
+                        proto = node?.proto ?: "",
+                        tier = node?.tier ?: "free",
+                        onSwitchNode = { servers = true },
+                        onRetry = { vm.toggle() },
+                    )
+                }
+
                 Spacer(Modifier.height(8.dp))
                 // a caret, not an icon: this control *opens* the list, it does not do anything
                 MeelanoButton(

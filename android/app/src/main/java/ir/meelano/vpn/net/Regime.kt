@@ -326,10 +326,12 @@ data class BlockReport(
     val probes: Int = 0,
     val at: Long = 0L,
 ) {
+    /** Numbers stay numbers: "%.2f"-style strings made every reader (ours and PHP's) parse a 0. */
     fun toJson(): JSONObject = JSONObject()
-        .put("dnsPoisoned", dnsPoisoned).put("tcpFail", "%.2f".format(tcpFailRatio))
-        .put("tlsFail", "%.2f".format(tlsFailRatio)).put("rtt", medianRttMs)
-        .put("probes", probes).put("at", at)
+        .put("dnsPoisoned", dnsPoisoned)
+        .put("tcpFail", String.format(java.util.Locale.US, "%.3f", tcpFailRatio).toDouble())
+        .put("tlsFail", String.format(java.util.Locale.US, "%.3f", tlsFailRatio).toDouble())
+        .put("rtt", medianRttMs).put("probes", probes).put("at", at)
 
     /** Local guess only - the server's aggregate verdict overwrites it. */
     fun guess(): Regime = when {

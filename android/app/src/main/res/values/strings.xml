@@ -121,7 +121,7 @@
     <string name="notif_ch_state">وضعیت اتصال</string>
     <string name="notif_ch_state_desc">نشان می‌دهد VPN وصل است؛ اندروید با این کانال تونل را زنده نگه می‌دارد</string>
     <string name="notif_ch_update">بروزرسانی</string>
-    <string name="notif_update_title">VPN میلانو وصل است</string>
+    <string name="notif_update_title">M•A VPN وصل است</string>
     <string name="notif_updating">در حال دریافت نسخه‌ی جدید</string>
     <string name="notif_open">باز کردن</string>
     <string name="notif_disconnect">قطع</string>
@@ -135,4 +135,25 @@
     <string name="cd_flag">پرچم کشور</string>
     <string name="close">بستن</string>
     <string name="ok">باشه</string>
+
+    /* ---- resistance (phase 6): the dials that decide whether a node carries traffic at all ---- */
+    <string name="group_resist">مقاومت در برابر انسداد</string>
+    <string name="set_regime">حالت سانسور</string>
+    <string name="set_regime_body">«خودکار» یعنی از روی سنجشِ زنده‌ی مسیر تصمیم می‌گیریم. اگر اتصال مکرراً می‌افتد، «سنگین» را انتخاب کنید؛ در روزهای قطعی سراسری «قطعی» دست‌ودلبازتر است.</string>
+    <string name="regime_auto">خودکار</string>
+    <string name="regime_calm">آرام</string>
+    <string name="regime_tight">سنگین</string>
+    <string name="regime_blackout">قطعی</string>
+    <string name="set_frag">تکه‌تکه‌سازی TLS</string>
+    <string name="set_frag_body">پیام دست‌دادن TLS را به بسته‌های کوچک تقسیم می‌کند؛ دقیقاً برای همان حالتی که TCP باز می‌شود ولی TLS می‌میرد. کمی به تأخیر اضافه می‌کند.</string>
+    <string name="set_mux">اتصال مشترک (Mux)</string>
+    <string name="set_mux_body">چند stream روی یک اتصال: دست‌دادنِ کمتر، دیده‌شدنِ کمتر. روی لینک پرنویز ممکن است افت سرعت بدهد؛ آن‌وقت خاموشش کنید.</string>
+    <string name="set_reality">اولویت Reality</string>
+    <string name="set_reality_body">گره‌های Reality بالای فهرست می‌آیند؛ فعلاً مقاوم‌ترین ترابریِ در دسترس همین است.</string>
+    <string name="set_boot">اتصال خودکار بعد از روشن شدن گوشی</string>
+    <string name="set_boot_body">بعد از بوت تونل بدون دخالت شما برمی‌گردد — فقط وقتی شبکه در دسترس باشد و قفل صفحه باز شده باشد.</string>
+    <string name="set_mtu">اندازه‌ی بسته (MTU)</string>
+    <string name="set_mtu_body">۱۲۸۰ روی شبکه‌ی موبایل ایران کمترین تکه‌تکه‌شدن و کمترین ریسِط را دارد؛ ۱۵۰ فقط روی فیبر تمیز.</string>
+    <string name="probe_title">آخرین سنجشِ مسیر</string>
+    <string name="probe_none">هنوز سنجشی انجام نشده؛ بعد از اولین همگام‌سازیِ فهرست خودکار اجرا می‌شود.</string>
 </resources>

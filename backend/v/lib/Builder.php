@@ -148,15 +148,46 @@ final class Builder
         $max = (int) Util::cfg($kind === 'vip' ? 'vip.maxNodes' : 'free.maxNodes', 60);
         $scored = array_slice($scored, 0, $max);
 
-        $brand = (string) Util::cfg('brand.' . $kind, $kind === 'vip' ? 'Vip Meelano' : 'Free Meelano');
+        $brand = (string) Util::cfg('brand.' . $kind, $kind === 'vip' ? 'Vip M\u00b7A' : 'Free M\u00b7A');
         $mask = (bool) Util::cfg('vip.maskNames', true);
+
+        /*
+         * The tuning pass. It runs on the *internal* rows (before names are masked) and after probing,
+         * so it sees what the probes measured; its output is a per-node "tune" patch in the payload.
+         * Bounded work by design: one pass over the final list, one optional AI call for the whole
+         * list, cached — a build that calls the model 40 times is a build that bills 40 times.
+         */
+        $fleet = self::fleetEvidence($kind);
+        $tuned = [];
+        $ranked = [];
+        if ((bool) Util::cfg('tune.enabled', true)) {
+            $tuned = AiTune::tune($scored, $fleet);
+            $ranked = AiTune::rankMultipliers($scored, $fleet);
+        }
+        if ($ranked) {
+            // a bounded nudge on the *existing* order, never a rewrite of it: the server-side score is
+            // the measurement, the model only breaks ties between similar nodes
+            foreach (array_values($scored) as $i => $n) {
+                $m = isset($ranked[$n['id']]) ? (float) $ranked[$n['id']] : 1.0;
+                $scored[$i]['_order'] = ($i + 1) / max(0.5, min(1.5, $m));
+            }
+            usort($scored, function ($a, $b) {
+                $oa = isset($a['_order']) ? (float) $a['_order'] : 1e9;
+                $ob = isset($b['_order']) ? (float) $b['_order'] : 1e9;
+                if (abs($oa - $ob) < 1e-6) {
+                    return 0;
+                }
+                return $oa < $ob ? -1 : 1;
+            });
+        }
+
         $servers = [];
         foreach (array_values($scored) as $i => $n) {
             $slot = $i + 1;
             if ($mask) {
                 $n = self::maskNames($n, $brand, $slot);
             }
-            $servers[] = self::toPublic($n, $kind, $slot, $brand);
+            $servers[] = self::toPublic($n, $kind, $slot, $brand, isset($tuned[$n['id']]) ? $tuned[$n['id']] : null);
         }
 
         $payload = [
@@ -171,6 +202,10 @@ final class Builder
             'servers'     => $servers,
             'meta'        => array_merge($meta, [
                 'buildMs'      => (int) round((microtime(true) - $t0) * 1000),
+                'fleet'        => $fleet,
+                'tuned'        => count($tuned),
+                'tunedBy'      => Ai::allowed() ? 'heuristic+ai' : 'heuristic',
+                'regime'       => isset($tuned['_regime']) ? $tuned['_regime'] : AiTune::regimeFromFleet($fleet),
                 'candidates'   => count($nodes),
                 'probed'       => count($tcp),
                 'gated'        => count($gate),
@@ -399,7 +434,65 @@ final class Builder
         return $n;
     }
 
-    private static function toPublic(array $n, $tier, $slot, $brand)
+    /**
+     * Everything the tuner may know about the fleet *right now*: what our own probes saw from this
+     * host, plus the rolling aggregate of what clients reported from inside the country
+     * (data/block.json, written by ?action=feedback). Deliberately tiny and staleness-tolerant: a
+     * verdict from 20 minutes ago is still better than no verdict, and a missing file must produce a
+     * working feed, not a warning.
+     */
+    private static function fleetEvidence($kind)
+    {
+        $fleet = ['tcpFail' => 0.0, 'tlsFail' => 0.0, 'dnsPoisoned' => false, 'reports' => 0, 'regime' => '', 'at' => 0];
+        // our own probe history: the fail share across every node we have ever measured from this host
+        $ok = 0;
+        $fail = 0;
+        $rows = (array) Ledger::load();
+        $nodes = isset($rows['nodes']) && is_array($rows['nodes']) ? $rows['nodes'] : [];
+        foreach ($nodes as $row) {
+            $ok += (int) (isset($row['ok']) ? $row['ok'] : 0);
+            $fail += (int) (isset($row['fail']) ? $row['fail'] : 0);
+        }
+        if ($ok + $fail > 0) {
+            $fleet['tcpFail'] = round($fail / ($ok + $fail), 3);
+            $fleet['reports'] = $ok + $fail;
+        }
+        $raw = Util::readText(Util::dataDir() . '/block.json', '');
+        if ($raw !== '') {
+            $j = json_decode($raw, true);
+            if (is_array($j)) {
+                $fleet['tcpFail'] = isset($j['tcpFail']) ? (float) $j['tcpFail'] : $fleet['tcpFail'];
+                $fleet['tlsFail'] = isset($j['tlsFail']) ? (float) $j['tlsFail'] : $fleet['tlsFail'];
+                $fleet['dnsPoisoned'] = !empty($j['dnsPoisoned']);
+                $fleet['reports'] = isset($j['reports']) ? (int) $j['reports'] : 0;
+                $fleet['at'] = isset($j['at']) ? (int) $j['at'] : 0;
+                // majority vote of the clients, not the latest one: one user on a broken ISP must not
+                // move four million phones, and a 3:1 vote in the other direction wins anyway
+                if (isset($j['votes']) && is_array($j['votes'])) {
+                    $best = '';
+                    $bestN = 0;
+                    foreach ($j['votes'] as $k => $v) {
+                        if ((int) $v > $bestN) {
+                            $bestN = (int) $v;
+                            $best = (string) $k;
+                        }
+                    }
+                    if ($best !== '' && $bestN >= (int) Util::cfg('tune.minVotesForRegime', 3)) {
+                        $fleet['regime'] = $best;
+                    }
+                }
+            }
+        }
+        // stale evidence must not freeze the fleet in blackout forever: after this many seconds the
+        // vote is dropped and only the local ledger + thresholds decide
+        $maxAge = (int) Util::cfg('tune.evidenceMaxAge', 3600);
+        if ($fleet['at'] > 0 && (time() - (int) $fleet['at']) > $maxAge) {
+            $fleet['regime'] = '';
+        }
+        return $fleet;
+    }
+
+    private static function toPublic(array $n, $tier, $slot, $brand, array $tune = null)
     {
         $cc = isset($n['cc']) && preg_match('~^[A-Z]{2}$~', (string) $n['cc']) ? $n['cc'] : null;
         $lat = isset($n['latencyMs']) && $n['latencyMs'] !== null ? (int) $n['latencyMs'] : null;
@@ -439,6 +532,12 @@ final class Builder
             ],
             'checkedAt' => time(),
         ];
+        // The transport patch. Sparse on purpose (see net/Regime.kt): we state only what we decided,
+        // and the client's own regime default + live probes fill the rest. An empty object is never
+        // emitted - a missing key and an empty object mean the same thing, so say nothing.
+        if (!empty($tune)) {
+            $out['tune'] = $tune;
+        }
         foreach (['userId', 'alterId', 'password', 'username', 'method', 'cipher', 'serviceName', 'publicKey'] as $k) {
             if (isset($n[$k]) && $n[$k] !== '' && $n[$k] !== null) {
                 $out[$k] = is_int($n[$k]) ? $n[$k] : (string) $n[$k];
@@ -467,6 +566,48 @@ final class Builder
     }
 
     /** Called by ?action=feedback after the app tried a node. */
+    /**
+     * Fold one client report into the fleet aggregate.
+     *
+     * EWMA rather than a mean: filtering starts in minutes and lifts in minutes, and an average over a
+     * week of evidence is a way of describing yesterday. The vote counter decays the same way (each fold
+     * multiplies existing votes, so a stale consensus loses to a fresh disagreement).
+     */
+    public static function foldBlockEvidence(array $b, $regime = '')
+        {
+        $path = Util::dataDir() . '/block.json';
+        Util::withLock('block', function () use ($path, $b, $regime) {
+            $cur = json_decode((string) Util::readText($path, '{}'), true);
+            if (!is_array($cur)) {
+                $cur = [];
+            }
+            $a = (float) Util::cfg('tune.ewmaAlpha', 0.25);
+            $tcp = isset($b['tcpFail']) ? max(0.0, min(1.0, (float) $b['tcpFail'])) : 0.0;
+            $tls = isset($b['tlsFail']) ? max(0.0, min(1.0, (float) $b['tlsFail'])) : 0.0;
+            $cur['tcpFail'] = round((isset($cur['tcpFail']) ? (float) $cur['tcpFail'] : 0.0) * (1 - $a) + $tcp * $a, 4);
+            $cur['tlsFail'] = round((isset($cur['tlsFail']) ? (float) $cur['tlsFail'] : 0.0) * (1 - $a) + $tls * $a, 4);
+            $cur['dnsPoisoned'] = !empty($b['dnsPoisoned']) ? true : (!empty($cur['dnsPoisoned']) && (time() - (int) (isset($cur['at']) ? $cur['at'] : 0)) < 3600);
+            // one dnsPoisoned report is worth acting on; it takes 15 minutes of silence to forget it
+            $cur['rtt'] = isset($b['rtt']) && (int) $b['rtt'] > 0
+                ? (int) round((isset($cur['rtt']) ? (float) $cur['rtt'] : (int) $b['rtt']) * (1 - $a) + (int) $b['rtt'] * $a)
+                : (isset($cur['rtt']) ? (int) $cur['rtt'] : 0);
+            $votes = isset($cur['votes']) && is_array($cur['votes']) ? $cur['votes'] : [];
+            foreach ($votes as $k => $v) {
+                $votes[$k] = round((float) $v * 0.8, 3);
+            }
+            $r = strtolower(trim((string) $regime));
+            if ($r === 'calm' || $r === 'tight' || $r === 'blackout') {
+                $votes[$r] = (isset($votes[$r]) ? (float) $votes[$r] : 0.0) + 1.0;
+            }
+            $cur['votes'] = $votes;
+            $cur['reports'] = (int) (isset($cur['reports']) ? $cur['reports'] : 0) + 1;
+            $cur['at'] = time();
+            Util::writeAtomic($path, Util::jsonEncode($cur));
+            return true;
+        });
+    }
+
+    /** Fold a client block verdict into the fleet file (called by feedback() in index.php). */
     public static function ingestFeedback($id, $ok, $ms)
     {
         $id = strtolower(trim((string) $id));

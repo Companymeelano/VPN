@@ -18,7 +18,7 @@
     <color name="surface_high">#FFEDF1F5</color>
     <color name="well">#FFE9EEF3</color>
     <color name="line">#FFDDE4EA</color>
-    <color name="hairline">#0E000000</color>
+    <color name="hairline">#0E0D151C</color>
     <color name="bezel_top">#FFFFFFFF</color>
     <color name="bezel_bottom">#FFCFD8E0</color>
     <color name="text">#FF0D151C</color>

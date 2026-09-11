@@ -133,6 +133,116 @@ fun SettingsSheet(onDismiss: () -> Unit) {
                 )
             }
 
+            /*
+             * The resistance panel is a first-class group, not a debug drawer: in this country "the VPN
+             * doesn't work" is a transport problem nine times out of ten, and the four dials that fix it
+             * have until now been buried in a fork's config file. The defaults are already right for Iran
+             * (docs/ANTI-BLOCK.md §۴); this panel exists for the day they are not - and for the user who
+             * wants to see the verdict of the last local probe instead of trusting us.
+             */
+            MeelanoPanel(title = stringResource(R.string.group_resist)) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    Text(
+                        stringResource(R.string.set_regime),
+                        fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    MeelanoSegmented(
+                        items = listOf(
+                            stringResource(R.string.regime_auto),
+                            stringResource(R.string.regime_calm),
+                            stringResource(R.string.regime_tight),
+                            stringResource(R.string.regime_blackout),
+                        ),
+                        index = when (AppSettings.regime) {
+                            "auto" -> 0
+                            "calm" -> 1
+                            "blackout" -> 3
+                            else -> 2
+                        },
+                        onIndex = { i ->
+                            AppSettings.setRegime(ctx, listOf("auto", "calm", "tight", "blackout")[i])
+                        },
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        stringResource(R.string.set_regime_body),
+                        fontSize = 11.sp, color = p.faint, lineHeight = 16.sp,
+                    )
+                }
+                PanelDivider()
+                SwitchRow(
+                    title = stringResource(R.string.set_frag),
+                    body = stringResource(R.string.set_frag_body),
+                    on = AppSettings.fragmentAuto,
+                    onChange = { AppSettings.setFragmentAuto(ctx, it) },
+                )
+                PanelDivider()
+                SwitchRow(
+                    title = stringResource(R.string.set_mux),
+                    body = stringResource(R.string.set_mux_body),
+                    on = AppSettings.muxEnabled,
+                    onChange = { AppSettings.setMuxEnabled(ctx, it) },
+                )
+                PanelDivider()
+                SwitchRow(
+                    title = stringResource(R.string.set_reality),
+                    body = stringResource(R.string.set_reality_body),
+                    on = AppSettings.realityFirst,
+                    onChange = { AppSettings.setRealityFirst(ctx, it) },
+                )
+                PanelDivider()
+                SwitchRow(
+                    title = stringResource(R.string.set_boot),
+                    body = stringResource(R.string.set_boot_body),
+                    on = AppSettings.autoConnectOnBoot,
+                    onChange = { AppSettings.setAutoConnectOnBoot(ctx, it) },
+                )
+                PanelDivider()
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    Text(
+                        stringResource(R.string.set_mtu),
+                        fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    MeelanoSegmented(
+                        items = listOf("1280", "1400", "1500"),
+                        index = when (AppSettings.mtu) { 1280 -> 0; 1400 -> 1; else -> 2 },
+                        onIndex = { i -> AppSettings.setMtu(ctx, listOf(1280, 1400, 1500)[i]) },
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        stringResource(R.string.set_mtu_body),
+                        fontSize = 11.sp, color = p.faint, lineHeight = 16.sp,
+                    )
+                }
+                PanelDivider()
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    Text(
+                        stringResource(R.string.probe_title),
+                        fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        remember(AppSettings.lastBlockReport) {
+                            runCatching {
+                                val o = org.json.JSONObject(AppSettings.lastBlockReport)
+                                val probes = o.optInt("probes")
+                                val alive = (probes - (o.optDouble("tcpFail", 0.0) * probes).toInt()).coerceAtLeast(0)
+                                buildString {
+                                    append("$alive/$probes گره از این مسیر پاسخ داد")
+                                    val rtt = o.optLong("rtt")
+                                    if (rtt > 0) append(" · میانه‌ی تأخیر ${rtt}ms")
+                                    append(" · DNS ")
+                                    append(if (o.optBoolean("dnsPoisoned")) "دروغ گفته" else "سالم")
+                                }
+                            }.getOrDefault(ctx.getString(R.string.probe_none))
+                        },
+                        fontSize = 11.sp, color = p.muted, lineHeight = 16.sp,
+                    )
+                }
+            }
+
             MeelanoPanel(title = stringResource(R.string.group_data)) {
                 SwitchRow(
                     title = stringResource(R.string.set_update),

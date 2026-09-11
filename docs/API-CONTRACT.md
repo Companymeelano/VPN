@@ -126,3 +126,61 @@ GET /v/?action=version&vc=<versionCode فعلی>
 ## آنچه هرگز نباید در پاسخ باشد
 `vip_raw.txt`، نام اصلی سرویس‌ها، مسیرهای مطلق سرور، و `secret`. همه‌ی این‌ها پشت
 `data/.htaccess` و `?action=` هستند؛ `?action=stats` هم عمداً کلید می‌خواهد.
+
+
+## tune — پچِ ترابری هر گره (schema ≥ 10 در کلاینت)
+
+```jsonc
+"servers": [{
+  "id": "9f2c1a",
+  "proto": "vless", "tls": "reality",
+  "tune": {                       // اختیاری؛ نبودنش = «کлиنت خودش تصمیم می‌گیرد»
+    "fragSize": 200, "fragCount": 2, "fragStrategy": "variable", "fragDelayMs": 20,
+    "alpn": "h3,h2", "fingerprint": "chrome", "sni": "www.speedtest.net",
+    "ech": false, "keepAliveSec": 15, "mux": false, "muxConcurrency": 8,
+    "allowLan": false, "mtu": 1280, "mss": 1300, "grpcMode": "multi", "connectionReuse": true
+  }
+}]
+```
+
+قراردادِ `tune` (چهار قاعده، همه در `net/Regime.kt` + `lib/AiTune.php` پیاده شده‌اند):
+
+1. **patch است، config نه.** فقط کلیدهایی که سرور درباره‌شان نظر داده می‌آیند؛ بقیه از regime‌ی
+   کلاینت پر می‌شود. `{"tune":"tight"}` هم مجاز است (presetِ کل ناوگان) و `{"tune":"auto"}` یعنی
+   «سکوت کن، خودت ببین».
+2. **همه‌چیز clamp می‌شود، دو بار.** یک بار در `AiTune::patchSchema()` (PHP)، یک بار در
+   `TunePatch.fromJson()` (Kotlin). بازه‌ها یکی‌اند؛ اگر یکی را عوض کردید، باگ از همان‌جا شروع می‌شود.
+3. **بدنه‌ی خالی نفرستید.** `{"tune":{}}` و نبودِ `tune` یک معنا دارند؛ یکی‌شان را انتخاب کنید: نبودنش.
+4. **هیچ‌وقت در مسیرِ اتصال لازم نیست.** نبودنش اتصال را خراب نمی‌کند، فقط به پیش‌فرضِ regime برمی‌گرداند.
+
+پیش‌نیازِ ساخت: `?action=vip|free` در `meta` این‌ها را هم می‌فرستد —
+`fleet` (شواهد ناوگان)، `tuned` (تعداد گره‌های پچ‌شده)، `tunedBy` (`heuristic` | `heuristic+ai`)،
+`regime`. مصرف‌کننده‌ی UI فقط `regime` را نشان می‌دهد؛ بقیه برای تشخیصِ «چرا این گره این شکلی است».
+
+## بازخوردِ بلاک (سوختِ تسک `regime`)
+
+```jsonc
+POST /v/?action=feedback
+{ "reports": [ {"sid":"9f2c1a","ok":false,"latencyMs":0,"err":"tls_timeout"} ],
+  "block":  {"dnsPoisoned":true,"tcpFail":0.62,"tlsFail":0.25,"rtt":48,"probes":12,"at":1730000000},
+  "regime": "tight",
+  "app": "2.2.0" }
+```
+
+`block`/`regime` اختیاری‌اند و قدیمی‌ها نادیده گرفته می‌شوند؛ اگر باشند، در `data/block.json` با EWMA
+(آلفای `tune.ewmaAlpha`) جمع می‌شوند و رأی‌های regime با ضریب ۰٫۸ فرسوده می‌شوند — یک کاربر نمی‌تواند
+ناوگان را تکان بدهد (`tune.minVotesForRegime=3` لازم است)، ولی یک الگوی واقعی در ده دقیقه دیده می‌شود.
+
+## `?action=advice` — «چرا وصل نشد»، فارسی
+
+```
+GET /v/?action=advice&err=tls_timeout&regime=tight&proto=vless&tier=free&attempt=3
+→ 200 {"ok":true,"err":"tls_timeout","advice":{"title":"مسیر بسته است",
+       "body":"…","action":"fragment_on","canned":false}}
+```
+
+- همیشه ۲۰۰؛ مدلِ نبود، جدولِ ازپیش‌نوشته برمی‌گردد (`canned:true`) — پس اپ هرگز «متن در دسترس نیست» ندارد.
+- `action` از فهرستِ بسته است: `retry | switch_node | change_regime | fragment_on | fragment_off | wait | contact`.
+  UI باید روی این enum سوییچ کند، نه روی متن؛ متنِ فارسی عوض‌شدنی است، رفتار نه.
+- rate limit: `advice` ۳۰ بار در دقیقه برای IP (۴۲ با `too_many_requests`).
+- کش سرور ۳۶۰۰ ثانیه به ازای هر (`err`, ctx)؛ پس هزینه‌ی این تسک مستقل از تعداد کاربر است.

@@ -25,6 +25,8 @@ require_once __DIR__ . '/lib/Probe.php';
 require_once __DIR__ . '/lib/Score.php';
 require_once __DIR__ . '/lib/Builder.php';
 require_once __DIR__ . '/lib/Version.php';
+require_once __DIR__ . '/lib/Ai.php';
+require_once __DIR__ . '/lib/AiTune.php';
 require_once __DIR__ . '/lib/SelfTest.php';
 
 date_default_timezone_set((string) Util::cfg('timezone', 'UTC'));
@@ -109,8 +111,35 @@ function feedback()
             $n++;
         }
     }
+    // the block verdict the app measured from *inside* the country: this is the fuel for the tuner's
+    // regime task. Rolling aggregate in data/block.json, merged under a lock so two workers cannot
+    // lose each other's counts. Absent/malformed is fine: the tuner just has less to go on.
+    if (isset($d['block']) && is_array($d['block'])) {
+        Builder::foldBlockEvidence($d['block'], isset($d['regime']) ? (string) $d['regime'] : '');
+    }
     header('Content-Type: application/json; charset=utf-8');
     echo Util::jsonEncode(['ok' => true, 'accepted' => $n]);
+}
+
+/**
+ * "It didn't connect - what do I do?" Text for a human, in Persian, with a deterministic fallback.
+ * See AiTune::advice(); the model is a polish layer, the table is the product.
+ */
+function advice()
+{
+    $err = isset($_GET['err']) ? (string) $_GET['err'] : '';
+    $ctx = [
+        'regime'  => isset($_GET['regime']) ? preg_replace('~[^a-z]~', '', strtolower((string) $_GET['regime'])) : '',
+        'proto'   => isset($_GET['proto']) ? (string) $_GET['proto'] : '',
+        'tier'    => isset($_GET['tier']) ? (string) $_GET['tier'] : '',
+        'attempt' => isset($_GET['attempt']) ? (int) $_GET['attempt'] : 0,
+    ];
+    if (!Util::rateLimit('advice', 30)) {
+        Util::fail(429, 'too_many_requests');
+    }
+    $a = AiTune::advice($err, $ctx);
+    header('Content-Type: application/json; charset=utf-8');
+    echo Util::jsonEncode(['ok' => true, 'advice' => $a, 'err' => $err]);
 }
 
 function requireAdmin()
@@ -156,6 +185,9 @@ switch ($action) {
     case 'feedback':
         feedback();
         break;
+        case 'advice':
+            advice();
+            break;
 
     case 'health':
         header('Content-Type: application/json; charset=utf-8');
@@ -218,6 +250,7 @@ switch ($action) {
                 'version'  => 'index.php?action=version&vc=<versionCode>',
                 'feedback' => 'POST index.php?action=feedback  {"reports":[{"sid":"..","ok":true,"latencyMs":380}]}',
                 'health'   => 'index.php?action=health',
+                'advice'   => 'index.php?action=advice&err=tls_timeout&regime=tight',
             ],
             'hint' => 'stats|selftest|refresh need ?key=<access.toolKey>; run ?action=selftest once after deploy',
         ]);

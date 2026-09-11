@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Meelano VPN — پروتوتایپ رابط کاربری</title>
+<title>M•A VPN — پروتوتایپ رابط کاربری</title>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/space-grotesk@latest/space-grotesk.css" onerror="this.remove()">
@@ -15,7 +15,11 @@
    ============================================================ */
 :root{
   --bg:#0B0F14; --surface:#131A21; --surface-2:#18212A; --line:#232F3A;
-  --hairline:rgba(255,255,255,.055);
+  /* --film is the colour of every 1px highlight and 6% press tint. White in the dark theme, near-black
+     in the light one: a 7% white film on graphite and a 7% black film on paper are the *same physical
+     object* (a raised face), so one variable carries the whole theme instead of 40 hardcoded rgba(). */
+  --film:255,255,255;
+  --hairline:rgba(var(--film),.055);
   --text:#E6EDF3; --muted:#8FA3B8; --muted-2:#5D7183;
   --accent:#4ADE9B; --accent-deep:#128C5A; --accent-ink:#04231A;
   --info:#8BD9F5; --warn:#F5A524; --danger:#FF6B6B;
@@ -30,6 +34,33 @@
   --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   --sans:Vazirmatn,system-ui,-apple-system,"Segoe UI",sans-serif;
 }
+/* ------------------------------------------------------------------ light theme
+   One block, same variable names: this is the *only* place a light value is written, exactly like
+   Palette.Light in the app. Values are the app's (Color.kt / res/values/colors.xml) - check-theme.sh
+   fails the build when the three mirrors drift apart.
+   Note what is NOT here: the launcher icon (brand rule: the tile never inverts) and the shadow colour
+   (#000 in box-shadow stays - a soft black shadow is correct on paper too). */
+body.light{
+  --film:13,21,28;
+  --bg:#F5F7F9; --surface:#FFFFFF; --surface-2:#EDF1F5; --line:#DDE4EA;
+  --text:#0D151C; --muted:#4B5C6B; --muted-2:#607182;
+  --accent:#0E8F5B; --accent-deep:#06693F; --accent-ink:#FFFFFF;
+  --info:#0B6C93; --warn:#8A5200; --danger:#C0362C;
+  --bezel-1:#FFFFFF; --bezel-2:#CFD8E0; --well:#E9EEF3;
+  background:
+    radial-gradient(900px 520px at 78% -12%,#e8f3ec 0%,transparent 62%),
+    radial-gradient(760px 460px at 8% 108%,#e0e9f2 0%,transparent 60%),#EDF1F5;
+  color:var(--text);
+}
+/* a raised face on paper needs its top edge *lighter than the page*, not lighter than itself: the
+   inner highlight becomes a white line and the underside keeps the black film - hence the override */
+body.light .card,body.light .panel,body.light .btn,body.light .ib,body.light .chip{
+  box-shadow:inset 0 1px 0 #fff,0 8px 20px -14px rgba(13,21,28,.35),0 0 0 1px var(--line)}
+body.light .ring{box-shadow:0 26px 50px -22px rgba(13,21,28,.45),0 0 0 1px var(--line) inset}
+body.light .rail .card{background:rgba(255,255,255,.72)}
+body.light .num,body.light .ltr{color:var(--muted)}
+body.light .sw2 input:checked + i::after{background:linear-gradient(180deg,#fff,#eef4f1)}
+body.light .seg button[aria-pressed=true]{color:var(--accent-ink);background:var(--accent)}
 *{box-sizing:border-box}
 html,body{margin:0;background:#05080b;color:var(--text);font-family:var(--sans);
   font-size:calc(15px * var(--fs));line-height:1.75;-webkit-font-smoothing:antialiased}
@@ -74,10 +105,10 @@ input[type=range]{width:120px;accent-color:var(--accent)}
 /* ---------- phone ---------- */
 .phone{position:relative;margin:0 auto;width:376px;height:772px;border-radius:44px;padding:12px;
   background:linear-gradient(160deg,#2a3440,#0b1116 60%);
-  box-shadow:0 40px 90px -30px #000,0 0 0 1px #000 inset,0 1px 0 rgba(255,255,255,.07) inset}
+  box-shadow:0 40px 90px -30px #000,0 0 0 1px #000 inset,0 1px 0 rgba(var(--film),.07) inset}
 .screen{position:relative;height:100%;border-radius:33px;overflow:hidden;background:var(--bg);
   display:flex;flex-direction:column;isolation:isolate}
-body.light .screen{background:#F5F7F9;color:#0d151c}
+body.light .screen{background:var(--bg);color:var(--text)}
 .sb{display:flex;justify-content:space-between;align-items:center;padding:12px 20px 4px;
   font-size:11px;color:var(--muted);letter-spacing:.02em}
 .appbar{display:flex;align-items:center;gap:10px;padding:10px 18px 2px}
@@ -92,9 +123,9 @@ body.light .screen{background:#F5F7F9;color:#0d151c}
 /* ---------- the hero: connect core ---------- */
 .hero{display:flex;flex-direction:column;align-items:center;padding-top:14px}
 .ring{--p:0;position:relative;width:172px;height:172px;border:0;padding:0;border-radius:50%;cursor:pointer;
-  background:conic-gradient(from -90deg,var(--accent) calc(var(--p)*360deg),rgba(255,255,255,.055) 0);
-  box-shadow:0 22px 44px -18px rgba(0,0,0,.9),0 0 0 1px rgba(255,255,255,.05) inset,
-             0 1px 0 rgba(255,255,255,.10) inset;
+  background:conic-gradient(from -90deg,var(--accent) calc(var(--p)*360deg),rgba(var(--film),.055) 0);
+  box-shadow:0 22px 44px -18px rgba(0,0,0,.9),0 0 0 1px rgba(var(--film),.05) inset,
+             0 1px 0 rgba(var(--film),.10) inset;
   transition:transform 180ms cubic-bezier(.2,0,0,1),box-shadow var(--t-enter);
   -webkit-tap-highlight-color:transparent}
 .ring::before{content:"";position:absolute;inset:0;border-radius:50%;
@@ -103,30 +134,30 @@ body.light .screen{background:#F5F7F9;color:#0d151c}
 .ring:active{transform:scale(.965)}
 .well{position:absolute;inset:11px;border-radius:50%;
   background:radial-gradient(120% 120% at 42% 34%,#111a22 0%,var(--well) 62%);
-  box-shadow:0 2px 3px rgba(255,255,255,.07) inset,0 -6px 16px rgba(0,0,0,.65) inset;
+  box-shadow:0 2px 3px rgba(var(--film),.07) inset,0 -6px 16px rgba(0,0,0,.65) inset;
   display:grid;place-items:center;gap:2px;text-align:center}
 .glyph{width:52px;height:52px;color:var(--muted);transition:color var(--t-enter),transform var(--t-enter)}
 .well .k{font-size:calc(11px * var(--fs));color:var(--muted);letter-spacing:.02em}
 .well .v{font-size:calc(12.5px * var(--fs));color:var(--text);font-weight:600}
 .sheen{position:absolute;inset:5px;border-radius:50%;pointer-events:none;opacity:0;
-  background:conic-gradient(from 0deg,transparent 0 72%,rgba(255,255,255,.16) 84%,transparent 96%);
+  background:conic-gradient(from 0deg,transparent 0 72%,rgba(var(--film),.16) 84%,transparent 96%);
   mask:radial-gradient(closest-side,transparent 76%,#000 78%);
   -webkit-mask:radial-gradient(closest-side,transparent 76%,#000 78%)}
 [data-state=idle] .ring{animation:breathe var(--t-breath) infinite alternate}
 [data-state=idle] .sheen,[data-state=error] .sheen{display:none}
-[data-state=connecting] .ring{box-shadow:0 22px 44px -18px #000,0 0 0 1px rgba(255,255,255,.05) inset,
+[data-state=connecting] .ring{box-shadow:0 22px 44px -18px #000,0 0 0 1px rgba(var(--film),.05) inset,
   0 0 26px -4px rgba(74,222,155,.28)}
 [data-state=connecting] .sweep{opacity:1}
 [data-state=connected] .glyph{color:var(--accent);transform:scale(1.06)}
 [data-state=connected] .ring{filter:drop-shadow(0 0 16px rgba(74,222,155,.28))}
 [data-state=connected] .sheen{opacity:1;animation:spin var(--t-sheen) linear infinite}
-[data-state=connected] .well{box-shadow:0 2px 3px rgba(255,255,255,.07) inset,0 -6px 16px rgba(0,0,0,.65) inset,
+[data-state=connected] .well{box-shadow:0 2px 3px rgba(var(--film),.07) inset,0 -6px 16px rgba(0,0,0,.65) inset,
   0 0 0 1px rgba(74,222,155,.16) inset}
 [data-state=error] .ring{background:conic-gradient(from -90deg,var(--danger) 360deg,transparent 0)}
 [data-state=error] .glyph{color:var(--danger)}
 [data-state=error] .ring{animation:flash 340ms 1}
 .sweep{position:absolute;inset:3px;border-radius:50%;opacity:0;transition:opacity var(--t-enter);
-  background:conic-gradient(from 0deg,rgba(255,255,255,.55) 0 6%,transparent 14% 100%);
+  background:conic-gradient(from 0deg,rgba(var(--film),.55) 0 6%,transparent 14% 100%);
   mask:radial-gradient(closest-side,transparent 74%,#000 76% 99%,transparent);
   -webkit-mask:radial-gradient(closest-side,transparent 74%,#000 76% 99%,transparent);
   animation:spin 1100ms linear infinite}
@@ -137,7 +168,7 @@ body.reduced .ring,body.reduced .sheen,body.reduced .sweep,body.reduced .bar,bod
 
 .node{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:calc(13.5px * var(--fs))}
 .flag{width:19px;height:14px;border-radius:3px;flex:0 0 auto;overflow:hidden;background:#1c2833;
-  box-shadow:0 0 0 1px rgba(255,255,255,.09);display:block}
+  box-shadow:0 0 0 1px rgba(var(--film),.09);display:block}
 .flag svg{display:block;width:100%;height:100%}
 .node .g{font-size:11px;color:var(--accent);border:1px solid rgba(74,222,155,.35);border-radius:var(--r-chip);padding:0 7px}
 .node .sub{color:var(--muted);font-size:calc(11.5px * var(--fs))}
@@ -169,7 +200,7 @@ html[dir=rtl] .row.sel{box-shadow:inset -2px 0 0 var(--accent)}
 .row .nm{font-size:calc(13px * var(--fs));font-weight:600;line-height:1.35}
 .row .sb{font-size:calc(11px * var(--fs));color:var(--muted)}
 .row .grow{flex:1;min-width:0}
-.bar{width:54px;height:4px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden;flex:0 0 auto}
+.bar{width:54px;height:4px;border-radius:99px;background:rgba(var(--film),.08);overflow:hidden;flex:0 0 auto}
 .bar i{display:block;height:100%;border-radius:99px;background:var(--accent);transition:width var(--t-enter)}
 .row[data-grade=B] .bar i{background:var(--info)} .row[data-grade=C] .bar i{background:var(--warn)}
 .row[data-grade=D] .bar i{background:var(--danger)}
@@ -214,7 +245,7 @@ html[dir=rtl] .row.sel{box-shadow:inset -2px 0 0 var(--accent)}
 .legacy .ring{background:conic-gradient(from 0deg,#7b2ff7,#f107a3,#00c6ff,#7b2ff7);animation:spin 2600ms linear infinite;
   box-shadow:0 0 34px rgba(123,47,247,.5)}
 .legacy .well{background:radial-gradient(circle,#12071f,#05010a);backdrop-filter:blur(6px)}
-.legacy .spark,.legacy .list,.legacy .row{backdrop-filter:blur(8px);border-color:rgba(255,255,255,.14)}
+.legacy .spark,.legacy .list,.legacy .row{backdrop-filter:blur(8px);border-color:rgba(var(--film),.14)}
 .legacy .strip b,.legacy .ms{font-family:var(--sans);font-variant-numeric:normal}
 .legacy .node{text-transform:uppercase;letter-spacing:.08em}
 .legacy .appbar b{letter-spacing:.14em}
@@ -259,59 +290,59 @@ td.k{color:var(--muted);white-space:nowrap}
 .m{aspect-ratio:1;display:block;border-radius:12px;background:#0d131a;border:1px solid var(--line);overflow:hidden;position:relative}
 .m img{width:100%;height:100%;display:block;clip-path:var(--mk,circle(50%))}
 .m.mono img{filter:grayscale(1) brightness(1.6);clip-path:circle(50%);opacity:.9}
-.m::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 1px rgba(255,255,255,.05);pointer-events:none}
+.m::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 1px rgba(var(--film),.05);pointer-events:none}
 
 /* ═══════════════ control kit — mirrors android/…/ui/Controls.kt, four rules ═══════════════ */
 /* 1 light from above   2 depth = coloured halo, no blur bitmap   3 1dp hairline   4 the give (spring) */
 .mk{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:14px}
 .btn{position:relative;display:inline-flex;align-items:center;gap:9px;cursor:pointer;font:inherit;
   font-weight:700;font-size:calc(14px * var(--fs));line-height:1;color:var(--accent-ink);
-  height:46px;padding:0 18px;border:1px solid rgba(255,255,255,.28);border-radius:14px;
+  height:46px;padding:0 18px;border:1px solid rgba(var(--film),.28);border-radius:14px;
   background:linear-gradient(180deg,var(--accent),var(--accent-deep));
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.22),inset 0 -8px 16px rgba(0,0,0,.14),
+  box-shadow:inset 0 1px 0 rgba(var(--film),.22),inset 0 -8px 16px rgba(0,0,0,.14),
              0 12px 26px -10px rgba(74,222,155,.5),0 2px 0 rgba(0,0,0,.35);
   transition:transform 140ms cubic-bezier(.2,0,0,1),box-shadow 140ms linear,filter 140ms linear}
 .btn:hover{filter:brightness(1.055)}
 .btn:active,.btn.press{transform:scale(.972) translateY(1.5px);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.12),inset 0 -4px 10px rgba(0,0,0,.2),
+  box-shadow:inset 0 1px 0 rgba(var(--film),.12),inset 0 -4px 10px rgba(0,0,0,.2),
              0 3px 8px -4px rgba(74,222,155,.22)}
 .btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .btn svg{width:16px;height:16px;flex:0 0 auto}
 .btn.lg{height:56px;font-size:calc(15.5px * var(--fs));padding:0 24px;border-radius:18px}
 .btn.sm{height:34px;font-size:calc(13px * var(--fs));padding:0 13px;border-radius:11px}
 .btn.tonal{color:var(--text);border-color:var(--hairline);
-  background:linear-gradient(180deg,rgba(255,255,255,.1),rgba(255,255,255,.045));
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.13),inset 0 -6px 14px rgba(0,0,0,.14),0 8px 18px -12px #000}
-.btn.tonal:active{box-shadow:inset 0 1px 0 rgba(255,255,255,.08),inset 0 -3px 8px rgba(0,0,0,.2)}
+  background:linear-gradient(180deg,rgba(var(--film),.1),rgba(var(--film),.045));
+  box-shadow:inset 0 1px 0 rgba(var(--film),.13),inset 0 -6px 14px rgba(0,0,0,.14),0 8px 18px -12px #000}
+.btn.tonal:active{box-shadow:inset 0 1px 0 rgba(var(--film),.08),inset 0 -3px 8px rgba(0,0,0,.2)}
 .btn.ghost{color:var(--muted);background:transparent;border-color:transparent;box-shadow:none}
-.btn.ghost:hover{background:rgba(255,255,255,.055);color:var(--text)}
-.btn.ghost:active{background:rgba(255,255,255,.08);box-shadow:inset 0 0 0 1px var(--hairline)}
+.btn.ghost:hover{background:rgba(var(--film),.055);color:var(--text)}
+.btn.ghost:active{background:rgba(var(--film),.08);box-shadow:inset 0 0 0 1px var(--hairline)}
 .btn.danger{color:var(--danger);border-color:rgba(255,107,107,.42);
   background:linear-gradient(180deg,rgba(255,107,107,.2),rgba(255,107,107,.08));
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+  box-shadow:inset 0 1px 0 rgba(var(--film),.06)}
 .btn[disabled]{opacity:.45;pointer-events:none;box-shadow:none}
 .car{width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;
   transform:rotate(45deg);opacity:.7;margin-inline-start:1px}
 @media (prefers-reduced-motion:no-preference){
   .btn.pulse{animation:cta var(--t-breath) infinite alternate}
-  @keyframes cta{from{box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 6px 18px -10px rgba(74,222,155,.3)}
-    to{box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 16px 34px -10px rgba(74,222,155,.6)}}
+  @keyframes cta{from{box-shadow:inset 0 1px 0 rgba(var(--film),.22),0 6px 18px -10px rgba(74,222,155,.3)}
+    to{box-shadow:inset 0 1px 0 rgba(var(--film),.22),0 16px 34px -10px rgba(74,222,155,.6)}}
 }
 /* icon button — same lighting, square */
 .ibtn{display:grid;place-items:center;width:38px;height:38px;cursor:pointer;color:var(--muted);
   border:1px solid var(--hairline);border-radius:12px;
-  background:linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.03));
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 6px 14px -12px #000;
+  background:linear-gradient(180deg,rgba(var(--film),.09),rgba(var(--film),.03));
+  box-shadow:inset 0 1px 0 rgba(var(--film),.1),0 6px 14px -12px #000;
   transition:transform 140ms cubic-bezier(.2,0,0,1),color 140ms}
 .ibtn svg{width:17px;height:17px}
 .ibtn:active{transform:scale(.92)}
-.ibtn.on{color:var(--accent-ink);border-color:rgba(255,255,255,.3);
+.ibtn.on{color:var(--accent-ink);border-color:rgba(var(--film),.3);
   background:linear-gradient(180deg,var(--accent),var(--accent-deep))}
 /* chip — the selected one is closer to you, not only a different colour */
 .chip{display:inline-flex;align-items:center;gap:7px;cursor:pointer;font:inherit;
   font-size:calc(12.5px * var(--fs));font-weight:600;color:var(--muted);padding:8px 13px;
   border-radius:var(--r-chip);border:1px solid var(--hairline);
-  background:linear-gradient(180deg,rgba(0,0,0,.22),rgba(255,255,255,.035));
+  background:linear-gradient(180deg,rgba(0,0,0,.22),rgba(var(--film),.035));
   transition:transform 140ms cubic-bezier(.2,0,0,1),color 140ms}
 .chip:active{transform:scale(.955)}
 .chip.on{color:var(--accent);border-color:rgba(74,222,155,.55);
@@ -326,7 +357,7 @@ td.k{color:var(--muted);white-space:nowrap}
   transition:color var(--t-enter)}
 .seg2 .ind{position:absolute;z-index:0;top:3px;bottom:3px;inset-inline-start:3px;width:calc(50% - 3px);border-radius:99px;
   background:linear-gradient(180deg,var(--accent),var(--accent-deep));
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 6px 14px -6px rgba(74,222,155,.55);
+  box-shadow:inset 0 1px 0 rgba(var(--film),.3),0 6px 14px -6px rgba(74,222,155,.55);
   transition:transform 260ms cubic-bezier(.3,1.4,.5,1)}
 .seg2[data-sel="1"] .ind{transform:translateX(100%)}
 .seg2 button[aria-pressed=true]{color:var(--accent-ink);font-weight:800}
@@ -335,26 +366,26 @@ html[dir=rtl] .seg2[data-sel="1"] .ind{transform:translateX(-100%)}
 .sw2{position:relative;display:inline-block;width:52px;height:30px;flex:0 0 auto;cursor:pointer}
 .sw2 input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
 .sw2 i{position:absolute;inset:0;border-radius:99px;transition:background 200ms,box-shadow 200ms;
-  background:linear-gradient(180deg,rgba(0,0,0,.5),rgba(255,255,255,.06));
+  background:linear-gradient(180deg,rgba(0,0,0,.5),rgba(var(--film),.06));
   box-shadow:inset 0 1px 3px rgba(0,0,0,.6),inset 0 0 0 1px var(--hairline)}
 .sw2 i::after{content:"";position:absolute;top:2.5px;inset-inline-start:2.5px;width:25px;height:25px;
   border-radius:50%;background:linear-gradient(180deg,#9fb2c4,#6b7e90);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -2px 3px rgba(0,0,0,.2),0 3px 6px rgba(0,0,0,.5);
+  box-shadow:inset 0 1px 0 rgba(var(--film),.55),inset 0 -2px 3px rgba(0,0,0,.2),0 3px 6px rgba(0,0,0,.5);
   transition:transform 260ms cubic-bezier(.3,1.4,.5,1),background 200ms,box-shadow 200ms}
 .sw2 input:checked + i{background:linear-gradient(180deg,var(--accent),var(--accent-deep));
   box-shadow:inset 0 1px 3px rgba(0,0,0,.35),inset 0 0 0 1px rgba(74,222,155,.6),0 0 18px -6px rgba(74,222,155,.5)}
 .sw2 input:checked + i::after{transform:translateX(-22px);background:linear-gradient(180deg,#fff,#d6e6de)}
-.sw2:active i::after{box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 1px 2px rgba(0,0,0,.4)}
+.sw2:active i::after{box-shadow:inset 0 1px 0 rgba(var(--film),.4),0 1px 2px rgba(0,0,0,.4)}
 html[dir=ltr] .sw2 input:checked + i::after{transform:translateX(22px)}
 /* panel: raised group with a highlight top edge, and a divider that fades at both ends */
 .panel2{margin-top:16px;border-radius:18px;padding:2px 4px;
-  background:linear-gradient(180deg,rgba(255,255,255,.05),transparent 40%),var(--surface-2);
+  background:linear-gradient(180deg,rgba(var(--film),.05),transparent 40%),var(--surface-2);
   box-shadow:inset 0 0 0 1px var(--hairline),0 12px 26px -18px #000}
 .panel2 .ph{font-size:calc(11px * var(--fs));font-weight:800;color:var(--muted-2);padding:10px 14px 2px;letter-spacing:.02em}
 .prow{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;
   transition:background 140ms linear,transform 140ms cubic-bezier(.2,0,0,1)}
-.prow:hover{background:rgba(255,255,255,.03)}
-.prow:active{background:rgba(255,255,255,.06);transform:scale(.995)}
+.prow:hover{background:rgba(var(--film),.03)}
+.prow:active{background:rgba(var(--film),.06);transform:scale(.995)}
 .prow>div{flex:1;min-width:0}
 .prow b{display:block;font-size:calc(14px * var(--fs));font-weight:600}
 .prow small{display:block;color:var(--muted-2);font-size:calc(11px * var(--fs));line-height:1.6}
@@ -366,15 +397,15 @@ html[dir=ltr] .sw2 input:checked + i::after{transform:translateX(22px)}
 /* in-frame: the node selector and the readout now use the same objects */
 .node{display:flex;align-items:center;gap:9px;height:38px;padding:0 14px;border-radius:12px;
   border:1px solid var(--hairline);
-  background:linear-gradient(180deg,rgba(255,255,255,.1),rgba(255,255,255,.045));
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.13),inset 0 -6px 14px rgba(0,0,0,.14),0 8px 18px -12px #000;
+  background:linear-gradient(180deg,rgba(var(--film),.1),rgba(var(--film),.045));
+  box-shadow:inset 0 1px 0 rgba(var(--film),.13),inset 0 -6px 14px rgba(0,0,0,.14),0 8px 18px -12px #000;
   transition:transform 140ms cubic-bezier(.2,0,0,1)}
 .node:active{transform:scale(.972)}
 .node::after{content:"";width:7px;height:7px;flex:0 0 auto;border-right:2px solid var(--muted-2);
   border-bottom:2px solid var(--muted-2);transform:rotate(45deg);margin-inline-start:auto}
 .strip{margin:14px auto 0;padding:9px 14px;border-radius:14px;max-width:330px;
   background:linear-gradient(180deg,rgba(0,0,0,.34),var(--well));
-  box-shadow:inset 0 2px 4px rgba(0,0,0,.5),inset 0 0 0 1px rgba(255,255,255,.07)}
+  box-shadow:inset 0 2px 4px rgba(0,0,0,.5),inset 0 0 0 1px rgba(var(--film),.07)}
 </style>
 </head>
 <body>
@@ -420,7 +451,7 @@ html[dir=ltr] .sw2 input:checked + i::after{transform:translateX(22px)}
               <path d="M12 3v9"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg>
           </div>
           <div class="tx">
-            <div class="t1">Meelano <span class="num" id=ntxt>· متصل</span></div>
+            <div class="t1">M•A <span class="num" id=ntxt>· متصل</span></div>
             <div class="t2 num" id=nsub>↓ 0 KB/s · ↑ 0 KB/s · ۰۰:۰۰</div>
           </div>
           <button class="act" id=ndis>قطع</button>
@@ -446,10 +477,10 @@ html[dir=ltr] .sw2 input:checked + i::after{transform:translateX(22px)}
   <div>
     <div class=phone>
       <div class=screen data-state=idle id=screen>
-        <div class=sb><span class=num>۹:۴۱</span><span>Meelano UI prototype · API preview</span><span class=num>100%</span></div>
+        <div class=sb><span class=num>۹:۴۱</span><span>M•A UI prototype · API preview</span><span class=num>100%</span></div>
         <div class=appbar>
           <div class=mark aria-hidden=true>M</div>
-          <b>Meelano</b>
+          <b>M•A</b>
           <button class=pill id=openSettings>تنظیمات</button>
         </div>
 
@@ -468,7 +499,7 @@ html[dir=ltr] .sw2 input:checked + i::after{transform:translateX(22px)}
             <p class=sr id=statusLive aria-live=polite></p>
             <div class=node>
               <span class=flag id=flag aria-hidden=true></span>
-              <span id=nodeName>Vip Meelano</span>
+              <span id=nodeName>Vip M•A</span>
               <span class=sub num id=nodeSub>—</span>
               <span class=g id=nodeGrade>—</span>
             </div>
@@ -701,7 +732,7 @@ function render(){
   const node=NODES[S.tab][S.node]||NODES.vip[0];
   const live=S.state==='connected';
   $('#flag').innerHTML=flagSVG(node.cc);
-  $('#nodeName').textContent=S.tab==='vip'?'Vip Meelano':'Free Meelano';
+  $('#nodeName').textContent=S.tab==='vip'?'Vip M•A':'Free M•A';
   $('#nodeSub').textContent=live?node.cc+' · '+node.proto+' · '+node.port:'—';
   $('#nodeGrade').textContent=live?node.grade:'—';
   $('#nodeGrade').style.display=live?'':'none';
@@ -765,7 +796,7 @@ function drawSpark(){
   const dpr=devicePixelRatio||1,w=cv.clientWidth||300,h=44;
   cv.width=w*dpr;cv.height=h*dpr;cx.setTransform(dpr,0,0,dpr,0,0);cx.clearRect(0,0,w,h);
   const d=S.hist.slice(-60);if(d.length<2){
-    cx.strokeStyle='rgba(255,255,255,.07)';cx.lineWidth=1;cx.beginPath();cx.moveTo(0,h-6);cx.lineTo(w,h-6);cx.stroke();return}
+    cx.strokeStyle='rgba(var(--film),.07)';cx.lineWidth=1;cx.beginPath();cx.moveTo(0,h-6);cx.lineTo(w,h-6);cx.stroke();return}
   const mx=Math.max(...d,1024),n=d.length,sx=w/(n-1);
   const pt=i=>[i*sx,h-4-(d[i]/mx)*(h-9)];
   cx.beginPath();cx.moveTo(0,h);d.forEach((_,i)=>{const[x,y]=pt(i);cx[i?'lineTo':'moveTo'](x,y)});
@@ -834,7 +865,19 @@ $('#legacy').onchange=e=>{S.legacy=e.target.checked;document.body.classList.togg
   $('#janknote').textContent=S.legacy?'این همان «قبل» است: گرادیان رنگین‌کمانی، بلور، اسپینر، اعداد غیرهم‌عرض — و فریز ترد UI.':' ';
   if(!S.legacy){$('#fps').textContent='60';}render()};
 $('#reduced').onchange=e=>document.body.classList.toggle('reduced',e.target.checked);
-$('#light').onchange=e=>document.body.classList.toggle('light',e.target.checked);
+/* the toggle used to flip one rule, which is how this page reproduced the app's light-theme bug:
+   the switch existed, the palette did not. Now it sets the class, the colour-scheme hint and storage. */
+$('#light').onchange=e=>{
+  document.body.classList.toggle('light',e.target.checked);
+  document.documentElement.style.colorScheme=e.target.checked?'light':'dark';
+  try{localStorage.setItem('ma.light',e.target.checked?'1':'0')}catch(_){}
+};
+try{
+  if(localStorage.getItem('ma.light')==='1'||(!( 'ma.light' in localStorage) && matchMedia('(prefers-color-scheme: light)').matches)){
+    document.body.classList.add('light'); $('#light').checked=true;
+    document.documentElement.style.colorScheme='light';
+  }
+}catch(_){}
 $('#fss').oninput=e=>{document.documentElement.style.setProperty('--fs',e.target.value);$('#fsv').textContent=Number(e.target.value).toFixed(2)+'×'};
 $('#ring').onclick=()=>{S.state==='connected'||S.state==='error'?disconnect():connect()};
 $('#ring').oncontextmenu=e=>{e.preventDefault();$('#stage').scrollTo({top:$('#list').offsetTop-70,behavior:'smooth'})};
