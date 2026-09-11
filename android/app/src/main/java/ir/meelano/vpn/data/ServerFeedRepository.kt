@@ -19,6 +19,10 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import ir.meelano.vpn.net.NetGuard
+import ir.meelano.vpn.net.Ladder
+import ir.meelano.vpn.net.BlockReport
+import ir.meelano.vpn.net.Regime
 import org.json.JSONArray
 import org.json.JSONObject
 import ir.meelano.vpn.keepalive.ActiveNodeCache
@@ -100,7 +104,7 @@ class ServerFeedRepository(
                 .header("X-Feed-Key", FEED_KEY)                 // optional; server ignores when unset
                 .apply { etags[kind]?.let { header("If-None-Match", it) } }
                 .build()
-            http.newCall(req).execute().use { resp ->
+            open(req)?.use { resp ->
                 when {
                     resp.code == 304 -> {
                         Log.d(TAG, "$kind not modified (0 bytes)")
@@ -116,7 +120,9 @@ class ServerFeedRepository(
                         if (parsed != null) {
                             File(filesDir, "$kind.json").writeText(body)   // raw for the next cold start
                             resp.header("ETag")?.let { etags[kind] = it }
+                            lastDnsPoisoned = false
                             apply(parsed, kind)
+                            probeAndReconcile(kind)
                         } else {
                             Log.w(TAG, "$kind payload rejected")
                         }
@@ -130,6 +136,28 @@ class ServerFeedRepository(
         }
     }
 
+    /**
+     * GET with a resolver fallback. If the normal path throws but a *pinned-IP* request to the same
+     * URL succeeds, the local DNS lied to us - the single most useful fact a client inside Iran can
+     * produce, because it changes what the app does (feed mirrors, transport ordering) instead of
+     * merely what it shows. `lastDnsPoisoned` is read by the probe pass below and uploaded with the
+     * feedback, so the whole fleet benefits from one user's poisoned answer.
+     */
+    @Volatile private var lastDnsPoisoned = false
+
+    private suspend fun open(req: okhttp3.Request): okhttp3.Response? {
+        val normal = runCatching { http.newCall(req).execute() }
+        normal.getOrNull()?.let { return it }
+        val host0 = runCatching { req.url.host }.getOrDefault("")
+        if (host0.isBlank()) return null
+        val ips = NetGuard.doh(host0)
+        if (ips.isEmpty()) return null
+        val pinned = runCatching { NetGuard.pinnedClient(ips).newCall(req).execute() }.getOrNull() ?: return null
+        lastDnsPoisoned = true
+        Log.w(TAG, "resolver fallback: $host0 -> ${ips.joinToString()} (DNS was lying)")
+        return pinned
+    }
+
     private fun loadCached(kind: String) {
         runCatching {
             val f = File(filesDir, "$kind.json")
@@ -137,17 +165,70 @@ class ServerFeedRepository(
         }
     }
 
-    /** Server decides the order; we only add the local "favourite/pinned" bias. */
+    /**
+     * Server decides the order; we add two local corrections it cannot know:
+     *  1. pinned/favourite first (a user choice);
+     *  2. nodes this *phone* cannot reach sink below nodes it can (compareBy: 0 = better), because
+     *     "the port answers from Amsterdam" and "the port answers from TCI in Tehran" are different
+     *     facts and only one of them is in the feed.
+     * A probe result is a demotion, never a deletion: the path can come back in 90 seconds and an
+     * empty list is the worst UI this product can show.
+     */
     private fun apply(payload: FeedPayload, kind: String) {
         val pinned = Prefs.pinnedIds(context)
         val list = payload.nodes.map { it.copy(kind = kind) }
-            .sortedWith(compareBy({ if (it.id in pinned) 0 else 1 }, { it.slot }))
+            .sortedWith(
+                compareBy({ if (it.id in pinned) 0 else 1 }, { localPenalty(it.id) }, { it.slot })
+            )
         if (kind == KIND_VIP) _vip.value = list else _free.value = list
         index = (list + _vip.value + _free.value).associateBy { it.id }
         lastBuildAt[kind] = payload.generatedAt
     }
 
     private val lastBuildAt = mutableMapOf<String, Long>()
+
+    /* ------------------------------------------------------------ local block probing */
+
+    /** id -> RTT in ms, or -1 for "answered nothing" (a fail is remembered briefly, not forever). */
+    private val localProbe = java.util.Collections.synchronizedMap(HashMap<String, Long>())
+    @Volatile private var lastReport: BlockReport = BlockReport()
+    fun blockReport(): BlockReport = lastReport
+
+    private fun localPenalty(id: String): Int = when (localProbe[id]) {
+        null -> 0        // unproven: trust the server
+        -1L -> 1         // we tried and it did not answer from here
+        else -> 0
+    }
+
+    /**
+     * Probe the head of a list (12 is plenty: nobody dials 40 nodes from a phone) and re-sort.
+     * Runs off the fetch path, on the app scope, so a refresh never waits on the network twice.
+     */
+    private fun probeAndReconcile(kind: String) {
+        appScope.launch {
+            val nodes = (if (kind == KIND_VIP) _vip.value else _free.value).take(12)
+            if (nodes.isEmpty()) return@launch
+            val res = NetGuard.tcpProbe(nodes.map { Pair(it.host, it.port) })
+            nodes.forEachIndexed { i, n -> localProbe[n.id] = res.getOrElse(i) { -1L } }
+            val rep0 = NetGuard.measure(nodes.map {
+                NetGuard.ProbeTarget(it.id, it.host, it.port, it.tls != null, it.sni ?: it.host, it.alpn)
+            })
+            val rep = rep0.copy(dnsPoisoned = lastDnsPoisoned)
+            lastReport = rep
+            AppSettings.setBlockReport(context, rep.toJson().toString(), rep.guess().name.lowercase())
+            // re-sort in place with the new knowledge (same comparator the fetch path uses)
+            val pinned = Prefs.pinnedIds(context)
+            val sort: (List<FeedNode>) -> List<FeedNode> = { l ->
+                l.sortedWith(compareBy({ if (it.id in pinned) 0 else 1 }, { localPenalty(it.id) }, { it.slot }))
+            }
+            if (kind == KIND_VIP) _vip.value = sort(_vip.value) else _free.value = sort(_free.value)
+            Log.d(TAG, "$kind probes: ${res.count { it > 0 }}/${res.size} alive, regime=${rep.guess()}")
+        }
+    }
+
+    /** How this phone ranks a node against the current regime - used by the list sheet's badge. */
+    fun regimePreference(node: FeedNode): Int =
+        Ladder.preference(AppSettings.effectiveRegime(), Ladder.transportOf(node.proto, node.tls, node.network))
 
     /** when this list was last built *by the server* (0 = never). The sheet footer reads this. */
     fun generatedAt(kind: String): Long = lastBuildAt[kind] ?: 0L
@@ -188,7 +269,13 @@ class ServerFeedRepository(
             arr.put(JSONObject().put("sid", it.nodeId).put("ok", it.ok)
                 .put("latencyMs", it.latencyMs).put("err", it.error ?: ""))
         }
-        val body = JSONObject().put("reports", arr).toString()
+        val payload = JSONObject().put("reports", arr)
+            // aggregate signal for the backend's `regime` task: the server only ever sees its own
+            // vantage point; this is the last mile, measured from inside the country
+            .put("block", JSONObject(lastReport.toJson().toString()))
+            .put("regime", AppSettings.effectiveRegime().name.lowercase())
+            .put("app", ir.meelano.vpn.BuildConfig.VERSION_NAME)
+        val body = payload.toString()
             .toRequestBody("application/json; charset=utf-8".toMediaType())
         val req = Request.Builder().url("$baseUrl/?action=feedback").post(body)
             .header("X-Feed-Key", FEED_KEY).build()
@@ -232,7 +319,7 @@ class ServerFeedRepository(
     private val FEED_KEY: String get() = BuildConfig.MEELANO_FEED_KEY // "" disables the header
 
     /** refuse a payload from a future server we cannot understand, instead of guessing */
-    private val SCHEMA_MAX = 9
+    private val SCHEMA_MAX = 10
 }
 
 data class FeedPayload(val kind: String, val generatedAt: Long, val ttl: Int, val nodes: List<FeedNode>)
@@ -273,6 +360,11 @@ data class FeedNode(
     val reliability: Float,
     val samples: Int,
     val config: String?,
+    /**
+     * The server's per-node transport patch (see net/Regime.kt). A *patch*, not a full config: absent
+     * keys stay the client's decision. Default = empty, so an old feed payload still parses.
+     */
+    val tune: ir.meelano.vpn.net.TunePatch = ir.meelano.vpn.net.TunePatch.Empty,
 ) {
     val latencyLabel: String get() = latencyMs?.let { if (it < 1000) "$it" else String.format("%.1fs", it / 1000.0) } ?: "—"
     val isVip: Boolean get() = tier == "vip"

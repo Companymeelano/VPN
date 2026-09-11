@@ -47,6 +47,32 @@ object AppSettings {
     var seenVersion by mutableStateOf(0)
         private set
 
+    /*
+     * Anti-blocking state (phase 6). These are not decoration: they are what the generated core
+     * profile is built from, and "tight" is the honest answer for Iran in 2026 - SNI filtering plus
+     * RST injection plus TLS-shape detection, which is exactly the case that needs fragmentation and
+     * Reality-first ordering. `autoConnectOnBoot` exists because a VPN that stays off until you notice
+     * it is off is not a VPN.
+     */
+    var regime by mutableStateOf("tight")
+        private set
+    var fragmentAuto by mutableStateOf(true)
+        private set
+    var muxEnabled by mutableStateOf(true)
+        private set
+    var realityFirst by mutableStateOf(true)
+        private set
+    var autoConnectOnBoot by mutableStateOf(true)
+        private set
+    var mtu by mutableStateOf(1280)
+        private set
+    /** JSON blob of the last local probe verdict; uploaded with the feedback so the fleet learns. */
+    var lastBlockReport by mutableStateOf("")
+        private set
+    /** What the local detector concluded from that report ("auto" regime follows this). */
+    var detectedRegime by mutableStateOf("tight")
+        private set
+
     private val _snapshot = MutableStateFlow<Map<String, Any>>(emptyMap())
     val snapshot: StateFlow<Map<String, Any>> = _snapshot
 
@@ -57,6 +83,14 @@ object AppSettings {
         killSwitch = p.getBoolean("kill_switch", true)
         secureDns = p.getBoolean("secure_dns", true)
         reducedMotion = p.getBoolean("reduced_motion", false)
+        regime = p.getString("regime", "tight") ?: "tight"
+        fragmentAuto = p.getBoolean("fragment_auto", true)
+        muxEnabled = p.getBoolean("mux_enabled", true)
+        realityFirst = p.getBoolean("reality_first", true)
+        autoConnectOnBoot = p.getBoolean("auto_connect_boot", true)
+        mtu = p.getInt("mtu", 1280)
+        lastBlockReport = p.getString("block_report", "") ?: ""
+        detectedRegime = p.getString("detected_regime", "tight") ?: "tight"
         autoUpdate = p.getBoolean("auto_update", true)
         feedback = p.getBoolean("feedback", true)
         themeMode = p.getInt("theme_mode", THEME_SYSTEM)
@@ -78,6 +112,19 @@ object AppSettings {
     fun setOnboardingDone(c: Context) = write(c, "onboarding_done", true) { onboardingDone = true }
     fun setSkippedVersion(c: Context, v: Int) = write(c, "skip_version", v) { skippedVersion = v }
     fun setSeenVersion(c: Context, v: Int) = write(c, "seen_version", v) { seenVersion = v }
+    fun setRegime(c: Context, v: String) = write(c, "regime", v) { regime = v }
+    fun setFragmentAuto(c: Context, v: Boolean) = write(c, "fragment_auto", v) { fragmentAuto = v }
+    fun setMuxEnabled(c: Context, v: Boolean) = write(c, "mux_enabled", v) { muxEnabled = v }
+    fun setRealityFirst(c: Context, v: Boolean) = write(c, "reality_first", v) { realityFirst = v }
+    fun setAutoConnectOnBoot(c: Context, v: Boolean) = write(c, "auto_connect_boot", v) { autoConnectOnBoot = v }
+    fun setMtu(c: Context, v: Int) = write(c, "mtu", v) { mtu = v }
+    fun setBlockReport(c: Context, json: String, regime: String) {
+        val e = sp(c).edit().putString("block_report", json).putString("detected_regime", regime)
+        e.apply()
+        lastBlockReport = json
+        detectedRegime = regime
+        publish()
+    }
 
     fun reset(context: Context) {
         sp(context).edit().clear().apply()
@@ -96,11 +143,34 @@ object AppSettings {
         publish()
     }
 
+    /**
+     * The regime the app should actually act on. "auto" is the interesting case: it means "the local
+     * probes decide", and the probes only run on a feed refresh, so a stale-but-safe guess (TIGHT) is
+     * better than trusting a report from yesterday's network.
+     */
+    fun effectiveRegime(): ir.meelano.vpn.net.Regime =
+        if (regime == "auto") ir.meelano.vpn.net.Regime.of(detectedRegime)
+        else ir.meelano.vpn.net.Regime.of(regime)
+
+    /** The user's half of the precedence chain (see net/Regime.kt Tuner). */
+    fun overrides(): ir.meelano.vpn.net.Overrides = ir.meelano.vpn.net.Overrides(
+        fragment = if (fragmentAuto) null else false,       // null = "regime/feed decides"
+        mux = muxEnabled,
+        realityFirst = realityFirst,
+        mtu = mtu,
+    )
+
+    /** Final transport parameters for a node: regime default <- feed patch <- user switches. */
+    fun tuneFor(node: FeedNode): ir.meelano.vpn.net.Tune =
+        ir.meelano.vpn.net.Tuner.resolve(effectiveRegime(), node.tune, overrides())
+
     private fun publish() {
         _snapshot.value = mapOf(
             "smart" to smartReconnect, "kill" to killSwitch, "dns" to secureDns,
             "motion" to reducedMotion, "update" to autoUpdate, "fb" to feedback,
             "theme" to themeMode, "auto" to autoSelect, "seen" to seenVersion,
+            "regime" to regime, "frag" to fragmentAuto, "mux" to muxEnabled,
+            "reality" to realityFirst, "boot" to autoConnectOnBoot, "mtu" to mtu,
         )
     }
 }

@@ -13,7 +13,7 @@ import org.json.JSONObject
 object FeedJson {
 
     /** refuse a payload from a future server we cannot understand instead of guessing */
-    const val SCHEMA_MAX = 9
+    const val SCHEMA_MAX = 10
 
     fun payload(body: String): FeedPayload? = runCatching {
         val o = JSONObject(body)
@@ -41,7 +41,7 @@ object FeedJson {
             slot = s.optInt("slot", 0),
             // Display name comes from the server: the vendor's own remark never reaches the
             // payload, so there is nothing to hide client-side (and nothing to leak in a screenshot).
-            name = s.optString("title").ifBlank { s.optString("name") }.ifBlank { "Vip Meelano" },
+            name = s.optString("title").ifBlank { s.optString("name") }.ifBlank { "Vip M\u2022A" },
             subtitle = s.optString("subtitle"),
             cc = s.optString("cc").ifBlank { null },
             kind = s.optString("tier", "vip"),
@@ -73,6 +73,8 @@ object FeedJson {
             reliability = (q?.optDouble("reliability", 0.0) ?: 0.0).toFloat(),
             samples = q?.optInt("samples", 0) ?: 0,
             config = s.optJSONObject("config")?.toString(),
+            // "tune" is either an object of patches or a preset name; both are clamped in TunePatch
+            tune = ir.meelano.vpn.net.TunePatch.fromAny(s.opt("tune")),
         )
     }
 
@@ -87,6 +89,7 @@ object FeedJson {
         .put("method", n.method ?: "").put("cipher", n.cipher ?: "")
         .put("insecure", n.insecure).put("supportsUdp", n.supportsUdp)
         .put("raw", n.raw ?: "")
+        .apply { if (!n.tune.isEmpty) put("tune", n.tune.toJson()) }
         .put(
             "quality",
             JSONObject().put("grade", n.grade).put("reliability", n.reliability.toDouble())

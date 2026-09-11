@@ -311,7 +311,13 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
      * Replace the bodies with your core's calls. Keep everything suspend/IO here; the
      * orchestrator already guarantees this never runs on a main thread.
      */
-    override fun buildProfileJson(node: FeedNode): String = CoreProfiles.toJson(node, protect = ::protect)
+        /**
+     * The profile is a pure function of (node, resolved tune). Resolution order lives in
+     * net/Regime.kt: regime default <- feed patch <- user switches. Keeping it here (and nowhere
+     else) is what makes "why did this node fail" answerable from the log.
+     */
+    override fun buildProfileJson(node: FeedNode): String =
+        CoreProfiles.toJson(node, protect = ::protect, tune = ir.meelano.vpn.data.AppSettings.tuneFor(node))
     override suspend fun startProxy(spec: TunnelSpec) {
         engineStartedAt = System.currentTimeMillis()
         CoreApi.startProxy(this, spec)

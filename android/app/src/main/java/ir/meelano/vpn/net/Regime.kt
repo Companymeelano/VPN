@@ -87,35 +87,10 @@ data class Tune(
     companion object {
         val Default = Tune()
 
-        /**
-         * Lenient parser - same rules as FeedJson: a feed that sends garbage about fragmentation must
-         * never produce a garbage profile, so every value is clamped to something the core accepts.
-         */
-        fun fromJson(o: JSONObject?): Tune? {
-            if (o == null) return null
-            val d = Default
-            return Tune(
-                fragSize = o.optInt("fragSize", d.fragSize).coerceIn(0, 16384),
-                fragCount = o.optInt("fragCount", d.fragCount).coerceIn(1, 64),
-                fragStrategy = o.optString("fragStrategy", "").ifBlank { "" },
-                fragDelayMs = o.optInt("fragDelayMs", d.fragDelayMs).coerceIn(0, 600),
-                alpn = o.optString("alpn", d.alpn).ifBlank { d.alpn },
-                fingerprint = o.optString("fingerprint", d.fingerprint).ifBlank { d.fingerprint },
-                sni = o.optString("sni", ""),
-                ech = o.optBoolean("ech", false),
-                keepAliveSec = o.optInt("keepAliveSec", d.keepAliveSec).coerceIn(0, 300),
-                mux = o.optBoolean("mux", d.mux),
-                muxConcurrency = o.optInt("muxConcurrency", d.muxConcurrency).coerceIn(1, 64),
-                allowLan = o.optBoolean("allowLan", false),
-                mtu = o.optInt("mtu", d.mtu).coerceIn(576, 9000),
-                mss = o.optInt("mss", 0).let { if (it == 0) 0 else it.coerceIn(300, 1460) },
-                grpcMode = o.optString("grpcMode", d.grpcMode).ifBlank { d.grpcMode },
-                connectionReuse = o.optBoolean("connectionReuse", true),
-            )
-        }
-
         /** What to use when the feed said nothing about a node (i.e. the country default). */
         fun forRegime(r: Regime): Tune = when (r) {
+            // Cleanest transport wins; no fragmentation, no padding - camouflage is not free and
+            // nobody is looking at the shape of the handshake today.
             Regime.CALM -> Default.copy(mux = true, keepAliveSec = 30, fragSize = 0)
             // 200-byte first record, then full ones: enough to break the shape signature the DPI
             // matches on, few enough writes that a phone on LTE doesn't feel it.
@@ -123,7 +98,7 @@ data class Tune(
                 fragSize = 200, fragCount = 2, fragStrategy = "variable", fragDelayMs = 20,
                 mux = true, keepAliveSec = 15, mtu = 1280, mss = 1300,
             )
-            // Everything gets smaller and slower to identify; a new handshake is the risky event,
+            // Everything gets smaller and slower to identify; a *new* handshake is the risky event,
             // so reuse hard and let one stream live as long as the path allows.
             Regime.BLACKOUT -> Default.copy(
                 fragSize = 120, fragCount = 3, fragStrategy = "random", fragDelayMs = 40,
@@ -131,6 +106,166 @@ data class Tune(
                 grpcMode = "multi", connectionReuse = true,
             )
         }
+    }
+}
+
+/**
+ * What the feed sends per node: a **patch**, never a full object. Sparse on purpose - the server only
+ * states what it measured or decided ("this node needs 200-byte fragments, this one must not use mux
+ * because its host drops it"), and everything else stays the client's call for the current regime.
+ *
+ * The wire shape is either that object or a preset name ("calm" | "tight" | "blackout"), which is what
+ * the AI tuner emits when it wants to move a whole fleet at once: `{"tune": "tight"}`.
+ */
+data class TunePatch(
+    val fragSize: Int? = null,
+    val fragCount: Int? = null,
+    val fragStrategy: String? = null,
+    val fragDelayMs: Int? = null,
+    val alpn: String? = null,
+    val fingerprint: String? = null,
+    val sni: String? = null,
+    val ech: Boolean? = null,
+    val keepAliveSec: Int? = null,
+    val mux: Boolean? = null,
+    val muxConcurrency: Int? = null,
+    val allowLan: Boolean? = null,
+    val mtu: Int? = null,
+    val mss: Int? = null,
+    val grpcMode: String? = null,
+    val connectionReuse: Boolean? = null,
+) {
+    val isEmpty: Boolean get() = this == Empty
+
+    fun applyTo(base: Tune): Tune = copy2(base)
+
+    private fun copy2(b: Tune) = Tune(
+        fragSize = fragSize ?: b.fragSize,
+        fragCount = fragCount ?: b.fragCount,
+        fragStrategy = fragStrategy ?: b.fragStrategy,
+        fragDelayMs = fragDelayMs ?: b.fragDelayMs,
+        alpn = alpn ?: b.alpn,
+        fingerprint = fingerprint ?: b.fingerprint,
+        sni = sni ?: b.sni,
+        ech = ech ?: b.ech,
+        keepAliveSec = keepAliveSec ?: b.keepAliveSec,
+        mux = mux ?: b.mux,
+        muxConcurrency = muxConcurrency ?: b.muxConcurrency,
+        allowLan = allowLan ?: b.allowLan,
+        mtu = mtu ?: b.mtu,
+        mss = mss ?: b.mss,
+        grpcMode = grpcMode ?: b.grpcMode,
+        connectionReuse = connectionReuse ?: b.connectionReuse,
+    )
+
+    fun toJson(): JSONObject = JSONObject()
+        .apply {
+            fragSize?.let { put("fragSize", it) }
+            fragCount?.let { put("fragCount", it) }
+            fragStrategy?.let { put("fragStrategy", it) }
+            fragDelayMs?.let { put("fragDelayMs", it) }
+            alpn?.let { put("alpn", it) }
+            fingerprint?.let { put("fingerprint", it) }
+            sni?.let { put("sni", it) }
+            ech?.let { put("ech", it) }
+            keepAliveSec?.let { put("keepAliveSec", it) }
+            mux?.let { put("mux", it) }
+            muxConcurrency?.let { put("muxConcurrency", it) }
+            allowLan?.let { put("allowLan", it) }
+            mtu?.let { put("mtu", it) }
+            mss?.let { put("mss", it) }
+            grpcMode?.let { put("grpcMode", it) }
+            connectionReuse?.let { put("connectionReuse", it) }
+        }
+
+    companion object {
+        val Empty = TunePatch()
+
+        /** Lenient + clamped: a hostile or malformed feed must never produce a hostile profile. */
+        fun fromAny(v: Any?): TunePatch {
+            if (v is String) {
+                // preset from the server ("tight") or a directive to follow the local regime ("auto")
+                return if (v.isBlank() || v == "auto") Empty else fromObject(
+                    JSONObject().put("preset", Regime.of(v).name.lowercase())
+                )
+            }
+            if (v !is JSONObject) return Empty
+            return fromObject(v)
+        }
+
+        private fun fromObject(o: JSONObject): TunePatch {
+            val preset = o.optString("preset").let { Regime.of(it.ifBlank { null }) }
+            val p = Tune.forRegime(preset)
+            fun i(k: String, d: Int, lo: Int, hi: Int): Int? =
+                if (!o.has(k) || o.isNull(k)) null else o.optInt(k, d).coerceIn(lo, hi)
+            fun b(k: String, d: Boolean): Boolean? =
+                if (!o.has(k) || o.isNull(k)) null else o.optBoolean(k, d)
+            fun s(k: String, d: String): String? =
+                if (!o.has(k) || o.isNull(k)) null else o.optString(k, d).ifBlank { null }
+            return TunePatch(
+                fragSize = i("fragSize", p.fragSize, 0, 16384),
+                fragCount = i("fragCount", p.fragCount, 1, 64),
+                fragStrategy = s("fragStrategy", p.fragStrategy),
+                fragDelayMs = i("fragDelayMs", p.fragDelayMs, 0, 600),
+                alpn = s("alpn", p.alpn),
+                fingerprint = s("fingerprint", p.fingerprint),
+                sni = s("sni", p.sni),
+                ech = b("ech", p.ech),
+                keepAliveSec = i("keepAliveSec", p.keepAliveSec, 0, 300),
+                mux = b("mux", p.mux),
+                muxConcurrency = i("muxConcurrency", p.muxConcurrency, 1, 64),
+                allowLan = b("allowLan", p.allowLan),
+                mtu = i("mtu", p.mtu, 576, 9000),
+                mss = i("mss", p.mss, 300, 1460)?.let { if (o.optInt("mss") == 0) 0 else it },
+                grpcMode = s("grpcMode", p.grpcMode),
+                connectionReuse = b("connectionReuse", p.connectionReuse),
+            )
+        }
+    }
+}
+
+/** The user's own switches (Settings sheet). Anything left null means "the app decides". */
+data class Overrides(
+    val fragment: Boolean? = null,
+    val mux: Boolean? = null,
+    val realityFirst: Boolean? = null,
+    val mtu: Int? = null,
+    val keepAliveSec: Int? = null,
+    val fingerprint: String? = null,
+    val autoBoot: Boolean? = null,
+)
+
+/**
+ * The precedence, in one place, so nobody has to re-derive it:
+ *
+ *   regime default  <-  feed patch (server knows this node)  <-  user override (user knows their body)
+ *
+ * "auto" fragmenting means the *regime* decides; an explicit off from the user is honoured even when
+ * it is a bad idea, because a phone that cannot reach anything is worse than a slightly detectable
+ * handshake - and because a power user who turns it off after reading docs/ANTI-BLOCK.md must be able
+ * to see their own choice in the profile we generate, or they will not trust anything else we show.
+ */
+object Tuner {
+    fun resolve(regime: Regime, patch: TunePatch?, o: Overrides): Tune {
+        var t = Tune.forRegime(regime)
+        patch?.let { t = it.applyTo(t) }
+        o.mux?.let { t = t.copy(mux = it) }
+        o.mtu?.let { t = t.copy(mtu = it.coerceIn(576, 9000), mss = if (t.mss > 0) it - 60 else 0) }
+        o.keepAliveSec?.let { t = t.copy(keepAliveSec = it.coerceIn(0, 300)) }
+        o.fingerprint?.let { t = t.copy(fingerprint = it) }
+        o.fragment?.let { on ->
+            if (on) {
+                if (t.fragSize <= 0) t = t.copy(
+                    fragSize = if (regime == Regime.BLACKOUT) 120 else 200,
+                    fragCount = if (regime == Regime.BLACKOUT) 3 else 2,
+                    fragStrategy = t.fragStrategy.ifBlank { "variable" },
+                    fragDelayMs = if (t.fragDelayMs == 0) 20 else t.fragDelayMs,
+                )
+            } else {
+                t = t.copy(fragSize = 0, fragCount = 1, fragStrategy = "", fragDelayMs = 0)
+            }
+        }
+        return t
     }
 }
 
