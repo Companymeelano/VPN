@@ -7,8 +7,9 @@
   هندسه (گرید ۲۴ واحدی، قلم ۲٫۰، سرِ گرد، بدون زاویه):
     • هر دو پا روی y=17.8، هر دو رأس روی y=7.2، دهانه‌ها برابر (1.8 و 2.0 واحد)
     • رأسِ میانیِ M تا y=11.6 پایین می‌آید  →  عمقِ «تونل»
-    • نوارِ A کج نیست: کمانی به شعاع ۲ واحد در y=13.8  →  دروازه
-    • نقطه منفی است: دایره‌ی هم‌رنگِ زمینه روی پای چپ A  →  «مهرِ رد شده» و نقطه‌ی «•» همزمان
+    • نوارِ A کج نیست: دروازه — از 16.8 تا 20.8، شعاع ۲٫۰ در y=13.8، با دو پرچ ۰٫۸ واحدی پایین
+    • نقطه مثبت است و روی خطِ ground می‌نشیند؛ یک پرتو کوتاه (11.8→13.4) آن را به M می‌بندد تا
+      خط «پیوسته» بماند: بسته‌ای که هنوز در حالِ عبور است
     • کف‌پا 45°، فاصله‌ی دو حرف = ۴ واحد، کادرِ امن ۶۶٪
   دو کمانِ خالی (درهٔ M و زیرِ A) تنها جایِ نورِ سبزنعنایی‌اند؛ در مونوکرومِ Adaptive همان
   کمان‌ها با رنگِ خودِ سیستم پر می‌شوند، پس نشان در هر تمی نشان است.
@@ -47,9 +48,17 @@
 
     <!-- the mark itself, in the 24-unit grid; everything else is framing -->
     <g id="mark" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
-      <path d="M2.8 17.8 V7.2 L7.3 11.6 L11.8 7.2 V17.8"/>
+      <path d="M2.8 17.8 L2.8 7.2 L7.3 11.6 L11.8 7.2 L11.8 17.8"/>
       <path d="M15.8 17.8 L18.8 7.2 L21.8 17.8"/>
-      <path d="M17.3 13.8 A2 2 0 0 1 20.3 13.8"/>
+      <path d="M16.8 14.6 L16.8 13.8 A2 2 0 0 1 20.8 13.8 L20.8 14.6"/>
+      <path d="M11.8 15.4 L13.4 15.4"/>
+    </g>
+    <!-- the packet is a positive dot, sitting on the ground line and tied to both letters -->
+    <circle id="dot" cx="14.6" cy="15.4" r="1.15"/>
+    <!-- the two arches that carry light -->
+    <g id="gate" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M2.8 17.8 L2.8 7.2 L7.3 11.6 L11.8 7.2 L11.8 17.8"/>
+      <path d="M16.8 14.6 L16.8 13.8 A2 2 0 0 1 20.8 13.8 L20.8 14.6"/>
     </g>
   </defs>
 
@@ -63,15 +72,14 @@
 
   <!-- mark, centred: 24 units * 28 = 672, offset (1080-672)/2 = 204 -->
   <g transform="translate(204,204) scale(28)">
-    <!-- the only light in the picture lives in the two negative arches -->
+    <!-- the only light in the picture lives in the M notch and the A arch -->
     <g filter="url(#soft)">
-      <path d="M2.8 17.8 V7.2 L7.3 11.6 L11.8 7.2 V17.8" fill="none" stroke="#22C77E" stroke-opacity="0.5" stroke-width="0.9" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M17.3 13.8 A2 2 0 0 1 20.3 13.8" fill="none" stroke="#22C77E" stroke-opacity="0.55" stroke-width="1.1" stroke-linecap="round"/>
+      <use href="#gate" stroke="#22C77E" stroke-opacity="0.45" stroke-width="1.1"/>
+      <circle cx="14.6" cy="15.4" r="1.9" fill="#22C77E" fill-opacity="0.35"/>
     </g>
-    <use href="#mark" stroke="#0A0E13" stroke-opacity="0.6" transform="translate(0,0.16)"/>
+    <use href="#mark" stroke="#0A0E13" stroke-opacity="0.55" transform="translate(0,0.18)"/>
     <use href="#mark" stroke="url(#ink)"/>
-    <!-- the dot: a circle of the field colour biting into the A's left leg -->
-    <circle cx="14.6" cy="15.4" r="1.15" fill="#13171C"/>
+    <use href="#dot" fill="url(#ink)"/>
   </g>
 
   <!-- safe zone of an adaptive icon: 66% of the tile, for review only -->
