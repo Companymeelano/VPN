@@ -2,18 +2,37 @@
 
 این پروژه در محیط توسعه‌ی ما قابل کامپایل **نبود** (Android SDK و Maven Central در دسترس نیستند)،
 بنابراین build روی GitHub Actions اجرا می‌شود: `.github/workflows/apk.yml`.
-نتیجه‌ی واقعی اجرای فعلی: **`compileDebugKotlin` با یک خطای ۳۵تایی شروع شد و به ۳ خطا رسید**؛
-پس کد واقعاً با AGP 8.6.1 + Kotlin 2.0.21 + Compose BOM 2024.09.03 کامپایل می‌شود.
+**وضعیت فعلی: سبز.** حلقه‌ی CI این مسیر را طی کرد — ۳۵ خطا → ۳ → ۱ → **کامپایل موفق**، و
+اولین APK واقعی با تگ `v2.0.0-beta.1` منتشر شد (`meelano-2.0.0-200000-debug.apk`، ۱۲٬۲۸۷٬۹۷۸ بایت،
+sha256 `819a69be…3b5b1f80`). پس کد واقعاً با AGP 8.6.1 + Kotlin 2.0.21 + Compose BOM 2024.09.03
+کامپایل می‌شود؛ «کامپایل‌نشده بودن» دیگر یک فرض نیست.
 
-## ۱) APK گرفتن (۳ دقیقه، بدون نصب چیزی روی ماشین تو)
+دو خطایی که فقط کامپایلور واقعی می‌گیرد و بازبینی متنی نمی‌گیرد، برای تجربه:
+`VpnService.protect()` اورلود `FileDescriptor`/`ParcelFileDescriptor` **ندارد** (فقط `int`، `Socket`،
+`DatagramSocket`)، و `Builder` هیچ `addExcludedRoute` ندارد (مسیر خارج از تونل = `protect()` یا
+`addDisallowedApplication`).
+
+## ۱) APK گرفتن — دو راه
+**راه اول: تگ بزن (ریلیز خودکار، لینک ثابت).** هر `v*` که پوش کنی، بیلد گرفته و یک Release با
+سه asset ساخته می‌شود: APK، `.sha256` کنارش، و آیکون ۵۱. تگ‌های `alpha/beta/rc` خودکار
+`--prerelease` می‌شوند.
 ```bash
-gh workflow run "build apk" --ref <branch> -f variant=debug -f core_linked=false
-gh run list --limit 1
-gh run download <run-id> -n meelano-apk-debug       # یا Artifact را از صفحه‌ی Run دانلود کن
-adb install -r meelano-*-debug.apk
+git tag -a v2.0.0-beta.2 -m "…" && git push origin v2.0.0-beta.2
+gh release view v2.0.0-beta.2 --web        # یا: curl -L -o app.apk <download-url>
+adb install -r app.apk
 ```
-خلاصه‌ی همان Run این‌ها را هم می‌نویسد: `sha256`، حجم، و مسیر پیشنهادی روی هاست.
-برای دیدن خطاهای build روی PR (چون لاگ Actions همیشه در دسترس نیست) کامنت ربات را ببین.
+**راه دوم: Artifact از همان Run** (بدون ریلیز؛ برای تست‌های زودگذر):
+```bash
+gh run list --limit 1 && gh run download <run-id> -n meelano-apk-debug
+```
+`gh workflow run "build apk" --ref <branch> -f variant=debug -f core_linked=false` هم هست، ولی
+dispatch کردن به اجازه‌ی `actions: write` نیاز دارد که توکن ربات‌های محیط توسعه معمولاً ندارند؛
+push تگ همان کار را با اجازه‌ی push معمولی می‌کند — برای همین ماشه‌ی اصلی تگ است.
+
+خطاهای build را workflow به‌صورت **کامنت روی PR** برمی‌گرداند (با لیست نامزدهای اورلود، چون لاگ
+Actions از همه‌جا قابل دانلود نیست). اگر فقط workflow را ویرایش می‌کنی: **کلید تکراری در YAML**
+(مثلاً دو `push:` زیر `on:`) را PyYAML بی‌صدا تحمل می‌کند ولی GitHub کل workflow را «not valid»
+می‌کند و اصلاً job نمی‌سازد — قبل از پوش، تکراری‌بودن کلیدها را چک کن.
 
 ## ۲) ورودی‌های workflow
 | ورودی | پیش‌فرض | معنا |
@@ -67,3 +86,16 @@ SDK لازم: `platform-tools`, `platforms;android-35`, `build-tools;35.0.0`.
 - [ ] `?action=selftest` روی هاست سبز، و `vip.json`/`free.json` هر دو با `name: "Vip Meelano"`.
 - [ ] `adb logcat -s MeelanoFeed MeelanoVpn` بدون `notify()` بیش از ۱ بار در ثانیه.
 - [ ] اگر `versionCode` را بالا بردی، `version.json` هم تازه شده باشد (وگرنه آپدیت بی‌صدا no-op است).
+
+## ۷) لینک‌های نسخه‌ی فعلی
+| مورد | مقدار |
+|---|---|
+| Release | `https://github.com/Companymeelano/VPN/releases/tag/v2.0.0-beta.1` |
+| APK (asset) | `https://github.com/Companymeelano/VPN/releases/download/v2.0.0-beta.1/meelano-2.0.0-200000-debug.apk` |
+| حجم / sha256 | ۱۲٬۲۸۷٬۹۷۸ بایت · `819a69be5cafc9317b994e98de66d07744c0777316fe63be37fb6e1a3b5b1f80` |
+| نام روی هاست | `public_html/v/apk/meelano-2.0.0-200000.apk` (+ `.sha256`) |
+| وضعیت هسته | `CORE_LINKED=false` — تونل وصل نیست؛ برای ریلیز کاربران `core_linked=true` لازم است |
+
+REPO خصوصی است، پس این لینک‌ها با لاگین GitHub باز می‌شوند. برای اینکه لینک «عمومی» باشد یا
+`version.json` همان لینک را نشان دهد، فایل را روی `ainetmee.ir` بگذار (این بخش §۵) — لینک GitHub
+برای تست داخلی و QA ساخته شده، نه برای توزیع انبوه.

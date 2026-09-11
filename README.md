@@ -56,7 +56,14 @@ curl 'http://localhost/v/?action=selftest&key=<toolKey>'
 فقط `"name": "Vip Meelano"` + `"cc": "DE"` که اپ پرچم خودش را از آن می‌سازد.
 
 ## اندروید
-`android/app/src/main/java/ir/meelano/vpn/**` — یک ماژول Gradle واقعی (نه اسنیپت):
+`android/app/src/main/java/ir/meelano/vpn/**` — یک ماژول Gradle واقعی (نه اسنیپت)، **با کامپایل موفق در CI**.
+
+> اولین APK ساخته‌شده: `v2.0.0-beta.1` → `meelano-2.0.0-200000-debug.apk` (۱۱٫۷ مگابایت،
+> sha256 `819a69be…3b5b1f80`) در Releases. با `core_linked=false` ساخته شده: فید، تست، رتبه‌بندی،
+> keep-alive، کاشی QS، نوتیفیکیشن سرعت زنده و جریان آپدیت واقعی‌اند؛ فقط تونل خالی است
+> (هسته‌ی sing-box/tProxy هنوز به `CoreApi` وصل نشده). مسیر ساخت: [docs/ANDROID-BUILD.md](docs/ANDROID-BUILD.md).
+> هویت بصری و آیکن: [docs/BRAND.md](docs/BRAND.md) — نشان، یک `M` با دهانه‌ی تونل.
+
 
 ```
 android/
