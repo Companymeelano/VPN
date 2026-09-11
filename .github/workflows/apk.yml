@@ -169,13 +169,16 @@ jobs:
             echo
             echo '```'
             grep -A24 "\* What went wrong" "$log" | head -60 || true
-            grep -E "^> Task .*FAILED|^[a-zA-Z]+: error:|^e: file://|Caused by:" "$log" | head -40 || true
+            grep -E "^> Task .*FAILED|^[a-zA-Z]+: error:|Caused by:" "$log" | head -20 || true
+            # خودِ خطا + ۷ خط بعدش: «None of the following candidates is applicable» بی لیستِ
+            # نامزدها هیچی بهت نمی‌گوید؛ کامپایلور اورلودهای درست را همان‌جا ردیف می‌کند
+            awk '/^e: file:\/\//{p=8} p&&p--' "$log" | head -160 || true
             echo '```'
             echo
             echo "<details><summary>۱۲۰ خط آخر لاگ gradle</summary>"
             echo
             echo '```'
-            tail -120 "$log" | sed "s#$(pwd)/android/##g"
+            tail -40 "$log" | sed "s#$(pwd)/android/##g"
             echo '```'
             echo "</details>"
           } > report.md

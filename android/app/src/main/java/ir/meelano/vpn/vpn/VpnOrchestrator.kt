@@ -174,16 +174,14 @@ class VpnOrchestrator(
      * What the engine must call on its *own* outbound socket before dialling the server.
      * This — not a route — is how a VPN keeps its control connection outside the tunnel.
      *
-     * `VpnService.protect` accepts an fd, a ParcelFileDescriptor, a Socket or a DatagramSocket —
-     * there is deliberately no FileDescriptor overload, so the core hands us the same raw `Int`
-     * it passes to `CoreApi.set_fd` and we give it straight back. All three shapes are exposed
-     * because cores differ: sing-box dials a Socket, a legacy Go core dials an fd.
+     * `VpnService.protect` has exactly three overloads: `protect(int)`, `protect(Socket)` and
+     * `protect(DatagramSocket)`. There is no FileDescriptor and no ParcelFileDescriptor variant —
+     * a core holding a pfd must call `pfd.detachFd()` on its own side and hand us the int, because
+     * detaching is also a transfer of ownership and that decision belongs to whoever owns the tunnel.
+     * So the raw int here is the same value `CoreApi.set_fd` receives; nothing is dup'd or cached.
      */
     fun protectOutbound(fd: Int): Boolean =
         runCatching { (context as? VpnService)?.protect(fd) ?: false }.getOrDefault(false)
-
-    fun protectOutbound(pfd: android.os.ParcelFileDescriptor): Boolean =
-        runCatching { (context as? VpnService)?.protect(pfd) ?: false }.getOrDefault(false)
 
     fun protectOutbound(socket: java.net.Socket): Boolean =
         runCatching { (context as? VpnService)?.protect(socket) ?: false }.getOrDefault(false)
