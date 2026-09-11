@@ -45,6 +45,13 @@ on:
     paths:
       - 'android/**'
       - '.github/workflows/apk.yml'
+  # workflow_dispatch فقط وقتی در منوی Actions ظاهر می‌شود که فایل روی شاخه‌ی پیش‌فرض باشد؛
+  # تا آن زمان، همین workflow روی PR اجرا می‌شود و همان APK را می‌دهد.
+  pull_request:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '.github/workflows/apk.yml'
 
 permissions:
   contents: read
