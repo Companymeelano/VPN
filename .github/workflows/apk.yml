@@ -20,11 +20,6 @@ name: build apk
 # خوانده شود — دو جا نگه‌داشتن نسخه، همان چیزی است که باعث می‌شود آپدیت خودکار بی‌صدا کار نکند.
 
 on:
-  push:
-    # «تگ بزن، APK با لینک دانلود منتشر می‌شود» — تنها ماشه‌ای که با توکن محدودِ محیط توسعه هم کار می‌کند،
-    # چون dispatch کردن workflow نیاز به اجازه‌ی actions:write دارد ولی push تگ نه.
-    tags: ['v*']
-    branches: [main]
   workflow_dispatch:
     inputs:
       variant:
@@ -54,7 +49,12 @@ on:
         default: 'true'
         options: ['true', 'false']
   push:
+    # main = نردبان سبز؛ تگ = دکمه‌ی انتشار (Release با لینک مستقیم). چرا تگ و نه dispatch:
+    # dispatch کردن workflow به اجازه‌ی actions:write نیاز دارد که توکن محیط توسعه ندارد،
+    # ولی push تگ با همان اجازه‌ی push کار می‌کند. برای tag، فیلتر paths روی تغییرات
+    # کامیتِ تگ اعمال می‌شود — و تگ همیشه روی کامیتی می‌خورد که android/** را لمس کرده.
     branches: [main]
+    tags: ['v*']
     paths:
       - 'android/**'
       - '.github/workflows/apk.yml'
