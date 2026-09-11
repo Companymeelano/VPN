@@ -163,9 +163,11 @@ object NetGuard {
         return runCatching {
             Socket().use { raw ->
                 raw.connect(InetSocketAddress(host, port), timeoutMs)
+                // SSLSocketFactory.createSocket is declared to return Socket (inherited from
+                // SocketFactory); the TLS knobs we need live on SSLSocket, so the cast is the point.
                 val ssl = (SSLSocketFactory.getDefault() as SSLSocketFactory).createSocket(
                     raw, sni.ifBlank { host }, port, true
-                )
+                ) as javax.net.ssl.SSLSocket
                 ssl.use { s ->
                     s.soTimeout = timeoutMs
                     val p: SSLParameters = s.sslParameters
