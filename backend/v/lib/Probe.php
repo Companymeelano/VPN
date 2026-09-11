@@ -109,7 +109,10 @@ abstract class NetTask
      */
     protected function connected()
     {
-        if (defined('SOL_SOCKET') && defined('SO_ERROR')) {
+        // three separate things must line up: the constants, the function, and the socket being
+        // a real stream. shared hosts and CI builds routinely have the constants but not the
+        // function (it is tied to ext-sockets on some distros), so guard on all of them.
+        if (function_exists('stream_socket_get_option') && defined('SOL_SOCKET') && defined('SO_ERROR')) {
             $err = null;
             if (@stream_socket_get_option($this->sock, SOL_SOCKET, SO_ERROR, $err)) {
                 return (int) $err === 0;
