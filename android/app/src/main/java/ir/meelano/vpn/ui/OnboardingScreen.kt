@@ -41,7 +41,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import ir.meelano.vpn.R
 import ir.meelano.vpn.keepalive.KeepAlive
-import ir.meelano.vpn.ui.theme.Meelano
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.border
@@ -153,7 +152,7 @@ fun OnboardingScreen(onDone: () -> Unit) {
 
                 Text(
                     "بعداً هم می‌شود از تنظیمات عوضشان کرد.",
-                    fontSize = 11.5.sp, color = p.mutedFaint, textAlign = TextAlign.Center,
+                    fontSize = 11.5.sp, color = p.faint, textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(10.dp))
                 MeelanoButton(

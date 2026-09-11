@@ -1,6 +1,5 @@
 package ir.meelano.vpn.ui
 
-import ir.meelano.vpn.ui.theme.Meelano
 import ir.meelano.vpn.ui.theme.Motion
 
 import androidx.compose.animation.core.Animatable
@@ -431,7 +430,7 @@ private fun Flag(cc: String?, modifier: Modifier = Modifier) {
         ) {
             Text(
                 cc?.trim()?.uppercase()?.take(2) ?: "??",
-                fontSize = 6.5.sp, color = p.mutedFaint, fontWeight = FontWeight.Bold,
+                fontSize = 6.5.sp, color = p.faint, fontWeight = FontWeight.Bold,
             )
         }
     } else {

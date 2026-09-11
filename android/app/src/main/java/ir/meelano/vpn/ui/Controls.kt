@@ -62,7 +62,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ir.meelano.vpn.R
 import ir.meelano.vpn.ui.theme.LocalMotionPrefs
-import ir.meelano.vpn.ui.theme.Meelano
 
 /**
  * The control kit: buttons, icon buttons, chips, segmented, switch, panels.
@@ -288,7 +287,7 @@ fun MeelanoButton(
                 horizontalArrangement = Arrangement.Center,
             ) {
                 if (loading) {
-                    Comet(size = size.icon, ink = inkColor)
+                    Comet(size = size.icon, inkIn = inkColor)
                     Spacer(Modifier.width(size.hPad * 0.6f))
                 } else if (iconRes != 0) {
                     Icon(painterResource(iconRes), null, Modifier.size(size.icon), tint = inkColor)
@@ -484,7 +483,7 @@ fun MeelanoChip(
         label = "chipShrink",
     )
     val ink = when {
-        !enabled -> p.mutedFaint
+        !enabled -> p.faint
         on -> p.accent
         else -> p.muted
     }
@@ -546,7 +545,7 @@ fun MeelanoChip(
                 Spacer(Modifier.width(5.dp))
                 Text(
                     count.toString(),
-                    color = if (on) ink else p.mutedFaint,
+                    color = if (on) ink else p.faint,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -755,7 +754,7 @@ fun MeelanoPanel(
         if (title.isNotEmpty()) {
             Text(
                 title,
-                color = p.mutedFaint,
+                color = p.faint,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 0.4.sp,
@@ -802,7 +801,7 @@ fun StateDot(on: Boolean, label: String = "", modifier: Modifier = Modifier) {
                 .padding(5.dp)
                 .size(7.dp)
                 .clip(CircleShape)
-                .background(if (on) p.accent else p.mutedFaint),
+                .background(if (on) p.accent else p.faint),
         )
         if (label.isNotEmpty()) {
             Spacer(Modifier.width(6.dp))
@@ -845,7 +844,7 @@ fun MeelanoEmptyState(
         Spacer(Modifier.height(12.dp))
         Text(title, color = p.text, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(5.dp))
-        Text(body, color = p.mutedFaint, fontSize = 12.sp, modifier = Modifier.padding(bottom = 14.dp))
+        Text(body, color = p.faint, fontSize = 12.sp, modifier = Modifier.padding(bottom = 14.dp))
         MeelanoButton(action, onAction, size = BtnSize.Small, tone = BtnTone.Tonal)
     }
 }

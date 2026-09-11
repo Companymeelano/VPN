@@ -47,7 +47,6 @@ import ir.meelano.vpn.R
 import ir.meelano.vpn.data.AppSettings
 import ir.meelano.vpn.data.FeedNode
 import ir.meelano.vpn.data.Prefs
-import ir.meelano.vpn.ui.theme.Meelano
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -215,7 +214,7 @@ fun ServerListSheet(
             ) {
                 Text(
                     stringResource(R.string.last_update, relTime(vm.generatedAt(if (seg == SEG_FREE) "free" else "vip"))),
-                    fontSize = 11.sp, color = p.mutedFaint, modifier = Modifier.weight(1f),
+                    fontSize = 11.sp, color = p.faint, modifier = Modifier.weight(1f),
                 )
                 MeelanoButton(
                     label = stringResource(R.string.row_retest),
@@ -333,7 +332,7 @@ private fun AutoRow(on: Boolean, onChange: (Boolean) -> Unit, title: String, bod
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.height(2.dp))
-            Text(body, fontSize = 11.sp, color = p.mutedFaint, maxLines = 2, lineHeight = 16.sp)
+            Text(body, fontSize = 11.sp, color = p.faint, maxLines = 2, lineHeight = 16.sp)
         }
         Spacer(Modifier.size(12.dp))
         MeelanoSwitch(checked = on, onChange = onChange)

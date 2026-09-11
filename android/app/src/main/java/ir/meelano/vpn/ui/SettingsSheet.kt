@@ -46,7 +46,6 @@ import ir.meelano.vpn.BuildConfig
 import ir.meelano.vpn.R
 import ir.meelano.vpn.data.AppSettings
 import ir.meelano.vpn.keepalive.KeepAlive
-import ir.meelano.vpn.ui.theme.Meelano
 
 /**
  * Settings as a sheet, one decision per row, and the two switches that actually matter are at the top.
@@ -216,7 +215,7 @@ fun SettingsSheet(onDismiss: () -> Unit) {
             ) {
                 Text(
                     stringResource(R.string.set_version, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
-                    fontSize = 11.sp, color = p.mutedFaint, modifier = Modifier.weight(1f),
+                    fontSize = 11.sp, color = p.faint, modifier = Modifier.weight(1f),
                     style = TextStyle(fontFeatureSettings = "tnum"),
                 )
                 StateDot(
@@ -268,7 +267,7 @@ private fun SwitchRow(title: String, body: String, on: Boolean, onChange: (Boole
                 fontWeight = FontWeight.Medium,
             )
             Spacer(Modifier.height(2.dp))
-            Text(body, fontSize = 11.sp, color = p.mutedFaint, maxLines = 2, lineHeight = 16.sp)
+            Text(body, fontSize = 11.sp, color = p.faint, maxLines = 2, lineHeight = 16.sp)
         }
         Spacer(Modifier.width(12.dp))
         Box(Modifier.alpha(if (on) 1f else 0.85f)) { MeelanoSwitch(checked = on, onChange = onChange) }

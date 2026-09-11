@@ -35,7 +35,6 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import ir.meelano.vpn.R
 import ir.meelano.vpn.update.UpdateManager
-import ir.meelano.vpn.ui.theme.Meelano
 import androidx.compose.material3.Icon
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.border
@@ -111,7 +110,7 @@ fun UpdateSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                     Text(stringResource(R.string.upd_title), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     Text(
                         info?.let { "v${it.versionName} · ${humanSize(it.sizeBytes)}" } ?: "—",
-                        fontSize = 11.sp, color = p.mutedFaint,
+                        fontSize = 11.sp, color = p.faint,
                         style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"),
                     )
                 }
@@ -232,7 +231,7 @@ fun UpdateSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
 
             Text(
                 "اندروید نصب بی‌صدا را فقط به Device Owner اجازه می‌دهد؛ برای همین یک تأیید دستی لازم است.",
-                fontSize = 10.5.sp, color = p.mutedFaint, lineHeight = 16.sp,
+                fontSize = 10.5.sp, color = p.faint, lineHeight = 16.sp,
                 modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 10.dp),
             )
         }

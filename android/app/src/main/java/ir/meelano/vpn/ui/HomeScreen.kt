@@ -56,7 +56,6 @@ import androidx.compose.ui.unit.sp
 import ir.meelano.vpn.R
 import ir.meelano.vpn.data.AppSettings
 import ir.meelano.vpn.data.FeedNode
-import ir.meelano.vpn.ui.theme.Meelano
 import ir.meelano.vpn.update.UpdateManager
 import ir.meelano.vpn.vpn.ConnectPhase
 import kotlin.math.roundToInt
@@ -238,7 +237,7 @@ private fun TopBar(connected: Boolean, syncing: Boolean, onRefresh: () -> Unit, 
             sizeDp = 38.dp,
             corner = 12.dp,
             enabled = !syncing,
-            tint = if (syncing) p.accent else p.muted,
+            tintIn = if (syncing) p.accent else p.muted,
         )
         Spacer(Modifier.width(6.dp))
         MeelanoIconButton(
