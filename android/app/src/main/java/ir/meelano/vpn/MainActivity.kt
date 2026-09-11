@@ -12,7 +12,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
 import ir.meelano.vpn.data.AppSettings
 import ir.meelano.vpn.ui.HomeScreen
@@ -28,7 +28,7 @@ import ir.meelano.vpn.ui.theme.MeelanoTheme
  */
 class MainActivity : ComponentActivity() {
 
-    private val vm: VpnViewModel by viewModel()
+    private val vm: VpnViewModel by viewModels()
 
     private val vpnConsent =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
@@ -60,9 +60,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        intent?.let(::handleShortcut)
+        handleShortcut(intent)
     }
 
     /** shortcuts and deep links land here; a deep link NEVER auto-connects (import only, then the user taps) */

@@ -87,7 +87,7 @@ object KeepAlive {
         val pm = context.getSystemService(PowerManager::class.java) ?: return null
         if (pm.isIgnoringBatteryOptimizations(context.packageName)) return null
         return Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-            .setData(Intent.parseUri("package:" + context.packageName, 0))
+            .setData(android.net.Uri.fromParts("package", context.packageName, null))
     }
 
     fun isIgnoringBatteryOptimizations(context: Context): Boolean {

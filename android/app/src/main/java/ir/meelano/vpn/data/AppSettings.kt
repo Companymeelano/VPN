@@ -90,6 +90,7 @@ object AppSettings {
             is Boolean -> e.putBoolean(key, v)
             is Int -> e.putInt(key, v)
             is String -> e.putString(key, v)
+            else -> e
         }.apply()
         apply()
         publish()

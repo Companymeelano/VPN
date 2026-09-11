@@ -59,7 +59,6 @@ import ir.meelano.vpn.R
 import ir.meelano.vpn.ui.theme.LocalSpacing
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
@@ -98,7 +97,7 @@ fun VpnControlPanel(
     modifier: Modifier = Modifier,
 ) {
     val connected = phase is ConnectPhase.Connected
-    val connecting = phase is! ConnectPhase.Idle && phase is! ConnectPhase.Connected && phase is! ConnectPhase.Failed
+    val connecting = phase !is ConnectPhase.Idle && phase !is ConnectPhase.Connected && phase !is ConnectPhase.Failed
     val failed = phase is ConnectPhase.Failed
     val progress = when (phase) {
         is ConnectPhase.Idle -> 0f
@@ -211,10 +210,10 @@ private fun ConnectRing(
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = {
-                        view.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                     },
                     onTap = {
-                        view.performHapticFeedback(HapticFeedbackType.LongPress)
+                        view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
                         onPress()
                     },
                     onLongPress = { onLongPress() },
@@ -237,7 +236,7 @@ private fun ConnectRing(
         Canvas(Modifier.fillMaxSize()) {
             val stroke = 6.dp.toPx()
             val inset = stroke / 2 + 5.dp.toPx()
-            val arcSize = Size(size = this.size.width - inset * 2, height = this.size.height - inset * 2)
+            val arcSize = Size(this.size.width - inset * 2, this.size.height - inset * 2)
             val top = Offset(inset, inset)
 
             // track
@@ -488,6 +487,7 @@ object Flags {
 }
 
 /** Server rows: the grade + a quality bar, so a slow-but-usable node is still readable. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun ServerRow(
     node: FeedNode,

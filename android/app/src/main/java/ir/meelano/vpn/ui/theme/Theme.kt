@@ -79,8 +79,8 @@ fun MeelanoTheme(
     }
     val scheme = when {
         dynamic && Build.VERSION.SDK_INT >= 31 ->
-            if (dark) MaterialTheme.dynamicDarkColorScheme(LocalContext.current)
-            else MaterialTheme.dynamicLightColorScheme(LocalContext.current)
+            if (dark) dynamicDarkColorScheme(LocalContext.current)
+            else dynamicLightColorScheme(LocalContext.current)
         dark -> DarkScheme
         else -> LightScheme
     }

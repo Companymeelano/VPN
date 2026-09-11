@@ -41,6 +41,7 @@ class VpnOrchestrator(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var job: kotlinx.coroutines.Job? = null
+    @Volatile private var tunPfd: android.os.ParcelFileDescriptor? = null
 
     val phase: StateFlow<ConnectPhase> get() = state
 
@@ -51,9 +52,13 @@ class VpnOrchestrator(
             try {
                 run(node)
             } catch (c: CancellationException) {
+                releaseTun()
                 state.value = ConnectPhase.Idle
                 throw c
             } catch (t: Throwable) {
+                // a failed dial must not leave a half-open tunnel fd behind: that is how "it says
+                // connected but nothing passes, restart fixes it" happens
+                releaseTun()
                 state.value = ConnectPhase.Failed(t.message ?: "tunnel_error")
             }
         }
@@ -63,7 +68,14 @@ class VpnOrchestrator(
         job?.cancelAndJoin()
         job = null
         withContext(Dispatchers.Default) { runCatching { engine.stop() } }
+        releaseTun()
         state.value = ConnectPhase.Idle
+    }
+
+    /** Closes the ParcelFileDescriptor we deliberately kept alive during the session. */
+    private fun releaseTun() {
+        runCatching { tunPfd?.close() }
+        tunPfd = null
     }
 
     private suspend fun run(node: FeedNode) = withContext(Dispatchers.Default) {
@@ -116,8 +128,10 @@ class VpnOrchestrator(
                 state.value = ConnectPhase.Failed("establish_returned_null")
                 return@withContext
             }
-        // autoClose would kill the tunnel when this local reference is GC'd/closed by us
-        pfd.autoClose = false
+        // ParcelFileDescriptor has no `autoClose` switch: what keeps the tunnel alive is a strong
+        // reference. Without this field the finalizer closes the fd while the core is still using it,
+        // which shows up as "connected for 2 seconds, then dead".
+        tunPfd = pfd
         engine.attachTunnelFd(pfd.fileDescriptor)
 
         // ---- 5. only now is the tunnel healthy enough to advertise DNS to the whole device
@@ -148,7 +162,7 @@ class VpnOrchestrator(
             // would send it *into* the tunnel (instant deadlock loop); the exclusion is
             // addExclusionRoute. protect(socket) on the core side is still the primary mechanism -
             // this is the belt, for cores whose sockets you cannot reach.
-            runCatching { b.addExclusionRoute(serverIp, 32) }
+            runCatching { b.addExcludedRoute("$serverIp/32") }
         }
         // "exclude these apps from the tunnel" (bank apps that break behind VPN) belongs here:
         // b.addAllowedApplication(pkg) / b.addDisallowedApplication(pkg)

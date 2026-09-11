@@ -74,7 +74,7 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         if (p !is ConnectPhase.Idle) return          // connecting: the ring already shows a percentage; a second tap must not restart the dial
-        connect(activeNode())
+        connect(activeNode)
     }
 
     fun connect(node: FeedNode?) {
@@ -97,7 +97,7 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
     /** after the user answers the consent dialog */
     fun onConsentResult(granted: Boolean) {
         _consent.value = null
-        if (granted) connect(activeNode())
+        if (granted) connect(activeNode)
     }
 
     /** switching node while connected: stop, then start — never "start" twice (the old freeze). */

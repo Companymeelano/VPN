@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -123,7 +124,7 @@ fun UpdateSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                     val p = (state as UpdateManager.State.Downloading).percent
                     ProgressBar(p / 100f, stringResource(R.string.upd_downloading, p))
                 }
-                UpdateManager.State.Verifying ->
+                is UpdateManager.State.Verifying ->
                     ProgressBar(null, stringResource(R.string.upd_verifying))
                 is UpdateManager.State.Failed ->
                     Notice(
@@ -132,7 +133,7 @@ fun UpdateSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                         action = stringResource(R.string.retry),
                         onAction = { vm.updates.checkAsync() },
                     )
-                UpdateManager.State.BlockedNeedPermission -> {
+                is UpdateManager.State.BlockedNeedPermission -> {
                     val file = (state as UpdateManager.State.BlockedNeedPermission).file
                     Notice(
                         text = stringResource(R.string.upd_noperm),
@@ -155,7 +156,7 @@ fun UpdateSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                         },
                     )
                 }
-                UpdateManager.State.ReadyToInstall -> {
+                is UpdateManager.State.ReadyToInstall -> {
                     val file = (state as UpdateManager.State.ReadyToInstall).file
                     Notice(
                         text = stringResource(R.string.upd_ready),

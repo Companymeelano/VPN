@@ -55,9 +55,13 @@ object CoreApi {
 
     fun alive(): Boolean = running
 
-    /** Prefer the core's own counters; TrafficStats.getTotalRx() also counts non-VPN traffic. */
-    fun rxBytes(): Long = runCatching { android.net.TrafficStats.getTotalRx() }.getOrDefault(0L)
-    fun txBytes(): Long = runCatching { android.net.TrafficStats.getTotalTx() }.getOrDefault(0L)
+    /**
+     * Device-wide counters. Named `getTotalRxBytes/getTotalTxBytes` (there is no getTotalRx).
+     * Prefer swapping this for the core's own counters when you wire a real engine: these also
+     * count non-VPN traffic, so a download in another app shows up in the speed row.
+     */
+    fun rxBytes(): Long = runCatching { android.net.TrafficStats.getTotalRxBytes() }.getOrDefault(0L)
+    fun txBytes(): Long = runCatching { android.net.TrafficStats.getTotalTxBytes() }.getOrDefault(0L)
 
     suspend fun stop(service: VpnService) {
         // Core.stop()
@@ -151,7 +155,9 @@ object CoreProfiles {
             s.put("tlsSettings", org.json.JSONObject()
                 .put("serverName", n.sni ?: n.host)
                 .put("allowInsecure", n.insecure)
-                .apply { n.alpn?.let { put("alpn", org.json.JSONArray().putAll(org.json.JSONArray(it.split(",")))) } })
+                .apply { n.alpn?.let { list ->
+                    put("alpn", org.json.JSONArray().apply { list.split(",").forEach { put(it.trim()) } })
+                } })
         }
         val net = org.json.JSONObject()
         (n.path ?: n.hostHeader ?: n.serviceNameOf())?.let {

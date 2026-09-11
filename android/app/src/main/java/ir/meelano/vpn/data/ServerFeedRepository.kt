@@ -36,7 +36,7 @@ import ir.meelano.vpn.vpn.MeelanoVpnService
  * the server did that already, which is the whole point of moving the work to /v/.
  */
 class ServerFeedRepository(
-    context: Context,
+    private val context: Context,
     private val baseUrl: String = "https://ainetmee.ir/v",
 ) {
 
@@ -275,7 +275,7 @@ data class FeedNode(
     val config: String?,
 ) {
     val latencyLabel: String get() = latencyMs?.let { if (it < 1000) "$it" else String.format("%.1fs", it / 1000.0) } ?: "—"
-    val isVip: Boolean get() = tier == KIND_VIP
+    val isVip: Boolean get() = tier == "vip"
 }
 
 data class ProbeResult(val nodeId: String, val ok: Boolean, val latencyMs: Long, val error: String?)
