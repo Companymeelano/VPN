@@ -230,7 +230,7 @@ jobs:
           SIZE: ${{ steps.out.outputs.size }}
           VARIANT: ${{ inputs.variant || 'debug' }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           case "$GITHUB_REF" in
             refs/tags/*) tag="${GITHUB_REF_NAME}" ;;
             *) tag="apk-$(date -u +%Y%m%d-%H%M)-${VARIANT}" ;;
@@ -238,18 +238,28 @@ jobs:
           printf '%s  %s\n' "$SHA" "$FILE" > "$FILE.sha256"
           pre=""
           case "$tag" in *alpha*|*beta*|*rc*) pre="--prerelease" ;; esac
-          notes="بیلد \`${VARIANT}\` از کامیت \`${GITHUB_SHA::7}\` — تگ \`$tag\`
-          - حجم: \`$SIZE\` بایت · sha256: \`$SHA\`
-          - نصب روی گوشی: \`adb install -r $FILE\`
-          - برای آپدیت خودکار: فایل را با نام \`${FILE%-*}.apk\` در \`public_html/v/apk/\` بگذار
-            (بک‌اند از همان نام فایل versionCode/Name را می‌خواند: backend/v/lib/Version.php)
-          - این بیلد \`debug\`` است: با کلید debug امضا شده، برای تست روی گوشی؛ ریلیز کاربران را
-            با keystore خودت بساز (docs/ANDROID-BUILD.md §۴) و MEELANO_CORE_LINKED=true بزن."
-          gh release create "$tag" "$FILE" "$FILE.sha256" design/preview/assets/ic-store-512.png \
-            --title "Meelano VPN — $tag ($VARIANT)" --notes "$notes" --target "$GITHUB_SHA" $pre || \
-            gh release upload "$tag" "$FILE" "$FILE.sha256" --clobber
-          echo "### لینک دانلود APK" >> "$GITHUB_STEP_SUMMARY"
-          echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/$FILE" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "بیلد \`${VARIANT}\` از کامیت \`${GITHUB_SHA::7}\` — تگ \`$tag\`"
+            echo
+            echo "- حجم: \`$SIZE\` بایت · sha256: \`$SHA\`"
+            echo "- نصب روی گوشی: \`adb install -r $FILE\`"
+            echo "- برای آپدیت خودکار: فایل را در \`public_html/v/apk/\` بگذار؛ بک‌اند نسخه را از نام فایل می‌خواند (backend/v/lib/Version.php)"
+            echo "- این بیلد debug است (کلید debug). ریلیز کاربران را با keystore خودت بساز: docs/ANDROID-BUILD.md"
+          } > notes.md
+          assets="$FILE $FILE.sha256"
+          [ -f design/preview/assets/ic-store-512.png ] && assets="$assets design/preview/assets/ic-store-512.png"
+          # خروجی کامل gh به‌صورت annotation: لاگ build از بیرون قابل دانلود نیست، این تنها کانال اطمینان‌یافتنی است
+          gh release create "$tag" $assets --title "Meelano VPN — $tag ($VARIANT)" --notes-file notes.md $pre >rel.log 2>&1 \
+            || gh release upload "$tag" $assets --clobber >>rel.log 2>&1 \
+            || { echo "::error::release failed — $(tr '\n' '|' < rel.log | cut -c1-500)"; exit 1; }
+          url=$(gh release view "$tag" --json url -q .url)
+          echo "$url"
+          for f in $assets; do echo "asset: $f -> $url/download/$f"; done
+          {
+            echo "### لینک دانلود APK"; echo
+            echo "$url/download/$FILE"; echo
+            echo "- sha256: \`$SHA\` · حجم: $SIZE بایت"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
