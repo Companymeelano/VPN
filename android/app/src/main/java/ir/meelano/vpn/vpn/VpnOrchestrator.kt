@@ -76,7 +76,6 @@ class VpnOrchestrator(
     private fun releaseTun() {
         runCatching { tunPfd?.close() }
         tunPfd = null
-        protectHooks.clear()
     }
 
     private suspend fun run(node: FeedNode) = withContext(Dispatchers.Default) {
@@ -163,20 +162,20 @@ class VpnOrchestrator(
         // tunnel is exactly how you get a loop (tunnel traffic dialling the tunnel). The supported
         // mechanisms are the two below, and both are the core's job, which is why CoreApi exists.
         if (serverIp != null) {
-            // 1) protect(): the core calls this on the socket/fd it uses to reach [serverIp] BEFORE
-            //    connecting, so that one connection bypasses the tunnel. We expose the hook here so
-            //    the engine does not need a reference to the service.
-            protectHooks += { fd -> runCatching { service.protect(fd) }.getOrDefault(false) }
-            // 2) whole-app split tunnelling (the only route-level exclusion the platform offers):
-            //    b.addDisallowedApplication(pkg) - used by the "این اپ‌ها خارج از VPN" setting.
+            // 1) protect(): the core calls protectOutbound() on the socket/fd it uses to reach
+            //    [serverIp] BEFORE connecting, so that one connection bypasses the tunnel.
+            // 2) whole-app split tunnelling (the only route-level exclusion the platform offers) is
+            //    b.addDisallowedApplication(pkg), driven by the "این اپ‌ها خارج از VPN" setting.
         }
         return b
     }
 
-    /** fd-protect hooks handed to the engine; see builderFor() for why this is not a route. */
-    private val protectHooks = mutableListOf<(java.io.FileDescriptor) -> Boolean>()
-
-    fun protectOutbound(fd: java.io.FileDescriptor): Boolean = protectHooks.all { it(fd) }
+    /**
+     * What the engine must call on its *own* outbound fd before dialling the server.
+     * This — not a route — is how a VPN keeps its control connection outside the tunnel.
+     */
+    fun protectOutbound(fd: java.io.FileDescriptor): Boolean =
+        runCatching { (context as? VpnService)?.protect(fd) ?: false }.getOrDefault(false)
 
     private suspend fun measureHandshakeMs(spec: TunnelSpec): Long {
         val t0 = System.nanoTime()

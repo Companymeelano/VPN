@@ -20,6 +20,19 @@ import android.net.TrafficStats
  */
 object CoreApi {
 
+    /**
+     * Set by the build (`-PMEELANO_CORE_LINKED=true`, which you pass only after adding the engine
+     * dependency and the real calls below). While it is false this build **refuses to pretend**:
+     * startProxy throws instead of flipping a flag, so the UI cannot say "وصل است" on a phone that
+     * tunnels nothing. A fake green ring is worse than a red one.
+     */
+    val LINKED: Boolean get() = ir.meelano.vpn.BuildConfig.CORE_LINKED
+
+    /** the reason a UI can name without parsing stack traces */
+    const val NOT_LINKED = "core_not_linked"
+
+    class CoreNotLinked : IllegalStateException(NOT_LINKED)
+
     @Volatile private var running = false
     @Volatile private var tunFd: Int = -1
 
@@ -32,6 +45,7 @@ object CoreApi {
      *   tProxy.setBlockedAPP / setProxyPackageNames(...)
      */
     suspend fun startProxy(service: VpnService, spec: TunnelSpec) {
+        if (!LINKED) throw CoreNotLinked()
         // Core.start(spec.profilePath)          // your call here
         running = true
     }
@@ -45,6 +59,7 @@ object CoreApi {
 
     /** Called after the tunnel exists: start DNS/DoH, apply rules, enable routing. */
     suspend fun tunnelUp(service: VpnService) {
+        if (!LINKED) throw CoreNotLinked()
         // Core.updateRules(); Core.protectAll()
     }
 

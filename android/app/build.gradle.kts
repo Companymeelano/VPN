@@ -36,6 +36,15 @@ val feedSecret = providers.gradleProperty("MEELANO_FEED_SECRET").orNull
     ?: (rootProject.file("local.properties").let { if (it.isFile) Properties().apply { load(it.inputStream()) }.getProperty("MEELANO_FEED_SECRET") else null })
     ?: ""
 val selfUpdate = providers.gradleProperty("MEELANO_SELF_UPDATE").orNull ?: "true"
+// true ONLY when a real engine (tProxy / sing-box) is a dependency and CoreApi calls it.
+val coreLinked = providers.gradleProperty("MEELANO_CORE_LINKED").orNull ?: "false"
+if (coreLinked != "true" && gradle.startParameter.taskNames.any { it.contains("Release", true) }) {
+    throw GradleException(
+        "MEELANO_CORE_LINKED=false: این بیلد تونل نمی‌زند، پس ریلیز نساز. " +
+        "اول وابستگی هسته را در همین فایل باز کن و CoreApi را وصل کن، بعد با -PMEELANO_CORE_LINKED=true بیلد بگیر. " +
+        "debug برای تست UI/فید/آپدیت آزاد است."
+    )
+}
 val keystoreProps = Properties().apply {
     val f = rootProject.file("keystore.properties")
     if (f.isFile) load(f.inputStream())
@@ -62,6 +71,7 @@ android {
         buildConfigField("String", "MEELANO_FEED_KEY", "\"$feedKey\"")
         buildConfigField("String", "MEELANO_FEED_SECRET", "\"$feedSecret\"")
         buildConfigField("boolean", "SELF_UPDATE", selfUpdate)
+        buildConfigField("boolean", "CORE_LINKED", coreLinked)
         buildConfigField("String", "CHANNEL", "\"stable\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

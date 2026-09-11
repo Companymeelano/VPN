@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Monochrome layer for Themed Icons (Android 13+): same geometry, alpha-only, tinted by the system. -->
+<!--
+  THE MARK: an M whose middle is a tunnel portal. One line, one gesture, nothing else.
+
+  Geometry is authored on a 24-unit grid (feet at y=18, apex at y=11.9, portal radius 2.1) and
+  scaled x3 into the 108 adaptive canvas, so it lands inside the 66% safe zone with ~14% margin on
+  every mask. Alpha-only artwork: Android 13 tints this for Themed Icons, and a tint can only work
+  if the mark carries no colour of its own.
+
+  Why a tunnel instead of a padlock: a lock says "locked". The promise of this product is that you
+  still get THROUGH - the portal under the M is the whole brand argument, drawn once.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
@@ -11,26 +21,18 @@
         android:translateX="18"
         android:translateY="18">
         <path
-            android:pathData="M12,2.4 L4.2,5.3 L4.2,12.1 C4.2,16.6 7.5,20.1 12,21.6 C16.5,20.1 19.8,16.6 19.8,12.1 L19.8,5.3 Z"
+            android:pathData="M6.3,18.0 L6.3,6.9 L12.0,11.9 L17.7,6.9 L17.7,18.0"
             android:strokeColor="#FFFFFFFF"
-            android:strokeWidth="1.8"
+            android:strokeWidth="1.9"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:fillColor="#00000000" />
         <path
-            android:pathData="M7.2,15.4 A4.8,4.8 0 0 1 16.8,15.4"
+            android:pathData="M9.9,18.0 L9.9,14.9 A2.1,2.1 0 0 1 14.1,14.9 L14.1,18.0"
             android:strokeColor="#FFFFFFFF"
-            android:strokeWidth="1.8"
+            android:strokeWidth="1.9"
             android:strokeLineCap="round"
+            android:strokeLineJoin="round"
             android:fillColor="#00000000" />
-        <path
-            android:pathData="M9.3,15.4 A2.7,2.7 0 0 1 14.7,15.4"
-            android:strokeColor="#FFFFFFFF"
-            android:strokeWidth="1.8"
-            android:strokeLineCap="round"
-            android:fillColor="#00000000" />
-        <path
-            android:pathData="M11,15.4 A1,1 0 1 0 13,15.4 A1,1 0 1 0 11,15.4 Z"
-            android:fillColor="#FFFFFFFF" />
     </group>
 </vector>

@@ -325,7 +325,11 @@ private fun StatusLine(phase: ConnectPhase, node: FeedNode?) {
     val (text, color) = when (phase) {
         is ConnectPhase.Idle -> "برای اتصال لمس کنید" to Meelano.Muted
         is ConnectPhase.Connected -> (node?.name ?: "Vip Meelano") to Meelano.Text
-        is ConnectPhase.Failed -> "اتصال برقرار نشد" to Meelano.Danger
+        is ConnectPhase.Failed -> when (phase.reason) {
+            // the one failure that is a property of *this build*, not of the network: say so plainly
+            ir.meelano.vpn.vpn.CoreApi.NOT_LINKED -> "هسته‌ی تونل در این بیلد وصل نشده است" to Meelano.Warn
+            else -> "اتصال برقرار نشد" to Meelano.Danger
+        }
         else -> "در حال اتصال… ${(phase.progress * 100).toInt()}%" to Meelano.Muted
     }
     Row(verticalAlignment = Alignment.CenterVertically) {

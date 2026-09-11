@@ -82,6 +82,10 @@ android/
 توکن‌ها/حرکت/دسترس‌پذیری: [`docs/DESIGN-SYSTEM.md`](docs/DESIGN-SYSTEM.md) — و همان توکن‌ها در
 پروتوتایپ زنده: [`docs/PROTOTYPE.md`](docs/PROTOTYPE.md). برند و آیکون: [`docs/BRAND.md`](docs/BRAND.md).
 
+## ساخت APK
+APK واقعی در CI ساخته می‌شود (این محیط Android SDK ندارد): `.github/workflows/apk.yml` → Artifact.
+توضیح کامل، ورودی‌ها، و معنی `core_linked`: [`docs/ANDROID-BUILD.md`](docs/ANDROID-BUILD.md).
+
 ## برای ادامه به چه نیاز دارم
 1. سورس اپ (Kotlin/Flutter/…) — پوشه‌ی پروژه، یا دست‌کم: `VpnService`، سازنده‌ی کانفیگ، بخش تست، صفحه‌ی اتصال.
 2. مشخص بودن هسته‌ی VPN (tProxy / sing-box / v2rayNG-lib / …) و نسخه‌اش.

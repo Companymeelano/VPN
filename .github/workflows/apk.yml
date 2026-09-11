@@ -34,6 +34,12 @@ on:
         description: 'MEELANO_FEED_KEY (اختیاری؛ هدر دسترسی فید)'
         required: false
         default: ''
+      core_linked:
+        description: 'هسته‌ی تونل به این بیلد وصل است؟ (false = فقط UI/فید/آپدیت؛ ریلیز با false رد می‌شود)'
+        type: choice
+        required: true
+        default: 'false'
+        options: ['false', 'true']
       self_update:
         description: 'اجازه‌ی خودآپدیت در این بیلد (true/false)'
         type: choice
@@ -128,13 +134,15 @@ jobs:
           MEELANO_FEED_KEY_IN: ${{ inputs.feed_key }}
           MEELANO_FEED_SECRET: ${{ secrets.MEELANO_FEED_SECRET }}
           SELF_UPDATE: ${{ inputs.self_update || 'true' }}
+          CORE_LINKED: ${{ inputs.core_linked || 'false' }}
           VARIANT: ${{ inputs.variant || 'debug' }}
         run: |
           set -euo pipefail
           task=":app:assemble${VARIANT^}"
           args=("$task" --no-daemon --console=plain --stacktrace
                 -PMEELANO_FEED_BASE="$MEELANO_FEED_BASE"
-                -PMEELANO_SELF_UPDATE="$SELF_UPDATE")
+                -PMEELANO_SELF_UPDATE="$SELF_UPDATE"
+                -PMEELANO_CORE_LINKED="$CORE_LINKED")
           [ -n "${MEELANO_FEED_KEY_IN:-}" ] && args+=(-PMEELANO_FEED_KEY="$MEELANO_FEED_KEY_IN")
           # سِکِرِتِ HMAC فقط برای *وریفای* آپدیت در کلاینت است؛ اگر ست نشده باشد فیلد خالی می‌ماند
           # و کلاینت امضای فایل را بررسی نمی‌کند — پس ریلیز واقعی بدون آن نساز.
