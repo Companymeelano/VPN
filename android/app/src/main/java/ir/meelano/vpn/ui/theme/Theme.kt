@@ -23,38 +23,48 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val DarkScheme = darkColorScheme(
-    primary = Meelano.Accent,
-    onPrimary = Meelano.AccentInk,
-    secondary = Meelano.Info,
-    background = Meelano.Bg,
-    onBackground = Meelano.Text,
-    surface = Meelano.Surface,
-    onSurface = Meelano.Text,
-    surfaceVariant = Meelano.SurfaceHigh,
-    onSurfaceVariant = Meelano.Muted,
-    outline = Meelano.Line,
-    outlineVariant = Meelano.Line,
-    error = Meelano.Danger,
-    onError = Color(0xFF2B0D0D),
-    scrim = Color(0xCC04070A),
-)
-
-private val LightScheme = lightColorScheme(
-    primary = Meelano.LAccent,
-    onPrimary = Color(0xFFFFFFFF),
-    secondary = Color(0xFF0B6C93),
-    background = Meelano.LBg,
-    onBackground = Meelano.LText,
-    surface = Meelano.LSurface,
-    onSurface = Meelano.LText,
-    surfaceVariant = Color(0xFFEDF1F5),
-    onSurfaceVariant = Meelano.LMuted,
-    outline = Meelano.LLine,
-    outlineVariant = Meelano.LLine,
-    error = Color(0xFFB3261E),
-    onError = Color(0xFFFFFFFF),
-)
+/*
+  The M3 schemes are *derived* from the palette (see Color.kt) rather than written out again: the
+  day this app had a second list of literals, the light theme became a lie - M3 surfaces flipped to
+  white while every hand-painted screen kept reading the dark object. One source, two consumers.
+ */
+private fun schemeOf(p: Palette) = if (p.isDark) {
+    darkColorScheme(
+        primary = p.accent,
+        onPrimary = p.accentInk,
+        secondary = p.info,
+        background = p.bg,
+        onBackground = p.text,
+        surface = p.surface,
+        onSurface = p.text,
+        surfaceVariant = p.surfaceHigh,
+        onSurfaceVariant = p.muted,
+        outline = p.line,
+        outlineVariant = p.line,
+        error = p.danger,
+        onError = Color(0xFF2B0D0D),
+        scrim = Color(0xCC04070A),
+    )
+} else {
+    lightColorScheme(
+        primary = p.accent,
+        onPrimary = Color(0xFFFFFFFF),
+        secondary = p.info,
+        background = p.bg,
+        onBackground = p.text,
+        surface = p.surface,
+        onSurface = p.text,
+        surfaceVariant = p.surfaceHigh,
+        onSurfaceVariant = p.muted,
+        outline = p.line,
+        outlineVariant = p.line,
+        error = p.danger,
+        onError = Color(0xFFFFFFFF),
+        // a 80%-black scrim over a light app is correct; the dark one's 0xCC would hide the sheet's
+        // own elevation shadow and read as a power-off screen.
+        scrim = Color(0x8A1B2630),
+    )
+}
 
 @Composable
 fun MeelanoTheme(
@@ -81,12 +91,15 @@ fun MeelanoTheme(
         dynamic && Build.VERSION.SDK_INT >= 31 ->
             if (dark) dynamicDarkColorScheme(LocalContext.current)
             else dynamicLightColorScheme(LocalContext.current)
-        dark -> DarkScheme
-        else -> LightScheme
+        dark -> schemeOf(Palette.Dark)
+        else -> schemeOf(Palette.Light)
     }
     val animatorScale = 1f      // read Settings.Global.TRANSITION_ANIMATION_SCALE if you want it live
     CompositionLocalProvider(
         LocalSpacing provides Spacing(),
+        // the palette is what the hand-painted screens actually read (MaterialTheme's scheme only
+        // reaches M3 components, and almost nothing in this app is an M3 component)
+        LocalPalette provides (if (dark) Palette.Dark else Palette.Light),
         LocalMotionPrefs provides MotionPrefs(reducedMotion, animatorScale),
         LocalDark provides dark,
     ) {

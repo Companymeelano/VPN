@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Status bar (~18dp, alpha only): the M keeps its legs, the portal loses its inner curve - two
-     strokes this thin merge into one blob at that size, so the mark is simplified, not scaled down. -->
+<!-- Status bar: M•A simplified - 3.4-unit dot becomes 2.6, the A keeps its arch (it is the brand's
+     signature), and the connector beam is dropped: at 18dp two 2.3dp strokes 1.6dp apart read as one
+     blob. Alpha-only artwork: the system tints it. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
     android:viewportWidth="24" android:viewportHeight="24">
-    <path
-        android:pathData="M5.6,18.4 L5.6,6.4 L12,12.0 L18.4,6.4 L18.4,18.4"
-        android:strokeColor="#FFFFFFFF" android:strokeWidth="2.2"
+    <path android:pathData="M3.2,17.6 L3.2,7.4 L7.2,11.4 L11.2,7.4 L11.2,17.6"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="2.3"
         android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000" />
-    <path
-        android:pathData="M9.6,18.4 A2.4,2.4 0 0 1 14.4,18.4"
-        android:strokeColor="#FFFFFFFF" android:strokeWidth="2.2"
-        android:strokeLineCap="round" android:fillColor="#00000000" />
+    <path android:pathData="M16.4,17.6 L19.6,7.4 L22.8,17.6 M17.6,14.4 L17.6,13.6 A2.0,2.0 0 0 1 21.6,13.6 L21.6,14.4"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="2.3"
+        android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000" />
+    <path android:pathData="M13.6,15.2 m-1.35,0 a1.35,1.35 0 1,0 2.7,0 a1.35,1.35 0 1,0 -2.7,0"
+        android:fillColor="#FFFFFFFF" />
 </vector>

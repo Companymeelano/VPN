@@ -9,8 +9,8 @@
   - no exclamation marks in errors, no blame.
 -->
 <resources>
-    <string name="app_name">میلانو وی‌پی‌ان</string>
-    <string name="app_short">میلانو</string>
+    <string name="app_name">M•A VPN</string>
+    <string name="app_short">M•A</string>
     <string name="brand_vip">Vip Meelano</string>
 
     <!-- control core -->
