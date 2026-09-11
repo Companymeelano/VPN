@@ -75,7 +75,8 @@ android/
     MeelanoApp.kt  MainActivity.kt
     vpn/      MeelanoVpnService · VpnOrchestrator · CoreApi (TunnelEngine = نقطه‌ی اتصال به هسته)
     data/     ServerFeedRepository · FeedJson · FeedHolder · TunnelSpec · AppSettings
-    ui/       HomeScreen · VpnControlPanel · ServerListSheet · SettingsSheet · UpdateSheet · OnboardingScreen
+    ui/       Controls (دکمه/چیپ/segmented/سوییچ/پنل — چهار قاعده، docs/DESIGN-SYSTEM.md §۱۳)
+              HomeScreen · VpnControlPanel · ServerListSheet · SettingsSheet · UpdateSheet · OnboardingScreen
     ui/theme/ Color (اشیاء Meelano) · Type · Shape · Motion · Theme
     keepalive/KeepAlive · qs/MeelanoTileService · update/UpdateManager
   app/src/main/res/
