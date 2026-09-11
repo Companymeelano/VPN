@@ -154,21 +154,24 @@ jobs:
           set -uo pipefail
           log=build.log
           [ -f "$log" ] || { echo "no build log"; exit 0; }
-          errs=$(grep -E "^e: file://|^> Task .*FAILED|^FAILURE:|What went wrong" "$log" \
-                 | sed "s#$(pwd)/android/##g" | head -70 || true)
-          [ -n "$errs" ] || errs="(بدون خطای کامپایل — احتمالاً مشکل از مراحل دیگر؛ خلاصه‌ی build را ببین)"
+          # بلوک «چه اشتباهی شد» + ۱۲۰ خط آخر لاگ: در مرحله‌ی configuration هیچ خطای
+          # کامپایلوری وجود ندارد و بدون این، لاگ بی‌فایده است
           {
             echo "## build apk — خروج"
+            echo
             echo '```'
-            echo "$errs"
+            grep -A24 "\* What went wrong" "$log" | head -60 || true
+            grep -E "^> Task .*FAILED|^[a-zA-Z]+: error:|^e: file://|Caused by:" "$log" | head -40 || true
             echo '```'
             echo
-            echo "تعداد خطوط خطا: $(grep -cE "^e: file://" "$log" || true)"
+            echo "<details><summary>۱۲۰ خط آخر لاگ gradle</summary>"
+            echo
+            echo '```'
+            tail -120 "$log" | sed "s#$(pwd)/android/##g"
+            echo '```'
+            echo "</details>"
           } > report.md
           gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file report.md || true
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "$errs" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: collect + hash
         id: out
