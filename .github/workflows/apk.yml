@@ -206,6 +206,27 @@ jobs:
           echo "file=$out" >> "$GITHUB_OUTPUT"
           echo "sha256=$sha" >> "$GITHUB_OUTPUT"
 
+      # فقط در اجرای دستی: یک Release با APK + آیکون ۵۱ + sha256، تا لینک دانلود ثابت داشته باشی
+      # (Artifact بعد از ۳۰ روز می‌میرد و به لاگین برای دیدن صفحه نیاز دارد؛ asset ریلیز لینک مستقیم است)
+      - name: publish release
+        if: ${{ github.event_name == 'workflow_dispatch' && steps.out.outputs.file != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FILE: ${{ steps.out.outputs.file }}
+          SHA: ${{ steps.out.outputs.sha256 }}
+          VARIANT: ${{ inputs.variant || 'debug' }}
+        run: |
+          set -euo pipefail
+          tag="apk-$(date -u +%Y%m%d-%H%M)-${VARIANT}"
+          printf '%s  %s\n' "$SHA" "$FILE" > "$FILE.sha256"
+          notes="بیلد ${VARIANT} از ${GITHUB_SHA::7}. نصب: \`adb install -r ${FILE}\`
+          برای هاست: \`public_html/v/apk/${FILE%.apk}.apk\` (Version.php نسخه را از نام فایل می‌خواند).
+          sha256: \`$SHA\`"
+          gh release create "$tag" "$FILE" "$FILE.sha256" design/preview/assets/ic-store-512.png \
+            --title "Meelano VPN — $FILE" --notes "$notes" --target "$GITHUB_SHA"
+          echo "### لینک دانلود" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/$FILE" >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/upload-artifact@v4
         with:
           name: meelano-apk-${{ inputs.variant || 'debug' }}
