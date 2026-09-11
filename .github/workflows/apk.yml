@@ -1,0 +1,163 @@
+name: build apk
+
+# این workflow تنها راه رسیدن به یک APK واقعی است، چون build اندروید به Android SDK +
+# Maven Central نیاز دارد که در محیط توسعه‌ی ما در دسترس نیست. رانرهای GitHub هر دو را دارند.
+#
+# نحوه‌ی استفاده:
+#   1) Actions ▸ “build apk” ▸ Run workflow  (variant=debug برای تست روی گوشی)
+#   2) از Artifact دانلود کن: meelano-<name>-<code>-debug.apk
+#   3) برای ریلیز امضاشده: سه secret زیر را پر کن و variant=release بزن
+#        MEELANO_KEYSTORE_B64   -> base64 -w0 meelano.keystore
+#        MEELANO_KEY_PASS       -> keyPassword
+#        MEELANO_STORE_PASS     -> storePassword
+#        MEELANO_KEY_ALIAS      -> alias
+#   4) فایل نهایی را با همان نام public_html/v/apk/meelano-<name>-<code>.apk بگذار؛
+#      بک‌اند خودش version.json را از روی نام فایل می‌سازد (backend/v/lib/Version.php).
+#
+# عمداً اینجا «نسخه‌ی ساخت» و «نسخه‌ی APK» یکی شده‌اند تا versionCode/Name از app/build.gradle.kts
+# خوانده شود — دو جا نگه‌داشتن نسخه، همان چیزی است که باعث می‌شود آپدیت خودکار بی‌صدا کار نکند.
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: 'debug (قابل نصب روی گوشی تست) یا release (امضای خودت)'
+        type: choice
+        required: true
+        default: debug
+        options: [debug, release]
+      feed_base:
+        description: 'MEELANO_FEED_BASE'
+        required: true
+        default: 'https://ainetmee.ir/v'
+      feed_key:
+        description: 'MEELANO_FEED_KEY (اختیاری؛ هدر دسترسی فید)'
+        required: false
+        default: ''
+      self_update:
+        description: 'اجازه‌ی خودآپدیت در این بیلد (true/false)'
+        type: choice
+        required: true
+        default: 'true'
+        options: ['true', 'false']
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '.github/workflows/apk.yml'
+
+permissions:
+  contents: read
+
+env:
+  ANDROID_HOME: ${{ github.workspace }}/android-sdk
+  GRADLE_USER_HOME: ${{ github.workspace }}/.gradle-home
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: android sdk
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: 'false'
+
+      # gradle بدون wrapper: مخزن عمداً gradle-wrapper.jar (باینری) را نگه نمی‌دارد؛
+      # این اکشن توزیع را نصب می‌کند و کش می‌کند. نسخه با AGP 8.6 هماهنگ است.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+          cache-read-only: false
+
+      - name: keystore (release only)
+        if: ${{ inputs.variant == 'release' }}
+        env:
+          KS_B64: ${{ secrets.MEELANO_KEYSTORE_B64 }}
+          STORE_PASS: ${{ secrets.MEELANO_STORE_PASS }}
+          KEY_PASS: ${{ secrets.MEELANO_KEY_PASS }}
+          ALIAS: ${{ secrets.MEELANO_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KS_B64:-}" ]; then
+            echo "::error::MEELANO_KEYSTORE_B64 تنظیم نشده. با 'openssl genrsa'/'keytool' یک keystore بساز و:"
+            echo "  base64 -w0 meelano.keystore | gh secret set MEELANO_KEYSTORE_B64"
+            exit 1
+          fi
+          printf '%s' "$KS_B64" | base64 -d > "$GITHUB_WORKSPACE/meelano.keystore"
+          cat > android/keystore.properties <<EOF
+          storeFile=$GITHUB_WORKSPACE/meelano.keystore
+          storePassword=$STORE_PASS
+          keyAlias=$ALIAS
+          keyPassword=$KEY_PASS
+          EOF
+
+      - name: version from gradle
+        id: ver
+        working-directory: android
+        run: |
+          set -euo pipefail
+          code=$(grep -oP 'versionCode = \K[0-9_]+' app/build.gradle.kts | tr -d '_')
+          name=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "### نسخه: $name ($code)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: build
+        working-directory: android
+        env:
+          MEELANO_FEED_BASE: ${{ inputs.feed_base || 'https://ainetmee.ir/v' }}
+          MEELANO_FEED_KEY_IN: ${{ inputs.feed_key }}
+          MEELANO_FEED_SECRET: ${{ secrets.MEELANO_FEED_SECRET }}
+          SELF_UPDATE: ${{ inputs.self_update || 'true' }}
+          VARIANT: ${{ inputs.variant || 'debug' }}
+        run: |
+          set -euo pipefail
+          task=":app:assemble${VARIANT^}"
+          args=("$task" --no-daemon --console=plain --stacktrace
+                -PMEELANO_FEED_BASE="$MEELANO_FEED_BASE"
+                -PMEELANO_SELF_UPDATE="$SELF_UPDATE")
+          [ -n "${MEELANO_FEED_KEY_IN:-}" ] && args+=(-PMEELANO_FEED_KEY="$MEELANO_FEED_KEY_IN")
+          # سِکِرِتِ HMAC فقط برای *وریفای* آپدیت در کلاینت است؛ اگر ست نشده باشد فیلد خالی می‌ماند
+          # و کلاینت امضای فایل را بررسی نمی‌کند — پس ریلیز واقعی بدون آن نساز.
+          if [ -n "${MEELANO_FEED_SECRET:-}" ]; then args+=(-PMEELANO_FEED_SECRET="$MEELANO_FEED_SECRET"); fi
+          gradle "${args[@]}"
+
+      - name: collect + hash
+        id: out
+        run: |
+          set -euo pipefail
+          variant="${{ inputs.variant || 'debug' }}"
+          src=$(find android/app/build/outputs/apk/$variant -name '*.apk' | head -1)
+          [ -n "$src" ] || { echo "::error::APK تولید نشد"; exit 1; }
+          cp "$src" "./meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}-${variant}.apk"
+          out="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}-${variant}.apk"
+          sha=$(sha256sum "$out" | cut -d' ' -f1)
+          size=$(stat -c%s "$out")
+          {
+            echo "## $out"
+            echo
+            echo "| مورد | مقدار |"
+            echo "|---|---|"
+            echo "| sha256 | \`$sha\` |"
+            echo "| حجم | $size بایت |"
+            echo "| نصب | \`adb install -r $out\` |"
+            echo "| مسیر هاست | \`public_html/v/apk/meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}.apk\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "file=$out" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: meelano-apk-${{ inputs.variant || 'debug' }}
+          path: ${{ steps.out.outputs.file }}
+          if-no-files-found: error
+          retention-days: 30
