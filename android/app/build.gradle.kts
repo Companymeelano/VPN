@@ -27,16 +27,16 @@ plugins {
     alias(libs.plugins.compose.compiler)
 }
 
-private val feedBase = providers.gradleProperty("MEELANO_FEED_BASE").orNull
+val feedBase = providers.gradleProperty("MEELANO_FEED_BASE").orNull
     ?: "https://ainetmee.ir/v"
-private val feedKey = providers.gradleProperty("MEELANO_FEED_KEY").orNull
+val feedKey = providers.gradleProperty("MEELANO_FEED_KEY").orNull
     ?: (rootProject.file("local.properties").let { if (it.isFile) Properties().apply { load(it.inputStream()) }.getProperty("MEELANO_FEED_KEY") else null })
     ?: ""
-private val feedSecret = providers.gradleProperty("MEELANO_FEED_SECRET").orNull
+val feedSecret = providers.gradleProperty("MEELANO_FEED_SECRET").orNull
     ?: (rootProject.file("local.properties").let { if (it.isFile) Properties().apply { load(it.inputStream()) }.getProperty("MEELANO_FEED_SECRET") else null })
     ?: ""
-private val selfUpdate = providers.gradleProperty("MEELANO_SELF_UPDATE").orNull ?: "true"
-private val keystoreProps = Properties().apply {
+val selfUpdate = providers.gradleProperty("MEELANO_SELF_UPDATE").orNull ?: "true"
+val keystoreProps = Properties().apply {
     val f = rootProject.file("keystore.properties")
     if (f.isFile) load(f.inputStream())
 }
@@ -74,11 +74,9 @@ android {
                 storePassword = keystoreProps.getProperty("storePassword")
                 keyAlias = keystoreProps.getProperty("keyAlias")
                 keyPassword = keystoreProps.getProperty("keyPassword")
-                // APK signature v2 + v3: the self-update path verifies the *file* hash, but Android
-                // refuses to install anything with a v1-only signature from API 30+
-                enableV1Signing = false
-                enableV2Signing = true
-                enableV3Signing = true
+                // v2/v3 are on by default in AGP 8 and minSdk 24 means v1 is never required
+                // (APK signature scheme v2 is supported from API 24), so nothing is configured here.
+                // Setting enableV1Signing/enableV2Signing explicitly is a removed API in some AGP versions.
             }
         }
     }

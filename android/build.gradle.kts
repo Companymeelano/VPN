@@ -15,13 +15,9 @@ subprojects {
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-            freeCompilerArgs.addAll(
-                // live literals: string/number constants stop being read from a class file on every
-                // recomposition - small, free, and it is the cheapest frame-time win in a Compose app
-                "-P", "plugin:androidx.compose.compiler.plugins.kotlin:liveLiterals=true",
-                // no compose time markers in a release build: they cost a trace write per recomposition
-                "-P", "plugin:androidx.compose.compiler.plugins.kotlin:traceMarkersEnabled=false",
-            )
+            // no freeCompilerArgs here on purpose: `-P plugin:...` is the single most common cause of a
+            // red build for a syntax reason, and Kotlin 2.0 already defaults liveLiterals=true.
+            // Add plugin options in :app only, after the first green build.
         }
     }
 }

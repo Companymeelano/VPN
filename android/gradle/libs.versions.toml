@@ -1,7 +1,7 @@
-// Meelano VPN — version catalog.
-// Pinned on purpose: a private, self-updating VPN must never get a surprise from a transitive bump.
-// Everything here is chosen to be buildable offline-ish and to work on minSdk 24 (Android 7), which
-// is where a lot of Iranian devices still live.
+# Meelano VPN — version catalog.
+# Pinned on purpose: a private, self-updating VPN must never get a surprise from a transitive bump.
+# Everything here is chosen to be buildable offline-ish and to work on minSdk 24 (Android 7), which
+# is where a lot of Iranian devices still live.
 [versions]
 agp = "8.6.1"
 kotlin = "2.0.21"
