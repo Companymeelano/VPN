@@ -76,6 +76,7 @@ class VpnOrchestrator(
     private fun releaseTun() {
         runCatching { tunPfd?.close() }
         tunPfd = null
+        protectHooks.clear()
     }
 
     private suspend fun run(node: FeedNode) = withContext(Dispatchers.Default) {
@@ -157,17 +158,25 @@ class VpnOrchestrator(
             .addAddress(VPN_IP, 32)
             .addDnsServer(DNS_PRIMARY)
             .addRoute("0.0.0.0", 0)
-        if (serverIp != null && android.os.Build.VERSION.SDK_INT >= 28) {
-            // Keep the core's own outbound connection OUT of the tunnel. addRoute(serverIp/32)
-            // would send it *into* the tunnel (instant deadlock loop); the exclusion is
-            // addExclusionRoute. protect(socket) on the core side is still the primary mechanism -
-            // this is the belt, for cores whose sockets you cannot reach.
-            runCatching { b.addExcludedRoute("$serverIp/32") }
+        // There is no "exclude this route" API on VpnService.Builder: addRoute() only *includes*
+        // networks, and adding a host route for our own server with a default route already inside the
+        // tunnel is exactly how you get a loop (tunnel traffic dialling the tunnel). The supported
+        // mechanisms are the two below, and both are the core's job, which is why CoreApi exists.
+        if (serverIp != null) {
+            // 1) protect(): the core calls this on the socket/fd it uses to reach [serverIp] BEFORE
+            //    connecting, so that one connection bypasses the tunnel. We expose the hook here so
+            //    the engine does not need a reference to the service.
+            protectHooks += { fd -> runCatching { service.protect(fd) }.getOrDefault(false) }
+            // 2) whole-app split tunnelling (the only route-level exclusion the platform offers):
+            //    b.addDisallowedApplication(pkg) - used by the "این اپ‌ها خارج از VPN" setting.
         }
-        // "exclude these apps from the tunnel" (bank apps that break behind VPN) belongs here:
-        // b.addAllowedApplication(pkg) / b.addDisallowedApplication(pkg)
         return b
     }
+
+    /** fd-protect hooks handed to the engine; see builderFor() for why this is not a route. */
+    private val protectHooks = mutableListOf<(java.io.FileDescriptor) -> Boolean>()
+
+    fun protectOutbound(fd: java.io.FileDescriptor): Boolean = protectHooks.all { it(fd) }
 
     private suspend fun measureHandshakeMs(spec: TunnelSpec): Long {
         val t0 = System.nanoTime()
