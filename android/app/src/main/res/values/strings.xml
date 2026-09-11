@@ -61,6 +61,17 @@
     <string name="empty_vip_body">اینترنت را چک کن؛ اگر وصل است، از پشتیبانی بخواه فایل را دوباره بسازد.</string>
     <string name="last_update">آخرین به‌روزرسانی فهرست: %1$s</string>
 
+    <!-- control kit (Controls.kt): نوار وضعیتِ بالای صفحه، گروه‌های تنظیمات، دکمه‌های لیست -->
+    <string name="st_connected">متصل</string>
+    <string name="st_idle">آماده</string>
+    <string name="refresh">به‌روزرسانی فهرست</string>
+    <string name="sync_now">همگام‌سازی</string>
+    <string name="retest_all">تست دوباره‌ی همه</string>
+    <string name="group_vpn">اتصال و تونل</string>
+    <string name="group_data">داده و حریم خصوصی</string>
+    <string name="group_general">عمومی</string>
+    <string name="danger_zone">یک کلیک فاصله تا پاک‌شدن تنظیمات</string>
+
     <!-- onboarding / trust -->
     <string name="ob_title">آماده‌ایم</string>
     <string name="ob_perm_title">یک اجازه، همان اول</string>

@@ -70,6 +70,9 @@ import ir.meelano.vpn.vpn.ConnectPhase
 import ir.meelano.vpn.vpn.Traffic
 import kotlin.math.PI
 import kotlin.math.sin
+import androidx.compose.foundation.border
+import androidx.compose.material3.Icon
+import androidx.compose.ui.res.stringResource
 
 /**
  * The one control the brief asks for: the connect/disconnect core, at the TOP of the screen,
@@ -127,8 +130,19 @@ fun VpnControlPanel(
         )
         Spacer(Modifier.height(14.dp))
         StatusLine(phase = phase, node = node)
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(12.dp))
         SpeedStrip(traffic = traffic, enabled = connected)
+        Spacer(Modifier.height(10.dp))
+        // long-press on the ring also opens the list, but nobody discovers a gesture by accident:
+        // the affordance is drawn, and it is a caret because it opens something
+        MeelanoButton(
+            label = stringResource(R.string.sheet_servers),
+            onClick = onOpenSheet,
+            tone = BtnTone.Ghost,
+            size = BtnSize.Small,
+            iconRes = R.drawable.ic_server,
+            trailingChevron = true,
+        )
     }
 }
 
@@ -350,24 +364,46 @@ private fun StatusLine(phase: ConnectPhase, node: FeedNode?) {
 /** Speed + session, tabular so digits never reflow. Skeleton (not a spinner) when unknown. */
 @Composable
 private fun SpeedStrip(traffic: Traffic, enabled: Boolean) {
+    // a carved well, not three floating numbers: the strip is the readout of an instrument, and an
+    // instrument has a bezel. The dark-to-ink vertical gradient is what makes it read as recessed.
+    val shape = RoundedCornerShape(14.dp)
     Row(
-        horizontalArrangement = Arrangement.Center,
+        horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 22.dp)
+            .clip(shape)
+            .background(
+                Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.34f), Meelano.Well)),
+                shape,
+            )
+            .background(
+                Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.22f), Color.Transparent)),
+                shape,
+            )
+            .border(1.dp, Color.White.copy(alpha = 0.08f), shape)
+            .padding(vertical = 9.dp, horizontal = 10.dp),
     ) {
         val style = TextStyle(fontFeatureSettings = "tnum", fontWeight = FontWeight.SemiBold)
-        Metric("↓", if (enabled) humanRate(traffic.rxPerSec) else "—", Meelano.Accent, style)
-        Spacer(Modifier.width(22.dp))
-        Metric("↑", if (enabled) humanRate(traffic.txPerSec) else "—", Meelano.Muted, style)
-        Spacer(Modifier.width(22.dp))
-        Metric("سشن", if (enabled) humanDuration(traffic.seconds) else "—", Meelano.Text, style)
+        Metric(if (enabled) humanRate(traffic.rxPerSec) else "—", Meelano.Accent, style, R.drawable.ic_download)
+        Metric(if (enabled) humanRate(traffic.txPerSec) else "—", Meelano.Muted, style, R.drawable.ic_upload)
+        Metric(if (enabled) humanDuration(traffic.seconds) else "—", Meelano.Text, style, 0)
     }
 }
 
 @Composable
-private fun Metric(label: String, value: String, color: Color, style: TextStyle) {
+private fun Metric(value: String, color: Color, style: TextStyle, iconRes: Int = 0) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, color = Meelano.Muted, fontSize = 10.sp)
+        if (iconRes != 0) {
+            Icon(
+                painterResource(iconRes), null,
+                Modifier.size(12.dp), tint = color.copy(alpha = 0.75f),
+            )
+        } else {
+            Text("سشن", color = Meelano.Muted, fontSize = 10.sp)
+        }
+        Spacer(Modifier.height(2.dp))
         Text(value, color = color, fontSize = 13.sp, style = style)
     }
 }

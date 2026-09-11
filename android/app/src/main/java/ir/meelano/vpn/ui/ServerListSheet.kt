@@ -46,6 +46,8 @@ import ir.meelano.vpn.data.AppSettings
 import ir.meelano.vpn.data.FeedNode
 import ir.meelano.vpn.data.Prefs
 import ir.meelano.vpn.ui.theme.Meelano
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 
 /**
  * The list. VIP and free share one row anatomy on purpose: one shape means the fetch, the cache and
@@ -115,13 +117,12 @@ fun ServerListSheet(
                     fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Meelano.Text,
                 )
                 Spacer(Modifier.weight(1f))
-                Text(
-                    stringResource(R.string.close),
-                    fontSize = 13.sp, color = Meelano.Muted,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable(onClick = onDismiss)
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                MeelanoIconButton(
+                    iconRes = R.drawable.ic_close,
+                    contentDescription = stringResource(R.string.close),
+                    onClick = onDismiss,
+                    sizeDp = 38.dp,
+                    corner = 12.dp,
                 )
             }
 
@@ -139,13 +140,24 @@ fun ServerListSheet(
             Spacer(Modifier.height(10.dp))
 
             Row(
-                Modifier.padding(horizontal = 18.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                // four chips do not fit a 360dp screen once they are real buttons; the row scrolls and
+                // the edge fade says so — hiding a filter behind an ellipsis is worse than a thumb-drag
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Chip(stringResource(R.string.filter_all), filter == FILTER_ALL) { filter = FILTER_ALL }
-                Chip(stringResource(R.string.filter_near), filter == FILTER_NEAR) { filter = FILTER_NEAR }
-                Chip(stringResource(R.string.filter_fast), filter == FILTER_FAST) { filter = FILTER_FAST }
-                Chip(stringResource(R.string.filter_works), filter == FILTER_WORKS) { filter = FILTER_WORKS }
+                MeelanoChip(stringResource(R.string.filter_all), filter == FILTER_ALL, { filter = FILTER_ALL })
+                MeelanoChip(
+                    stringResource(R.string.filter_near), filter == FILTER_NEAR, { filter = FILTER_NEAR },
+                    leadingIcon = R.drawable.ic_location,
+                )
+                MeelanoChip(
+                    stringResource(R.string.filter_fast), filter == FILTER_FAST, { filter = FILTER_FAST },
+                    leadingIcon = R.drawable.ic_speed,
+                )
+                MeelanoChip(stringResource(R.string.filter_works), filter == FILTER_WORKS, { filter = FILTER_WORKS })
             }
 
             Spacer(Modifier.height(6.dp))
@@ -236,53 +248,27 @@ fun ServerListSheet(
 private fun label(res: Int, count: Int): String =
     stringResource(res) + if (count > 0) "  ·  $count" else ""
 
-/** the two-choice control: a track with a highlighted pill, 200 ms — no dropdown, no dialog */
+/*
+ * The two-choice control (وی‌آی‌پی / رایگان) is the kit's `MeelanoSegmented`: a carved well with one
+ * raised pill that slides on a spring. Kept under a local name so nothing else in the file changed.
+ */
 @Composable
 internal fun Segmented(items: List<String>, index: Int, onIndex: (Int) -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 18.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color.White.copy(alpha = 0.05f))
-            .padding(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
-    ) {
-        items.forEachIndexed { i, text ->
-            val on = i == index
-            Box(
-                Modifier
-                    .weight(1f)
-                    .height(38.dp)
-                    .clip(RoundedCornerShape(9.dp))
-                    .background(if (on) Meelano.Accent.copy(alpha = 0.16f) else Color.Transparent)
-                    .clickable { onIndex(i) },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text, fontSize = 13.sp,
-                    color = if (on) Meelano.Accent else Meelano.Muted,
-                    fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-                    style = TextStyle(fontFeatureSettings = "tnum"),
-                )
-            }
-        }
-    }
+    MeelanoSegmented(
+        items = items,
+        index = index,
+        onIndex = onIndex,
+        modifier = Modifier.padding(horizontal = 18.dp),
+    )
 }
 
+/**
+ * Kept as names because three files call them; both now delegate to the control kit, so the chips in
+ * this sheet and the pill on the settings sheet are literally the same code, not the same styling.
+ */
 @Composable
 internal fun Chip(label: String, on: Boolean, onClick: () -> Unit) {
-    Text(
-        label,
-        fontSize = 12.sp,
-        color = if (on) Meelano.AccentInk else Meelano.Muted,
-        fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-        modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(if (on) Meelano.Accent else Color.White.copy(alpha = 0.06f))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-    )
+    MeelanoChip(label = label, on = on, onClick = onClick)
 }
 
 /** loading is a shape, not a spinner: the eye already knows where the rows will land */
@@ -310,41 +296,16 @@ private fun SkeletonRow() {
 
 @Composable
 private fun EmptyState(vip: Boolean, onRetry: () -> Unit) {
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 28.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(
-            Modifier
-                .size(44.dp)
-                .clip(RoundedCornerShape(22.dp))
-                .background(Meelano.Warn.copy(alpha = 0.12f)),
-            contentAlignment = Alignment.Center,
-        ) { Text("!", color = Meelano.Warn, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
-        Spacer(Modifier.height(12.dp))
-        Text(
-            stringResource(if (vip) R.string.empty_vip_title else R.string.empty_free_title),
-            color = Meelano.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            stringResource(if (vip) R.string.empty_vip_body else R.string.empty_free_body),
-            color = Meelano.Muted, fontSize = 12.sp,
-        )
-        Spacer(Modifier.height(14.dp))
-        Box(
-            Modifier
-                .clip(RoundedCornerShape(10.dp))
-                .background(Meelano.Accent.copy(alpha = 0.14f))
-                .clickable(onClick = onRetry)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-        ) {
-            Text(stringResource(R.string.retry), color = Meelano.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-        }
-    }
+    MeelanoEmptyState(
+        title = stringResource(if (vip) R.string.empty_vip_title else R.string.empty_free_title),
+        body = stringResource(if (vip) R.string.empty_vip_body else R.string.empty_free_body),
+        action = stringResource(R.string.retry),
+        onAction = onRetry,
+        iconRes = if (vip) R.drawable.ic_shield else R.drawable.ic_bolt,
+    )
 }
 
-internal fun gradeRank(g: String) = when (g) { "A" -> 0; "B" -> 1; "C" -> 2; else -> 3 }
+/** internal fun gradeRank(g: String) = when (g) { "A" -> 0; "B" -> 1; "C" -> 2; else -> 3 }
 
 /** Persian relative time; "لحظاتی پیش" beats a raw timestamp because nobody reads a clock under stress */
 internal fun relTime(ts: Long): String {

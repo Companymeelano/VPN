@@ -58,6 +58,7 @@ import ir.meelano.vpn.ui.theme.Meelano
 import ir.meelano.vpn.update.UpdateManager
 import ir.meelano.vpn.vpn.ConnectPhase
 import kotlin.math.roundToInt
+import androidx.compose.foundation.layout.width
 
 /**
  * The only screen. Why it is stacked like this (full reasoning in docs/DESIGN-SYSTEM.md):
@@ -125,7 +126,12 @@ fun HomeScreen(vm: VpnViewModel) {
                     .imePadding(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                TopBar(connected = connected, onSettings = { settings = true })
+                TopBar(
+                    connected = connected,
+                    syncing = syncing,
+                    onRefresh = { vm.refreshBoth() },
+                    onSettings = { settings = true },
+                )
 
                 VpnControlPanel(
                     phase = phase,
@@ -135,16 +141,21 @@ fun HomeScreen(vm: VpnViewModel) {
                     onOpenSheet = { servers = true },
                 )
 
-                Spacer(Modifier.height(6.dp))
-                NodeChip(
+                Spacer(Modifier.height(8.dp))
+                // a caret, not an icon: this control *opens* the list, it does not do anything
+                MeelanoButton(
                     label = if (AppSettings.autoSelect && node != null && activeId == null) {
                         stringResource(R.string.seg_auto)
                     } else if (node == null) {
                         stringResource(R.string.empty_vip_title)
                     } else {
-                        "${node.name} · ${node.countryFa()}"
+                        node.countryFa().ifEmpty { node.name }
                     },
                     onClick = { servers = true },
+                    tone = BtnTone.Tonal,
+                    size = BtnSize.Small,
+                    iconRes = if (connected) R.drawable.ic_shield else R.drawable.ic_location,
+                    trailingChevron = true,
                 )
 
                 Spacer(Modifier.weight(1f))
@@ -189,7 +200,7 @@ fun HomeScreen(vm: VpnViewModel) {
 
 /** the mark, the name, and a live state light — the app is readable from the top bar alone */
 @Composable
-private fun TopBar(connected: Boolean, onSettings: () -> Unit) {
+private fun TopBar(connected: Boolean, syncing: Boolean, onRefresh: () -> Unit, onSettings: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -209,53 +220,35 @@ private fun TopBar(connected: Boolean, onSettings: () -> Unit) {
             letterSpacing = 0.1.sp,
         )
         Spacer(Modifier.weight(1f))
-        Box(
-            Modifier
-                .size(30.dp)
-                .clip(RoundedCornerShape(15.dp))
-                .background(Color.White.copy(alpha = 0.05f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Box(
-                Modifier
-                    .size(8.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(if (connected) Meelano.Accent else Meelano.MutedFaint)
-            )
-        }
-        Spacer(Modifier.size(8.dp))
-        Box(
-            Modifier
-                .size(44.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .clickable(onClick = onSettings),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                painterResource(R.drawable.ic_settings),
-                stringResource(R.string.settings),
-                Modifier.size(20.dp),
-                tint = Meelano.Muted,
-            )
-        }
+        // the light and the words are the same signal at two sizes: readable from across the room,
+        // and legible at arm's length, without opening anything
+        StateDot(
+            on = connected,
+            label = if (connected) stringResource(R.string.st_connected) else stringResource(R.string.st_idle),
+        )
+        Spacer(Modifier.width(6.dp))
+        MeelanoIconButton(
+            iconRes = R.drawable.ic_refresh,
+            contentDescription = stringResource(R.string.refresh),
+            onClick = onRefresh,
+            sizeDp = 38.dp,
+            corner = 12.dp,
+            enabled = !syncing,
+            tint = if (syncing) Meelano.Accent else Meelano.Muted,
+        )
+        Spacer(Modifier.width(6.dp))
+        MeelanoIconButton(
+            iconRes = R.drawable.ic_settings,
+            contentDescription = stringResource(R.string.settings),
+            onClick = onSettings,
+            sizeDp = 38.dp,
+            corner = 12.dp,
+        )
     }
 }
 
-@Composable
-private fun NodeChip(label: String, onClick: () -> Unit) {
-    Row(
-        Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(Color.White.copy(alpha = 0.05f))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, color = Meelano.Text, fontSize = 13.sp)
-        Spacer(Modifier.size(7.dp))
-        Text("▾", color = Meelano.MutedFaint, fontSize = 11.sp)
-    }
-}
+// (NodeChip became MeelanoButton with a caret: the old pill had no press state at all, so on a phone
+// it was indistinguishable from a label — which is exactly why people tapped it and nothing happened.)
 
 @Composable
 private fun BottomRow(nodes: Int, syncing: Boolean, onServers: () -> Unit, onSettings: () -> Unit) {
@@ -266,21 +259,20 @@ private fun BottomRow(nodes: Int, syncing: Boolean, onServers: () -> Unit, onSet
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = if (syncing) "…" else stringResource(R.string.set_server_count, nodes),
-            color = Meelano.MutedFaint, fontSize = 12.sp,
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onServers)
-                .padding(4.dp),
+        MeelanoButton(
+            label = if (syncing) "…" else stringResource(R.string.set_server_count, nodes),
+            onClick = onServers,
+            tone = BtnTone.Tonal,
+            size = BtnSize.Small,
+            iconRes = R.drawable.ic_server,
+            loading = syncing,
         )
-        Text(
-            stringResource(R.string.settings),
-            color = Meelano.MutedFaint, fontSize = 12.sp,
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onSettings)
-                .padding(4.dp),
+        MeelanoButton(
+            label = stringResource(R.string.settings),
+            onClick = onSettings,
+            tone = BtnTone.Ghost,
+            size = BtnSize.Small,
+            iconRes = R.drawable.ic_settings,
         )
     }
 }
@@ -324,23 +316,22 @@ private fun UpdateBanner(version: String, size: String, onOpen: () -> Unit, onSk
             Text(stringResource(R.string.upd_title), color = Meelano.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             Text("v$version · $size", color = Meelano.Muted, fontSize = 11.sp)
         }
-        Text(
-            stringResource(R.string.upd_now),
-            color = Meelano.AccentDeep, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onOpen)
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-        )
-        Spacer(Modifier.size(6.dp))
-        Text(
-            stringResource(R.string.upd_skipping),
-            color = Meelano.MutedFaint, fontSize = 11.sp,
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onSkip)
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-        )
+        Column(horizontalAlignment = Alignment.End) {
+            MeelanoButton(
+                label = stringResource(R.string.upd_now),
+                onClick = onOpen,
+                tone = BtnTone.Primary,
+                size = BtnSize.Small,
+                iconRes = R.drawable.ic_download,
+            )
+            Spacer(Modifier.height(3.dp))
+            MeelanoButton(
+                label = stringResource(R.string.upd_skipping),
+                onClick = onSkip,
+                tone = BtnTone.Ghost,
+                size = BtnSize.Small,
+            )
+        }
     }
 }
 

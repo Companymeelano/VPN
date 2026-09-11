@@ -40,6 +40,9 @@ import androidx.compose.ui.window.DialogProperties
 import ir.meelano.vpn.R
 import ir.meelano.vpn.keepalive.KeepAlive
 import ir.meelano.vpn.ui.theme.Meelano
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.border
 
 /**
  * Two steps, one screen, and the app is usable if the user refuses either.
@@ -76,11 +79,23 @@ fun OnboardingScreen(onDone: () -> Unit) {
                 Spacer(Modifier.height(46.dp))
 
                 // the brand mark, drawn once, at a size that lets the ring's geometry read
+                // the mark sits in a lit well, exactly like the launcher tile: one object, two surfaces
                 Box(
                     Modifier
                         .size(96.dp)
+                        .shadow(22.dp, RoundedCornerShape(26.dp), clip = false, ambientColor = Meelano.Accent, spotColor = Meelano.Accent)
                         .clip(RoundedCornerShape(26.dp))
-                        .background(Meelano.Surface),
+                        .background(
+                            Brush.verticalGradient(listOf(Meelano.SurfaceHigh, Meelano.Well)),
+                            RoundedCornerShape(26.dp),
+                        )
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.White.copy(alpha = 0.10f), Color.Transparent, Color.Black.copy(alpha = 0.22f)),
+                            ),
+                            RoundedCornerShape(26.dp),
+                        )
+                        .border(1.dp, Color.White.copy(alpha = 0.13f), RoundedCornerShape(26.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -138,25 +153,20 @@ fun OnboardingScreen(onDone: () -> Unit) {
                     fontSize = 11.5.sp, color = Meelano.MutedFaint, textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(10.dp))
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(52.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Meelano.Accent)
-                        .clickable {
-                            // if the user skipped battery, still arm the in-app watchdog: it is the
-                            // only keep-alive that works on OEMs that ignore the battery dialog entirely
-                            if (!batteryOk) runCatching { KeepAlive.enableWatchdog(ctx) }
-                            onDone()
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        stringResource(R.string.ob_done),
-                        color = Meelano.AccentInk, fontSize = 16.sp, fontWeight = FontWeight.Bold,
-                    )
-                }
+                MeelanoButton(
+                    label = stringResource(R.string.ob_done),
+                    onClick = {
+                        // if the user skipped battery, still arm the in-app watchdog: it is the only
+                        // keep-alive that works on OEMs that ignore the battery dialog entirely
+                        if (!batteryOk) runCatching { KeepAlive.enableWatchdog(ctx) }
+                        onDone()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    size = BtnSize.Large,
+                    tone = BtnTone.Primary,
+                    iconRes = R.drawable.ic_shield,
+                    fill = true,
+                )
                 Spacer(Modifier.height(20.dp))
             }
         }
@@ -181,25 +191,80 @@ private fun StepCard(
     Column(
         Modifier
             .fillMaxWidth()
+            .shadow(
+                if (open) 12.dp else 0.dp,
+                RoundedCornerShape(18.dp),
+                clip = false,
+                ambientColor = Color.Black,
+                spotColor = if (open) Meelano.Accent else Color.Black,
+            )
             .clip(RoundedCornerShape(18.dp))
-            .background(if (open) Meelano.Surface else Meelano.Surface.copy(alpha = 0.45f))
+            .background(
+                Brush.verticalGradient(
+                    if (open) {
+                        listOf(Meelano.SurfaceHigh, Meelano.Surface)
+                    } else {
+                        listOf(Meelano.Surface.copy(alpha = 0.5f), Meelano.Surface.copy(alpha = 0.3f))
+                    },
+                ),
+                RoundedCornerShape(18.dp),
+            )
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color.White.copy(alpha = if (open) 0.07f else 0f), Color.Transparent),
+                ),
+                RoundedCornerShape(18.dp),
+            )
+            .border(
+                1.dp,
+                when {
+                    done -> Meelano.Accent.copy(alpha = 0.34f)
+                    open -> Color.White.copy(alpha = 0.16f)
+                    else -> Color.White.copy(alpha = 0.07f)
+                },
+                RoundedCornerShape(18.dp),
+            )
+            .alpha(if (open || !done) 1f else 0.75f)
             .padding(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier
-                    .size(22.dp)
-                    .clip(RoundedCornerShape(11.dp))
-                    .background(if (done) Meelano.Accent else Color.White.copy(alpha = 0.08f)),
+                    .size(24.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        if (done) {
+                            Brush.verticalGradient(listOf(Meelano.Accent, Meelano.AccentDeep))
+                        } else {
+                            Brush.verticalGradient(
+                                listOf(Color.White.copy(alpha = 0.10f), Color.Black.copy(alpha = 0.20f)),
+                            )
+                        },
+                        RoundedCornerShape(12.dp),
+                    )
+                    .border(
+                        1.dp,
+                        if (done) Color.White.copy(alpha = 0.30f) else Color.White.copy(alpha = 0.12f),
+                        RoundedCornerShape(12.dp),
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    if (done) "✓" else "$index",
-                    fontSize = 11.sp,
-                    color = if (done) Meelano.AccentInk else Meelano.Muted,
-                    fontWeight = FontWeight.Bold,
-                    style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"),
-                )
+                // a drawn check, not the "✓" character: the glyph is missing from some system fonts and
+                // lands as a box on exactly the OEMs that already break emoji flags
+                if (done) {
+                    Icon(
+                        painterResource(R.drawable.ic_check), null,
+                        Modifier.size(13.dp), tint = Meelano.AccentInk,
+                    )
+                } else {
+                    Text(
+                        "$index",
+                        fontSize = 11.sp,
+                        color = Meelano.Muted,
+                        fontWeight = FontWeight.Bold,
+                        style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"),
+                    )
+                }
             }
             Spacer(Modifier.size(10.dp))
             Text(
@@ -212,15 +277,22 @@ private fun StepCard(
             Spacer(Modifier.height(8.dp))
             Text(body, fontSize = 12.5.sp, color = Meelano.Muted, lineHeight = 20.sp)
             Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box(
-                    Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Meelano.Accent.copy(alpha = 0.14f))
-                        .clickable(onClick = onClick)
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                ) {
-                    Text(action, color = Meelano.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                MeelanoButton(
+                    label = action,
+                    onClick = onClick,
+                    size = BtnSize.Medium,
+                    tone = if (index == 1) BtnTone.Primary else BtnTone.Tonal,
+                    iconRes = if (index == 1) R.drawable.ic_shield else R.drawable.ic_bolt,
+                )
+                if (done) {
+                    MeelanoButton(
+                        label = "انجام شد",
+                        onClick = onClick,
+                        size = BtnSize.Small,
+                        tone = BtnTone.Ghost,
+                        iconRes = R.drawable.ic_check,
+                    )
                 }
             }
         }
