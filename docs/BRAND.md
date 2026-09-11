@@ -27,7 +27,8 @@
 
 ### اشتباهات رایجی که این‌جا رخ نمی‌دهد
 - foreground را **بزرگ‌تر** از safe zone نمی‌کنیم؛ لانچر ۶۶٪ نگه می‌دارد و ۳۴٪ را می‌بُرد.
-- برای آیکون سایه/گرادیان نمی‌گذاریم؛ بعد از کروپ، بانْدینگ رنگی دیده می‌شود.
+- برای لایه‌ی background سایه/گرادیان نمی‌گذاریم؛ بعد از کروپ ۶۶٪، بانْدینگ رنگی دیده می‌شود.
+- مونوگرام را وسطِ *بوم* نمی‌چسبانیم بدون شبیه‌سازی ماسک؛ دایره و رانداسکوار گوشه‌ها را می‌برند.
 - آیکون نوار وضعیت را با «خط مشکی روی سپر سفید» برش نمی‌دهیم: سیستم فقط **آلفا** را نگه می‌دارد،
   پس خط مشکیِ opaque یک سوراخ نمی‌سازد. یا توپُر با fillType، یا فقط stroke.
 
@@ -35,19 +36,58 @@
 `#4ADE9B` تنها رنگ برند است؛ در متون تبلیغاتی هم همین. تایپ: Vazirmatn (OFL، `res/font/`) —
 رسانه‌ی فارسی‌زبان نباید با فونت پیش‌فرض اندروید تست شود، چون شکل «گ/ک» و فاصله‌گذاری را می‌بازد.
 
-## ۳. رندر دوباره‌ی PNGها
+## ۳. رندر دوباره‌ی PNGها (کپی-پیست؛ همان دستوری که فایل‌های repo را ساخته)
+`-trim` اول می‌خورد چون رندر منبع حاشیه‌ی خودش را دارد؛ بدون آن، «۶۲٪ بوم» یعنی ۶۲٪ *تصویر+حاشیه*
+و مونوگرام کوچک‌تر از حد لازم می‌افتد. `SAFE` را با چشم تنظیم نکن: ماسک را شبیه‌سازی کن (گام ۴).
+
 ```bash
-# پس از ویرایش هندسه‌ی بردار (یا منبع طراح):
-SRC=design/preview/assets/ic-launcher.png
+SRC=design/icons/m-tunnel-3d.png
+INK='#0B0F14'; SAFE=0.62                      # سهم مونوگرام از بومِ ۱۰۸dp
+
+# ۱) برش artwork (فقط یک‌بار؛ بعد همان را در همه‌ی ابعاد استفاده کن)
+convert "$SRC" -fuzz 15% -trim +repage /tmp/ico-m.png
+
+# ۲) legacy: آیکون کامل + نسخه‌ی دایره‌ای (ماسک با DstIn، نه CopyOpacity — CopyOpacity
+#    بعد از `-alpha off` آلفای مقصد را از صفر می‌سازد و دیسک توخالی/توپُر می‌دهد)
 for d in mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192; do
-  m=${d%%:*}; px=${d##*:}
-  convert "$SRC" -resize ${px}x${px} -unsharp 0x0.6 \
+  m=${d%%:*}; px=${d##*:}; c=$((px/2))
+  convert "$SRC" -resize ${px}x${px} -unsharp 0x0.4 -background "$INK" -flatten \
       android/app/src/main/res/mipmap-$m/ic_launcher.png
   convert android/app/src/main/res/mipmap-$m/ic_launcher.png \
-      \( +clone -alpha extract -negate \) -alpha off -compose CopyOpacity -composite \
-      android/app/src/main/res/mipmap-$m/ic_launcher_round.png
+      \( -size ${px}x${px} xc:none -fill white -draw "circle $c,$c $c,0" \) \
+      -compose DstIn -composite android/app/src/main/res/mipmap-$m/ic_launcher_round.png
 done
+
+# ۳) لایه‌ی foreground adaptive: بوم جوهری، artwork به اندازه‌ی SAFE در مرکز
+for d in mdpi:108 hdpi:162 xhdpi:216 xxhdpi:324 xxxhdpi:432; do
+  m=${d%%:*}; px=${d##*:}; in=$(python3 -c "print(int($px*$SAFE))")
+  convert -size ${px}x${px} xc:"$INK" /tmp/ico-m.png -resize ${in}x${in} \
+      -gravity center -composite android/app/src/main/res/mipmap-$m/ic_launcher_foreground.png
+done
+
+# ۴) اعتبارسنجی: ماسک لانچر را قلبد می‌زنیم — ۶۶٪ وسط + دایره و رانداسکوار
+for px in 48 72 96 144 192; do
+  crop=$((px*66/100))
+  convert android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png -resize ${px}x${px} \
+      -gravity center -crop ${crop}x${crop}+0+0 +repage \
+      \( -size ${crop}x${crop} xc:none -fill white -draw "circle $((crop/2)),$((crop/2)) $((crop/2)),0" \) \
+      -compose DstIn -composite -background "$INK" -flatten /tmp/mask-$px.png
+done
+montage /tmp/mask-48.png /tmp/mask-72.png /tmp/mask-96.png /tmp/mask-144.png /tmp/mask-192.png \
+        -tile 5x1 -geometry +6+6 -background '#0e1520' /tmp/montage.png   # این را چشمی ببین
+
+# ۵) برگشت به پروتوتایپ/فروشگاه
+convert android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png -resize 320x320 design/preview/assets/ic-launcher.png
+convert /tmp/ico-m.png -resize 320x320 -background "$INK" -gravity center -extent 360x360 -flatten design/preview/assets/ic-glyph.png
+convert "$SRC" -resize 512x512 -background "$INK" -flatten design/preview/assets/ic-store-512.png
 ```
+
+بردارها (`ic_launcher_monochrome.xml`، `ic_launcher_foreground.xml`، `ic_stat_vpn.xml`، `ic_qs_vpn.xml`)
+از همین هندسه‌ی ۲۴ واحدی دست‌نویس‌اند؛ اگر هندسه عوض شد، هر چهار فایل + این PNGها با هم عوض می‌شوند —
+«آیکن توی گوشی با آیکن نوار وضعیت فرق دارد» از همان نیامده به‌وجود می‌آید.
+
+`design/icons/launcher-sheet.png` خروجیِ این اسکریپت است (پنج دِینسیتی + foreground + دایره + مونولاین)؛
+بعد از هر تغییر، sheet را هم تازه کن و به چک‌لیست §۶ پیوست کن.
 
 ## ۴. پرچم‌ها
 پرچم‌ها **نقاشیِ خودمان** در تایل ۱۹×۱۴ هستند، با فرمت برداری — نه ایموجی (روی OneUI/اندروید ۷ تا ۹ و
