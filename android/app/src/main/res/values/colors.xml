@@ -1,37 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Same numbers as ui/theme/Color.kt and design/preview/index.html.
-  This file exists for the non-Compose surfaces: the window background, the notification
-  accent, the launcher background and the QS tile. If a colour is not in all three files it
-  is not a brand colour, it is a bug.
+  روشن (Light) palette. MIRROR of ui/theme/Color.kt (Palette.Light) and of the CSS custom properties in
+  design/preview/index.html. Three mirrors, one truth - check-theme.sh fails the build on drift.
+
+  This file is the *default* (values/), and it is the LIGHT palette: an Android resource qualifier
+  works by override, so whatever lives in values/ is also what a pre-21 device, a launcher widget,
+  or a malformed night config falls back to. Light-as-default is the safe fallback (a white window
+  background on a light-mode phone is correct; on a dark-mode phone the night file overrides it).
+
+  icon_field is deliberately NOT inverted: the M•A slab tile stays graphite in both themes (Android
+  adapts the *themed* icon through @drawable/ic_launcher_monochrome, which does invert). A launcher
+  that repaints itself per theme is how you lose brand recognition on the home screen.
 -->
 <resources>
-
-    <!-- surfaces -->
-    <color name="bg">#FF0B0F14</color>
-    <color name="surface">#FF131A21</color>
-    <color name="surface_high">#FF18212A</color>
-    <color name="well">#FF080C11</color>
-    <color name="line">#FF232F3A</color>
-    <color name="hairline">#0EFFFFFF</color>
-    <color name="bezel_top">#FF2A3540</color>
-    <color name="bezel_bottom">#FF0E141A</color>
-
-    <!-- text -->
-    <color name="text">#FFE6EDF3</color>
-    <color name="muted">#FF8FA3B8</color>
-    <color name="muted_faint">#FF5D7183</color>
-
-    <!-- semantic -->
-    <color name="accent">#FF4ADE9B</color>
-    <color name="accent_deep">#FF128C5A</color>
-    <color name="accent_ink">#FF04231A</color>
-    <color name="info">#FF8BD9F5</color>
-    <color name="warn">#FFF5A524</color>
-    <color name="danger">#FFFF6B6B</color>
-
-    <color name="accent_12">#1F4ADE9B</color>
-    <color name="accent_18">#2E4ADE9B</color>
-    <color name="accent_28">#474ADE9B</color>
-    <color name="danger_18">#2EFF6B6B</color>
+    <color name="bg">#FFF5F7F9</color>
+    <color name="surface">#FFFFFFFF</color>
+    <color name="surface_high">#FFEDF1F5</color>
+    <color name="well">#FFE9EEF3</color>
+    <color name="line">#FFDDE4EA</color>
+    <color name="hairline">#0E000000</color>
+    <color name="bezel_top">#FFFFFFFF</color>
+    <color name="bezel_bottom">#FFCFD8E0</color>
+    <color name="text">#FF0D151C</color>
+    <color name="muted">#FF4B5C6B</color>
+    <color name="muted_faint">#FF607182</color>
+    <color name="accent">#FF0E8F5B</color>
+    <color name="accent_deep">#FF06693F</color>
+    <color name="accent_ink">#FFFFFFFF</color>
+    <color name="info">#FF0B6C93</color>
+    <color name="warn">#FF8A5200</color>
+    <color name="danger">#FFC0362C</color>
+    <color name="accent_12">#1F0E8F5B</color>
+    <color name="accent_18">#2E0E8F5B</color>
+    <color name="accent_28">#470E8F5B</color>
+    <color name="danger_18">#2EC0362C</color>
+    <color name="icon_field">#FF13171C</color>
+    <color name="tile_icon">#FF0D151C</color>
 </resources>

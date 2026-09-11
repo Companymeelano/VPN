@@ -1,5 +1,7 @@
 package ir.meelano.vpn.ui
 
+import ir.meelano.vpn.ui.theme.LocalPalette
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -74,6 +76,7 @@ import androidx.compose.foundation.layout.width
  */
 @Composable
 fun HomeScreen(vm: VpnViewModel) {
+    val p = LocalPalette.current
     val phase by vm.phase.collectAsState()
     val traffic by vm.traffic.collectAsState()
     val vip by vm.vip.collectAsState()
@@ -106,10 +109,10 @@ fun HomeScreen(vm: VpnViewModel) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             AmbientGlow(
                 accent = when {
-                    phase is ConnectPhase.Failed -> Meelano.Danger
-                    connected -> Meelano.Accent
-                    busy -> Meelano.Info
-                    else -> Meelano.Accent
+                    phase is ConnectPhase.Failed -> p.danger
+                    connected -> p.accent
+                    busy -> p.info
+                    else -> p.accent
                 },
                 intensity = when {
                     connected -> 0.17f
@@ -201,6 +204,7 @@ fun HomeScreen(vm: VpnViewModel) {
 /** the mark, the name, and a live state light — the app is readable from the top bar alone */
 @Composable
 private fun TopBar(connected: Boolean, syncing: Boolean, onRefresh: () -> Unit, onSettings: () -> Unit) {
+    val p = LocalPalette.current
     Row(
         Modifier
             .fillMaxWidth()
@@ -211,12 +215,12 @@ private fun TopBar(connected: Boolean, syncing: Boolean, onRefresh: () -> Unit, 
             painterResource(R.drawable.ic_launcher_monochrome),
             stringResource(R.string.app_short),
             Modifier.size(20.dp),
-            tint = Meelano.Accent,
+            tint = p.accent,
         )
         Spacer(Modifier.size(8.dp))
         Text(
             stringResource(R.string.app_short),
-            color = Meelano.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+            color = p.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
             letterSpacing = 0.1.sp,
         )
         Spacer(Modifier.weight(1f))
@@ -234,7 +238,7 @@ private fun TopBar(connected: Boolean, syncing: Boolean, onRefresh: () -> Unit, 
             sizeDp = 38.dp,
             corner = 12.dp,
             enabled = !syncing,
-            tint = if (syncing) Meelano.Accent else Meelano.Muted,
+            tint = if (syncing) p.accent else p.muted,
         )
         Spacer(Modifier.width(6.dp))
         MeelanoIconButton(
@@ -301,20 +305,21 @@ private fun AmbientGlow(accent: Color, intensity: Float) {
 
 @Composable
 private fun UpdateBanner(version: String, size: String, onOpen: () -> Unit, onSkip: () -> Unit) {
+    val p = LocalPalette.current
     Row(
         Modifier
             .fillMaxWidth()
             .padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 2.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(Meelano.Accent.copy(alpha = 0.10f))
+            .background(p.accent.copy(alpha = 0.10f))
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(8.dp).clip(RoundedCornerShape(4.dp)).background(Meelano.Accent))
+        Box(Modifier.size(8.dp).clip(RoundedCornerShape(4.dp)).background(p.accent))
         Spacer(Modifier.size(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(stringResource(R.string.upd_title), color = Meelano.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Text("v$version · $size", color = Meelano.Muted, fontSize = 11.sp)
+            Text(stringResource(R.string.upd_title), color = p.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text("v$version · $size", color = p.muted, fontSize = 11.sp)
         }
         Column(horizontalAlignment = Alignment.End) {
             MeelanoButton(

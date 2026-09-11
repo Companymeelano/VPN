@@ -1,5 +1,7 @@
 package ir.meelano.vpn.ui
 
+import ir.meelano.vpn.ui.theme.LocalPalette
+
 import android.content.Intent
 import android.net.VpnService
 import androidx.compose.foundation.background
@@ -54,6 +56,7 @@ import androidx.compose.foundation.border
  */
 @Composable
 fun OnboardingScreen(onDone: () -> Unit) {
+    val p = LocalPalette.current
     val ctx = LocalContext.current
     // which step is open: 1 = VPN consent, 2 = battery. A step that is already granted opens nothing.
     var vpnGranted by remember { mutableStateOf(runCatching { VpnService.prepare(ctx) == null }.getOrDefault(false)) }
@@ -67,7 +70,7 @@ fun OnboardingScreen(onDone: () -> Unit) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(Brush.verticalGradient(listOf(Meelano.Bg, Color(0xFF070B10))))
+                .background(Brush.verticalGradient(listOf(p.bg, if (p.isDark) Color(0xFF070B10) else p.surfaceHigh)))
                 .statusBarsPadding()
         ) {
             Column(
@@ -83,31 +86,31 @@ fun OnboardingScreen(onDone: () -> Unit) {
                 Box(
                     Modifier
                         .size(96.dp)
-                        .shadow(22.dp, RoundedCornerShape(26.dp), clip = false, ambientColor = Meelano.Accent, spotColor = Meelano.Accent)
+                        .shadow(22.dp, RoundedCornerShape(26.dp), clip = false, ambientColor = p.accent, spotColor = p.accent)
                         .clip(RoundedCornerShape(26.dp))
                         .background(
-                            Brush.verticalGradient(listOf(Meelano.SurfaceHigh, Meelano.Well)),
+                            Brush.verticalGradient(listOf(p.surfaceHigh, p.well)),
                             RoundedCornerShape(26.dp),
                         )
                         .background(
                             Brush.verticalGradient(
-                                listOf(Color.White.copy(alpha = 0.10f), Color.Transparent, Color.Black.copy(alpha = 0.22f)),
+                                listOf(p.tint(0.10f), Color.Transparent, p.shade(0.22f)),
                             ),
                             RoundedCornerShape(26.dp),
                         )
-                        .border(1.dp, Color.White.copy(alpha = 0.13f), RoundedCornerShape(26.dp)),
+                        .border(1.dp, p.tint(0.13f), RoundedCornerShape(26.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         painterResource(R.drawable.ic_launcher_monochrome), null,
-                        Modifier.size(58.dp), tint = Meelano.Accent,
+                        Modifier.size(58.dp), tint = p.accent,
                     )
                 }
 
                 Spacer(Modifier.height(22.dp))
                 Text(
                     stringResource(R.string.ob_title),
-                    fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Meelano.Text, letterSpacing = (-0.4).sp,
+                    fontSize = 24.sp, fontWeight = FontWeight.Bold, color = p.text, letterSpacing = (-0.4).sp,
                 )
                 Spacer(Modifier.height(28.dp))
 
@@ -150,7 +153,7 @@ fun OnboardingScreen(onDone: () -> Unit) {
 
                 Text(
                     "بعداً هم می‌شود از تنظیمات عوضشان کرد.",
-                    fontSize = 11.5.sp, color = Meelano.MutedFaint, textAlign = TextAlign.Center,
+                    fontSize = 11.5.sp, color = p.mutedFaint, textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(10.dp))
                 MeelanoButton(
@@ -187,6 +190,7 @@ private fun StepCard(
     action: String,
     onClick: () -> Unit,
 ) {
+    val p = LocalPalette.current
     val open = current == index
     Column(
         Modifier
@@ -195,32 +199,32 @@ private fun StepCard(
                 if (open) 12.dp else 0.dp,
                 RoundedCornerShape(18.dp),
                 clip = false,
-                ambientColor = Color.Black,
-                spotColor = if (open) Meelano.Accent else Color.Black,
+                ambientColor = p.shade(0.55f),
+                spotColor = if (open) p.accent else Color.Black,
             )
             .clip(RoundedCornerShape(18.dp))
             .background(
                 Brush.verticalGradient(
                     if (open) {
-                        listOf(Meelano.SurfaceHigh, Meelano.Surface)
+                        listOf(p.surfaceHigh, p.surface)
                     } else {
-                        listOf(Meelano.Surface.copy(alpha = 0.5f), Meelano.Surface.copy(alpha = 0.3f))
+                        listOf(p.surface.copy(alpha = 0.5f), p.surface.copy(alpha = 0.3f))
                     },
                 ),
                 RoundedCornerShape(18.dp),
             )
             .background(
                 Brush.verticalGradient(
-                    listOf(Color.White.copy(alpha = if (open) 0.07f else 0f), Color.Transparent),
+                    listOf(p.tint(if (open) 0.07f else 0f), Color.Transparent),
                 ),
                 RoundedCornerShape(18.dp),
             )
             .border(
                 1.dp,
                 when {
-                    done -> Meelano.Accent.copy(alpha = 0.34f)
-                    open -> Color.White.copy(alpha = 0.16f)
-                    else -> Color.White.copy(alpha = 0.07f)
+                    done -> p.accent.copy(alpha = 0.34f)
+                    open -> p.tint(0.16f)
+                    else -> p.tint(0.07f)
                 },
                 RoundedCornerShape(18.dp),
             )
@@ -234,17 +238,17 @@ private fun StepCard(
                     .clip(RoundedCornerShape(12.dp))
                     .background(
                         if (done) {
-                            Brush.verticalGradient(listOf(Meelano.Accent, Meelano.AccentDeep))
+                            Brush.verticalGradient(listOf(p.accent, p.accentDeep))
                         } else {
                             Brush.verticalGradient(
-                                listOf(Color.White.copy(alpha = 0.10f), Color.Black.copy(alpha = 0.20f)),
+                                listOf(p.tint(0.10f), p.shade(0.20f)),
                             )
                         },
                         RoundedCornerShape(12.dp),
                     )
                     .border(
                         1.dp,
-                        if (done) Color.White.copy(alpha = 0.30f) else Color.White.copy(alpha = 0.12f),
+                        if (done) p.tint(0.30f) else p.tint(0.12f),
                         RoundedCornerShape(12.dp),
                     ),
                 contentAlignment = Alignment.Center,
@@ -254,13 +258,13 @@ private fun StepCard(
                 if (done) {
                     Icon(
                         painterResource(R.drawable.ic_check), null,
-                        Modifier.size(13.dp), tint = Meelano.AccentInk,
+                        Modifier.size(13.dp), tint = p.accentInk,
                     )
                 } else {
                     Text(
                         "$index",
                         fontSize = 11.sp,
-                        color = Meelano.Muted,
+                        color = p.muted,
                         fontWeight = FontWeight.Bold,
                         style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"),
                     )
@@ -269,13 +273,13 @@ private fun StepCard(
             Spacer(Modifier.size(10.dp))
             Text(
                 title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                color = if (open || !done) Meelano.Text else Meelano.Muted,
+                color = if (open || !done) p.text else p.muted,
                 modifier = Modifier.weight(1f),
             )
         }
         if (open) {
             Spacer(Modifier.height(8.dp))
-            Text(body, fontSize = 12.5.sp, color = Meelano.Muted, lineHeight = 20.sp)
+            Text(body, fontSize = 12.5.sp, color = p.muted, lineHeight = 20.sp)
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 MeelanoButton(

@@ -1,5 +1,7 @@
 package ir.meelano.vpn.ui
 
+import ir.meelano.vpn.ui.theme.LocalPalette
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -53,6 +55,7 @@ import androidx.compose.ui.geometry.Offset
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UpdateSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
+    val p = LocalPalette.current
     val ctx = LocalContext.current
     val state by vm.updateState.collectAsState()
     val sheet = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -60,8 +63,8 @@ fun UpdateSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheet,
-        containerColor = Meelano.Surface,
-        contentColor = Meelano.Text,
+        containerColor = p.surface,
+        contentColor = p.text,
         dragHandle = null,
     ) {
         Column(Modifier.fillMaxWidth().padding(bottom = 20.dp)) {
@@ -70,7 +73,7 @@ fun UpdateSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                     .padding(top = 10.dp)
                     .size(width = 32.dp, height = 3.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(Color.White.copy(alpha = 0.18f))
+                    .background(p.tint(0.18f))
                     .align(Alignment.CenterHorizontally)
             )
 
@@ -91,16 +94,16 @@ fun UpdateSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                         .clip(RoundedCornerShape(13.dp))
                         .background(
                             Brush.verticalGradient(
-                                listOf(Meelano.Accent.copy(alpha = 0.22f), Meelano.Accent.copy(alpha = 0.06f)),
+                                listOf(p.accent.copy(alpha = 0.22f), p.accent.copy(alpha = 0.06f)),
                             ),
                             RoundedCornerShape(13.dp),
                         )
-                        .border(1.dp, Meelano.Accent.copy(alpha = 0.42f), RoundedCornerShape(13.dp)),
+                        .border(1.dp, p.accent.copy(alpha = 0.42f), RoundedCornerShape(13.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         painterResource(R.drawable.ic_download), null,
-                        Modifier.size(19.dp), tint = Meelano.Accent,
+                        Modifier.size(19.dp), tint = p.accent,
                     )
                 }
                 Spacer(Modifier.size(10.dp))
@@ -108,7 +111,7 @@ fun UpdateSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                     Text(stringResource(R.string.upd_title), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     Text(
                         info?.let { "v${it.versionName} · ${humanSize(it.sizeBytes)}" } ?: "—",
-                        fontSize = 11.sp, color = Meelano.MutedFaint,
+                        fontSize = 11.sp, color = p.mutedFaint,
                         style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"),
                     )
                 }
@@ -128,16 +131,16 @@ fun UpdateSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                         .padding(horizontal = 18.dp, vertical = 12.dp)
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Meelano.Well)
+                        .background(p.well)
                         .padding(12.dp)
                         .height(120.dp)
                         .verticalScroll(rememberScrollState())
                 ) {
                     info.changelog.lines().filter { it.isNotBlank() }.forEach {
                         Row(Modifier.padding(vertical = 2.dp)) {
-                            Text("·", color = Meelano.Accent, fontSize = 12.sp)
+                            Text("·", color = p.accent, fontSize = 12.sp)
                             Spacer(Modifier.size(6.dp))
-                            Text(it.trim(), fontSize = 12.sp, color = Meelano.Muted, lineHeight = 19.sp)
+                            Text(it.trim(), fontSize = 12.sp, color = p.muted, lineHeight = 19.sp)
                         }
                     }
                 }
@@ -153,7 +156,7 @@ fun UpdateSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                 is UpdateManager.State.Failed ->
                     Notice(
                         text = stringResource(R.string.upd_corrupt),
-                        color = Meelano.Danger,
+                        color = p.danger,
                         action = stringResource(R.string.retry),
                         onAction = { vm.updates.checkAsync() },
                     )
@@ -161,7 +164,7 @@ fun UpdateSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                     val file = (state as UpdateManager.State.BlockedNeedPermission).file
                     Notice(
                         text = stringResource(R.string.upd_noperm),
-                        color = Meelano.Warn,
+                        color = p.warn,
                         action = stringResource(R.string.upd_open_settings),
                         onAction = { runCatching { ctx.startActivity(vm.updates.permissionIntent()) } },
                     )
@@ -184,7 +187,7 @@ fun UpdateSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                     val file = (state as UpdateManager.State.ReadyToInstall).file
                     Notice(
                         text = stringResource(R.string.upd_ready),
-                        color = Meelano.Accent,
+                        color = p.accent,
                         action = null,
                         onAction = {},
                     )
@@ -220,7 +223,7 @@ fun UpdateSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                     } else if (info != null) {
                         Text(
                             stringResource(R.string.upd_mandatory),
-                            fontSize = 11.sp, color = Meelano.Warn,
+                            fontSize = 11.sp, color = p.warn,
                             modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp),
                         )
                     }
@@ -229,7 +232,7 @@ fun UpdateSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
 
             Text(
                 "اندروید نصب بی‌صدا را فقط به Device Owner اجازه می‌دهد؛ برای همین یک تأیید دستی لازم است.",
-                fontSize = 10.5.sp, color = Meelano.MutedFaint, lineHeight = 16.sp,
+                fontSize = 10.5.sp, color = p.mutedFaint, lineHeight = 16.sp,
                 modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 10.dp),
             )
         }
@@ -239,13 +242,14 @@ fun UpdateSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
 /** a 3dp bar with a soft accent tip: `null` progress = indeterminate sweep (we never fake a percentage) */
 @Composable
 private fun ProgressBar(progress: Float?, label: String) {
+    val p = LocalPalette.current
     Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .height(3.dp)
                 .clip(RoundedCornerShape(2.dp))
-                .background(Color.White.copy(alpha = 0.08f))
+                .background(p.tint(0.08f))
         ) {
             if (progress != null) {
                 Box(
@@ -253,7 +257,7 @@ private fun ProgressBar(progress: Float?, label: String) {
                         .fillMaxWidth(progress.coerceIn(0.02f, 1f))
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(2.dp))
-                        .background(Meelano.Accent)
+                        .background(p.accent)
                 )
             } else {
                 Box(
@@ -261,13 +265,13 @@ private fun ProgressBar(progress: Float?, label: String) {
                         .fillMaxWidth(0.3f)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(2.dp))
-                        .background(Meelano.Accent.copy(alpha = 0.7f))
+                        .background(p.accent.copy(alpha = 0.7f))
                 )
             }
         }
         Spacer(Modifier.height(8.dp))
         Text(
-            label, fontSize = 12.sp, color = Meelano.Muted,
+            label, fontSize = 12.sp, color = p.muted,
             style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"),
         )
     }
@@ -275,6 +279,7 @@ private fun ProgressBar(progress: Float?, label: String) {
 
 @Composable
 private fun Notice(text: String, color: Color, action: String?, onAction: () -> Unit) {
+    val p = LocalPalette.current
     val shape = RoundedCornerShape(12.dp)
     Row(
         Modifier
@@ -286,7 +291,7 @@ private fun Notice(text: String, color: Color, action: String?, onAction: () -> 
                 shape,
             )
             .background(
-                Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.06f), Color.Black.copy(alpha = 0.10f))),
+                Brush.verticalGradient(listOf(p.tint(0.06f), p.shade(0.10f))),
                 shape,
             )
             .border(1.dp, color.copy(alpha = 0.34f), shape)
@@ -313,7 +318,7 @@ private fun Notice(text: String, color: Color, action: String?, onAction: () -> 
             Box(Modifier.size(7.dp).clip(CircleShape).background(color))
         }
         Spacer(Modifier.size(8.dp))
-        Text(text, fontSize = 12.5.sp, color = Meelano.Text, modifier = Modifier.weight(1f), lineHeight = 18.sp)
+        Text(text, fontSize = 12.5.sp, color = p.text, modifier = Modifier.weight(1f), lineHeight = 18.sp)
         if (action != null) {
             Spacer(Modifier.size(6.dp))
             MeelanoButton(

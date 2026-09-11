@@ -69,7 +69,7 @@ class MeelanoTileService : TileService() {
         val sub: String
         when (phase) {
             is ConnectPhase.Connected -> {
-                label = "Meelano"
+                label = getString(R.string.app_short)
                 state = Tile.STATE_ACTIVE
                 sub = "↓ ${human(traffic.rxPerSec)} · ↑ ${human(traffic.txPerSec)}"
             }
@@ -94,7 +94,7 @@ class MeelanoTileService : TileService() {
         lastKey = key
         tile.state = state
         tile.label = label
-        tile.contentDescription = "Meelano VPN · $sub"
+        tile.contentDescription = "${getString(R.string.app_name)} · $sub"
         if (Build.VERSION.SDK_INT >= 34) {
             tile.subtitle = sub        // Tile.setSubtitle: API 34+; the label line above covers older versions
         }

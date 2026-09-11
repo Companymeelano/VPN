@@ -1,5 +1,8 @@
 package ir.meelano.vpn.ui
 
+import ir.meelano.vpn.ui.theme.LocalPalette
+import ir.meelano.vpn.ui.theme.Palette
+
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.animateDpAsState
@@ -111,13 +114,22 @@ enum class BtnSize(val height: Dp, val hPad: Dp, val font: Int, val icon: Dp) {
 /** The breath period, from the motion sheet (kept local so this file has one less cross-import). */
 internal const val MeelanoBreathMs = 2400
 
-private val HairlineEdge: Color = Color.White.copy(alpha = 0.13f)
+/**
+ * The 1px edge that separates a raised face from its background. It is a *function of the palette*:
+ * white film on graphite, dark film on paper. A constant here is exactly how the light theme ended up
+ * with invisible buttons, so the kit no longer owns any colour literal.
+ */
+private fun hairlineEdge(p: Palette): Color = p.tint(0.13f)
 
-/** convex face: lit top, shaded bottom — layered over any base colour, so it works on every tone */
-private fun faceOverlay(pressed: Boolean): Brush = Brush.verticalGradient(
-    0f to Color.White.copy(alpha = if (pressed) 0.10f else 0.17f),
+/**
+ * Convex face: lit top, shaded bottom — layered over any base colour, so it works on every tone.
+ * In the light theme the same physical reading holds but the medium inverts: a raised card on paper is
+ * white on top with a grey underside. Hence tint()/shade() from the palette, never white/black.
+ */
+private fun faceOverlay(p: Palette, pressed: Boolean): Brush = Brush.verticalGradient(
+    0f to p.tint(if (pressed) 0.10f else 0.17f),
     0.42f to Color.Transparent,
-    1f to Color.Black.copy(alpha = if (pressed) 0.14f else 0.26f),
+    1f to p.shade(if (pressed) 0.14f else 0.26f),
 )
 
 private fun pressSpring(): SpringSpec<Float> = spring(
@@ -145,6 +157,7 @@ fun MeelanoButton(
     trailingChevron: Boolean = false,
     fill: Boolean = false,
 ) {
+    val p = LocalPalette.current
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val reduced = LocalMotionPrefs.current.reduced
@@ -156,37 +169,37 @@ fun MeelanoButton(
     val edgeColor: Color
     when (tone) {
         BtnTone.Primary -> {
-            haloColor = Meelano.Accent
-            baseBrush = Brush.verticalGradient(listOf(Meelano.Accent, Meelano.AccentDeep))
-            inkColor = Meelano.AccentInk
-            edgeColor = Color.White.copy(alpha = 0.28f)
+            haloColor = p.accent
+            baseBrush = Brush.verticalGradient(listOf(p.accent, p.accentDeep))
+            inkColor = p.accentInk
+            edgeColor = p.tint(0.28f)
         }
         BtnTone.Tonal -> {
             haloColor = Color.Transparent
             baseBrush = Brush.verticalGradient(
-                listOf(Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.045f)),
+                listOf(p.tint(0.10f), p.tint(0.045f)),
             )
-            inkColor = Meelano.Text
-            edgeColor = HairlineEdge
+            inkColor = p.text
+            edgeColor = hairlineEdge(p)
         }
         BtnTone.Ghost -> {
             haloColor = Color.Transparent
             baseBrush = Brush.verticalGradient(
                 listOf(
-                    if (pressed || !enabled) Color.White.copy(alpha = 0.07f) else Color.Transparent,
-                    if (pressed) Color.Black.copy(alpha = 0.10f) else Color.Transparent,
+                    if (pressed || !enabled) p.tint(0.07f) else Color.Transparent,
+                    if (pressed) p.shade(0.10f) else Color.Transparent,
                 ),
             )
-            inkColor = Meelano.Muted
-            edgeColor = if (pressed) HairlineEdge else Color.Transparent
+            inkColor = p.muted
+            edgeColor = if (pressed) hairlineEdge(p) else Color.Transparent
         }
         BtnTone.Danger -> {
             haloColor = Color.Transparent
             baseBrush = Brush.verticalGradient(
-                listOf(Meelano.Danger.copy(alpha = 0.22f), Meelano.Danger.copy(alpha = 0.10f)),
+                listOf(p.danger.copy(alpha = 0.22f), p.danger.copy(alpha = 0.10f)),
             )
-            inkColor = Meelano.Danger
-            edgeColor = Meelano.Danger.copy(alpha = 0.42f)
+            inkColor = p.danger
+            edgeColor = p.danger.copy(alpha = 0.42f)
         }
     }
 
@@ -264,7 +277,7 @@ fun MeelanoButton(
                 )
                 .clip(shape)
                 .background(baseBrush, shape)
-                .background(faceOverlay(pressed), shape)
+                .background(faceOverlay(p, pressed), shape)
                 .border(1.dp, edgeColor, shape)
                 .clickable(interactionSource = src, indication = null, enabled = enabled, onClick = onClick)
                 .padding(horizontal = size.hPad),
@@ -317,25 +330,27 @@ fun MeelanoActionCard(
     modifier: Modifier = Modifier,
     loading: Boolean = false,
     iconRes: Int = 0,
-    accent: Color = Meelano.Accent,
+    accentIn: Color = Color.Unspecified,
     enabled: Boolean = true,
     secondary: String = "",
     onSecondary: () -> Unit = {},
 ) {
+    val p = LocalPalette.current
+    val accent = if (accentIn == Color.Unspecified) p.accent else accentIn
     val shape = RoundedCornerShape(18.dp)
     Row(
         modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 5.dp)
-            .shadow(10.dp, shape, clip = false, ambientColor = Color.Black, spotColor = accent)
+            .shadow(10.dp, shape, clip = false, ambientColor = p.shade(0.55f), spotColor = if (p.isDark) accent else p.shade(0.45f))
             .clip(shape)
             .background(
                 Brush.verticalGradient(
-                    listOf(accent.copy(alpha = 0.14f), Meelano.Surface.copy(alpha = 0.97f)),
+                    listOf(accent.copy(alpha = 0.14f), p.surface.copy(alpha = 0.97f)),
                 ),
                 shape,
             )
-            .background(faceOverlay(false), shape)
+            .background(faceOverlay(p, false), shape)
             .border(1.dp, accent.copy(alpha = 0.30f), shape),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -354,9 +369,9 @@ fun MeelanoActionCard(
             Spacer(Modifier.width(11.dp))
         }
         Column(Modifier.weight(1f).padding(vertical = 10.dp)) {
-            Text(title, color = Meelano.Text, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(title, color = p.text, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             Spacer(Modifier.height(2.dp))
-            Text(body, color = Meelano.Muted, fontSize = 11.5.sp, maxLines = 2)
+            Text(body, color = p.muted, fontSize = 11.5.sp, maxLines = 2)
         }
         Spacer(Modifier.width(8.dp))
         Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(end = 12.dp)) {
@@ -365,7 +380,7 @@ fun MeelanoActionCard(
                 onClick = onAction,
                 enabled = enabled,
                 loading = loading,
-                tone = if (accent == Meelano.Accent) BtnTone.Primary else BtnTone.Tonal,
+                tone = if (accent == p.accent) BtnTone.Primary else BtnTone.Tonal,
                 size = BtnSize.Small,
             )
             if (secondary.isNotEmpty()) {
@@ -393,9 +408,11 @@ fun MeelanoIconButton(
     sizeDp: Dp = 44.dp,
     corner: Dp = 14.dp,
     enabled: Boolean = true,
-    tint: Color = Meelano.Muted,
+    tintIn: Color = Color.Unspecified,
     prominent: Boolean = false,
 ) {
+    val p = LocalPalette.current
+    val tint = if (tintIn == Color.Unspecified) p.muted else tintIn
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val shrink by animateFloatAsState(
@@ -411,21 +428,21 @@ fun MeelanoIconButton(
             .clip(shape)
             .background(
                 if (prominent) {
-                    Brush.verticalGradient(listOf(Meelano.Accent, Meelano.AccentDeep))
+                    Brush.verticalGradient(listOf(p.accent, p.accentDeep))
                 } else {
                     Brush.verticalGradient(
                         listOf(
-                            Color.White.copy(alpha = if (pressed) 0.16f else 0.09f),
-                            Color.White.copy(alpha = 0.03f),
+                            p.tint(if (pressed) 0.16f else 0.09f),
+                            p.tint(0.03f),
                         ),
                     )
                 },
                 shape,
             )
-            .background(faceOverlay(pressed), shape)
+            .background(faceOverlay(p, pressed), shape)
             .border(
                 1.dp,
-                if (prominent) Color.White.copy(alpha = 0.30f) else HairlineEdge,
+                if (prominent) p.tint(0.30f) else hairlineEdge(p),
                 shape,
             )
             .clickable(interactionSource = src, indication = null, enabled = enabled, onClick = onClick),
@@ -435,7 +452,7 @@ fun MeelanoIconButton(
             painterResource(iconRes),
             contentDescription,
             Modifier.size(sizeDp * 0.46f),
-            tint = if (prominent) Meelano.AccentInk else tint,
+            tint = if (prominent) p.accentInk else tint,
         )
     }
 }
@@ -457,6 +474,7 @@ fun MeelanoChip(
     enabled: Boolean = true,
     leadingIcon: Int = 0,
 ) {
+    val p = LocalPalette.current
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val shape = RoundedCornerShape(999.dp)
@@ -466,9 +484,9 @@ fun MeelanoChip(
         label = "chipShrink",
     )
     val ink = when {
-        !enabled -> Meelano.MutedFaint
-        on -> Meelano.Accent
-        else -> Meelano.Muted
+        !enabled -> p.mutedFaint
+        on -> p.accent
+        else -> p.muted
     }
     Box(
         modifier
@@ -479,7 +497,7 @@ fun MeelanoChip(
                         .drawBehind {
                             drawRect(
                                 brush = Brush.radialGradient(
-                                    0f to Meelano.Accent.copy(alpha = 0.20f),
+                                    0f to p.accent.copy(alpha = 0.20f),
                                     1f to Color.Transparent,
                                     center = Offset(this.size.width / 2f, this.size.height / 2f),
                                     radius = maxOf(this.size.width, this.size.height) * 0.7f,
@@ -498,17 +516,17 @@ fun MeelanoChip(
                 .background(
                     if (on) {
                         Brush.verticalGradient(
-                            listOf(Meelano.Accent.copy(alpha = 0.20f), Meelano.Accent.copy(alpha = 0.07f)),
+                            listOf(p.accent.copy(alpha = 0.20f), p.accent.copy(alpha = 0.07f)),
                         )
                     } else {
                         Brush.verticalGradient(
-                            listOf(Color.Black.copy(alpha = 0.22f), Color.White.copy(alpha = 0.035f)),
+                            listOf(p.shade(0.22f), p.tint(0.035f)),
                         )
                     },
                     shape,
                 )
-                .background(faceOverlay(on), shape)
-                .border(1.dp, if (on) Meelano.Accent.copy(alpha = 0.55f) else HairlineEdge, shape)
+                .background(faceOverlay(p, on), shape)
+                .border(1.dp, if (on) p.accent.copy(alpha = 0.55f) else hairlineEdge(p), shape)
                 .clickable(interactionSource = src, indication = null, enabled = enabled, onClick = onClick)
                 .padding(horizontal = 13.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -528,7 +546,7 @@ fun MeelanoChip(
                 Spacer(Modifier.width(5.dp))
                 Text(
                     count.toString(),
-                    color = if (on) ink else Meelano.MutedFaint,
+                    color = if (on) ink else p.mutedFaint,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -553,6 +571,7 @@ fun MeelanoSegmented(
     modifier: Modifier = Modifier,
     heightDp: Dp = 38.dp,
 ) {
+    val p = LocalPalette.current
     if (items.isEmpty()) return
     val shape = RoundedCornerShape(heightDp / 2f)
     val safe = index.coerceIn(0, items.size - 1)
@@ -562,10 +581,10 @@ fun MeelanoSegmented(
             .height(heightDp)
             .clip(shape)
             .background(
-                Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.42f), Meelano.Well)),
+                Brush.verticalGradient(listOf(p.shade(0.42f), p.well)),
                 shape,
             )
-            .border(1.dp, HairlineEdge, shape),
+            .border(1.dp, hairlineEdge(p), shape),
     ) {
         val cell = maxWidth / items.size
         val pad = 3.dp
@@ -583,15 +602,15 @@ fun MeelanoSegmented(
                 .shadow(
                     6.dp,
                     RoundedCornerShape(999.dp),
-                    ambientColor = Meelano.Accent,
-                    spotColor = Meelano.Accent,
+                    ambientColor = p.accent,
+                    spotColor = p.accent,
                 )
                 .clip(RoundedCornerShape(999.dp))
                 .background(
-                    Brush.verticalGradient(listOf(Meelano.Accent, Meelano.AccentDeep)),
+                    Brush.verticalGradient(listOf(p.accent, p.accentDeep)),
                     RoundedCornerShape(999.dp),
                 )
-                .background(faceOverlay(false), RoundedCornerShape(999.dp)),
+                .background(faceOverlay(p, false), RoundedCornerShape(999.dp)),
         )
         Row(Modifier.fillMaxSize()) {
             items.forEachIndexed { i, label ->
@@ -603,14 +622,14 @@ fun MeelanoSegmented(
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(999.dp))
                         .background(
-                            if (pressed && i != safe) Color.White.copy(alpha = 0.05f) else Color.Transparent,
+                            if (pressed && i != safe) p.tint(0.05f) else Color.Transparent,
                         )
                         .clickable(interactionSource = src, indication = null) { onIndex(i) },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         label,
-                        color = if (i == safe) Meelano.AccentInk else Meelano.Muted,
+                        color = if (i == safe) p.accentInk else p.muted,
                         fontSize = 12.sp,
                         fontWeight = if (i == safe) FontWeight.Bold else FontWeight.Medium,
                         maxLines = 1,
@@ -636,6 +655,7 @@ fun MeelanoSwitch(
     enabled: Boolean = true,
     widthDp: Dp = 52.dp,
 ) {
+    val p = LocalPalette.current
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val pill = RoundedCornerShape(999.dp)
@@ -655,16 +675,16 @@ fun MeelanoSwitch(
             .clip(pill)
             .background(
                 if (checked) {
-                    Brush.verticalGradient(listOf(Meelano.Accent.copy(alpha = 0.9f), Meelano.AccentDeep))
+                    Brush.verticalGradient(listOf(p.accent.copy(alpha = 0.9f), p.accentDeep))
                 } else {
                     Brush.verticalGradient(
-                        listOf(Color.Black.copy(alpha = 0.5f), Color.White.copy(alpha = 0.06f)),
+                        listOf(p.shade(0.5f), p.tint(0.06f)),
                     )
                 },
                 pill,
             )
-            .background(faceOverlay(pressed), pill)
-            .border(1.dp, if (checked) Meelano.Accent.copy(alpha = 0.6f) else HairlineEdge, pill)
+            .background(faceOverlay(p, pressed), pill)
+            .border(1.dp, if (checked) p.accent.copy(alpha = 0.6f) else hairlineEdge(p), pill)
             .clickable(interactionSource = src, indication = null, enabled = enabled) { onChange(!checked) }
             .padding(pad),
     ) {
@@ -676,8 +696,8 @@ fun MeelanoSwitch(
                     elevation = if (pressed) 1.dp else 3.dp,
                     shape = CircleShape,
                     clip = false,
-                    ambientColor = if (checked) Meelano.Accent else Color.Black,
-                    spotColor = if (checked) Meelano.Accent else Color.Black,
+                    ambientColor = if (checked) p.accent else Color.Black,
+                    spotColor = if (checked) p.accent else Color.Black,
                 )
                 .clip(CircleShape)
                 .background(
@@ -690,11 +710,11 @@ fun MeelanoSwitch(
                 )
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color.White.copy(alpha = 0.5f), Color.Transparent, Color.Black.copy(alpha = 0.18f)),
+                        listOf(p.tint(0.5f), Color.Transparent, p.shade(0.18f)),
                     ),
                     CircleShape,
                 )
-                .border(1.dp, Color.Black.copy(alpha = 0.20f), CircleShape),
+                .border(1.dp, p.shade(0.20f), CircleShape),
         )
     }
 }
@@ -711,30 +731,31 @@ fun MeelanoPanel(
     title: String = "",
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val p = LocalPalette.current
     val shape = RoundedCornerShape(18.dp)
     Column(
         modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 5.dp)
-            .shadow(10.dp, shape, clip = false, ambientColor = Color.Black, spotColor = Color.Black)
+            .shadow(10.dp, shape, clip = false, ambientColor = p.shade(0.55f), spotColor = p.shade(0.55f))
             .clip(shape)
             .background(
                 Brush.verticalGradient(
-                    listOf(Meelano.SurfaceHigh.copy(alpha = 0.95f), Meelano.Surface.copy(alpha = 0.97f)),
+                    listOf(p.surfaceHigh.copy(alpha = 0.95f), p.surface.copy(alpha = 0.97f)),
                 ),
                 shape,
             )
             .background(
-                Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.05f), Color.Transparent)),
+                Brush.verticalGradient(listOf(p.tint(0.05f), Color.Transparent)),
                 shape,
             )
-            .border(1.dp, HairlineEdge, shape)
+            .border(1.dp, hairlineEdge(p), shape)
             .padding(top = if (title.isEmpty()) 2.dp else 10.dp, bottom = 2.dp),
     ) {
         if (title.isNotEmpty()) {
             Text(
                 title,
-                color = Meelano.MutedFaint,
+                color = p.mutedFaint,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 0.4.sp,
@@ -748,18 +769,20 @@ fun MeelanoPanel(
 /** A hairline that fades at both ends — a full-width divider inside a rounded panel looks pasted on. */
 @Composable
 fun PanelDivider(modifier: Modifier = Modifier) {
+    val p = LocalPalette.current
     Box(
         modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp)
             .height(1.dp)
-            .background(Brush.horizontalGradient(listOf(Color.Transparent, Meelano.Line, Color.Transparent))),
+            .background(Brush.horizontalGradient(listOf(Color.Transparent, p.line, Color.Transparent))),
     )
 }
 
 /** The lit state dot: the top bar and the sheet headers are readable from this alone. */
 @Composable
 fun StateDot(on: Boolean, label: String = "", modifier: Modifier = Modifier) {
+    val p = LocalPalette.current
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier
@@ -768,7 +791,7 @@ fun StateDot(on: Boolean, label: String = "", modifier: Modifier = Modifier) {
                     if (on) {
                         drawRect(
                             brush = Brush.radialGradient(
-                                0f to Meelano.Accent.copy(alpha = 0.55f),
+                                0f to p.accent.copy(alpha = 0.55f),
                                 1f to Color.Transparent,
                                 center = Offset(this.size.width / 2f, this.size.height / 2f),
                                 radius = maxOf(this.size.width, this.size.height) / 2f,
@@ -779,11 +802,11 @@ fun StateDot(on: Boolean, label: String = "", modifier: Modifier = Modifier) {
                 .padding(5.dp)
                 .size(7.dp)
                 .clip(CircleShape)
-                .background(if (on) Meelano.Accent else Meelano.MutedFaint),
+                .background(if (on) p.accent else p.mutedFaint),
         )
         if (label.isNotEmpty()) {
             Spacer(Modifier.width(6.dp))
-            Text(label, color = Meelano.Muted, fontSize = 11.5.sp, maxLines = 1)
+            Text(label, color = p.muted, fontSize = 11.5.sp, maxLines = 1)
         }
     }
 }
@@ -798,6 +821,7 @@ fun MeelanoEmptyState(
     modifier: Modifier = Modifier,
     iconRes: Int = R.drawable.ic_bolt,
 ) {
+    val p = LocalPalette.current
     Column(
         modifier
             .fillMaxWidth()
@@ -809,19 +833,19 @@ fun MeelanoEmptyState(
                 .size(58.dp)
                 .clip(RoundedCornerShape(20.dp))
                 .background(
-                    Brush.verticalGradient(listOf(Meelano.SurfaceHigh, Meelano.Well)),
+                    Brush.verticalGradient(listOf(p.surfaceHigh, p.well)),
                     RoundedCornerShape(20.dp),
                 )
-                .background(faceOverlay(false), RoundedCornerShape(20.dp))
-                .border(1.dp, HairlineEdge, RoundedCornerShape(20.dp)),
+                .background(faceOverlay(p, false), RoundedCornerShape(20.dp))
+                .border(1.dp, hairlineEdge(p), RoundedCornerShape(20.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(painterResource(iconRes), null, Modifier.size(24.dp), tint = Meelano.Accent.copy(alpha = 0.9f))
+            Icon(painterResource(iconRes), null, Modifier.size(24.dp), tint = p.accent.copy(alpha = 0.9f))
         }
         Spacer(Modifier.height(12.dp))
-        Text(title, color = Meelano.Text, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        Text(title, color = p.text, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(5.dp))
-        Text(body, color = Meelano.MutedFaint, fontSize = 12.sp, modifier = Modifier.padding(bottom = 14.dp))
+        Text(body, color = p.mutedFaint, fontSize = 12.sp, modifier = Modifier.padding(bottom = 14.dp))
         MeelanoButton(action, onAction, size = BtnSize.Small, tone = BtnTone.Tonal)
     }
 }
@@ -855,7 +879,9 @@ private fun Chevron(ink: Color, size: Dp = 9.dp) {
  * mush and reads as "waiting"; a comet reads as "this control is doing the thing you asked for".
  */
 @Composable
-private fun Comet(size: Dp = 15.dp, ink: Color = Meelano.AccentInk) {
+private fun Comet(size: Dp = 15.dp, inkIn: Color = Color.Unspecified) {
+    val p = LocalPalette.current
+    val ink = if (inkIn == Color.Unspecified) p.accentInk else inkIn
     val reduced = LocalMotionPrefs.current.reduced
     val t = rememberInfiniteTransition(label = "comet")
     val spin by t.animateFloat(

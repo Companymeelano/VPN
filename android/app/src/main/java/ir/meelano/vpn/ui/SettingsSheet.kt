@@ -1,5 +1,7 @@
 package ir.meelano.vpn.ui
 
+import ir.meelano.vpn.ui.theme.LocalPalette
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -59,6 +61,7 @@ import ir.meelano.vpn.ui.theme.Meelano
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsSheet(onDismiss: () -> Unit) {
+    val p = LocalPalette.current
     val ctx = LocalContext.current
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var confirmReset by remember { mutableStateOf(false) }
@@ -66,8 +69,8 @@ fun SettingsSheet(onDismiss: () -> Unit) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheet,
-        containerColor = Meelano.Surface,
-        contentColor = Meelano.Text,
+        containerColor = p.surface,
+        contentColor = p.text,
         dragHandle = null,
     ) {
         Column(
@@ -81,7 +84,7 @@ fun SettingsSheet(onDismiss: () -> Unit) {
                     .padding(top = 10.dp)
                     .size(width = 32.dp, height = 3.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(Color.White.copy(alpha = 0.18f))
+                    .background(p.tint(0.18f))
                     .align(Alignment.CenterHorizontally)
             )
             Row(
@@ -90,7 +93,7 @@ fun SettingsSheet(onDismiss: () -> Unit) {
             ) {
                 Text(
                     stringResource(R.string.settings),
-                    fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Meelano.Text,
+                    fontSize = 17.sp, fontWeight = FontWeight.Bold, color = p.text,
                 )
                 Spacer(Modifier.weight(1f))
                 MeelanoIconButton(
@@ -158,7 +161,7 @@ fun SettingsSheet(onDismiss: () -> Unit) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
                     Text(
                         stringResource(R.string.set_theme),
-                        fontSize = 14.sp, color = Meelano.Text, fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
                     )
                     Spacer(Modifier.height(9.dp))
                     MeelanoSegmented(
@@ -213,7 +216,7 @@ fun SettingsSheet(onDismiss: () -> Unit) {
             ) {
                 Text(
                     stringResource(R.string.set_version, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
-                    fontSize = 11.sp, color = Meelano.MutedFaint, modifier = Modifier.weight(1f),
+                    fontSize = 11.sp, color = p.mutedFaint, modifier = Modifier.weight(1f),
                     style = TextStyle(fontFeatureSettings = "tnum"),
                 )
                 StateDot(
@@ -234,6 +237,7 @@ fun SettingsSheet(onDismiss: () -> Unit) {
  */
 @Composable
 private fun SwitchRow(title: String, body: String, on: Boolean, onChange: (Boolean) -> Unit) {
+    val p = LocalPalette.current
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val shrink by animateFloatAsState(if (pressed) 0.995f else 1f, label = "rowPress")
@@ -246,8 +250,8 @@ private fun SwitchRow(title: String, body: String, on: Boolean, onChange: (Boole
             .background(
                 Brush.horizontalGradient(
                     listOf(
-                        if (pressed) Color.White.copy(alpha = 0.06f) else Color.Transparent,
-                        if (pressed) Color.White.copy(alpha = 0.03f) else Color.Transparent,
+                        if (pressed) p.tint(0.06f) else Color.Transparent,
+                        if (pressed) p.tint(0.03f) else Color.Transparent,
                     ),
                 ),
                 RoundedCornerShape(14.dp),
@@ -260,11 +264,11 @@ private fun SwitchRow(title: String, body: String, on: Boolean, onChange: (Boole
             Text(
                 title,
                 fontSize = 14.sp,
-                color = if (on) Meelano.Text else Meelano.Muted,
+                color = if (on) p.text else p.muted,
                 fontWeight = FontWeight.Medium,
             )
             Spacer(Modifier.height(2.dp))
-            Text(body, fontSize = 11.sp, color = Meelano.MutedFaint, maxLines = 2, lineHeight = 16.sp)
+            Text(body, fontSize = 11.sp, color = p.mutedFaint, maxLines = 2, lineHeight = 16.sp)
         }
         Spacer(Modifier.width(12.dp))
         Box(Modifier.alpha(if (on) 1f else 0.85f)) { MeelanoSwitch(checked = on, onChange = onChange) }

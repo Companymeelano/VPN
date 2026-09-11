@@ -4,13 +4,18 @@
       Theme-less by design: Compose draws everything. This only fixes what the system window shows
       before the first frame, so a cold start never flashes white (that white flash is what makes a
       300 ms launch feel like a hang).
+
+      This is the LIGHT half of the pair - values-night/themes.xml overrides the window background and
+      the status-bar appearance. @color/bg resolves per qualifier, which is why the fix for "light theme
+      is broken" had to start here and not only in Compose: the window behind the app, the notification
+      accent and the QS tile are all painted by Android, from these resources.
     -->
     <style name="Theme.Meelano" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/bg</item>
         <item name="android:colorBackground">@color/bg</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowActivityTransitions">true</item>
         <item name="android:windowAnimationStyle">@style/Animation.Meelano</item>
     </style>

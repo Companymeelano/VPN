@@ -152,7 +152,8 @@ class VpnOrchestrator(
         val service = context as? VpnService
             ?: error("VpnOrchestrator must be constructed with the VpnService instance")
         val b = service.Builder()
-        b.setSession("Meelano")
+        // the name Android shows in Settings > VPN and in the connect prompt
+        b.setSession(context.getString(ir.meelano.vpn.R.string.app_name))
             .setMtu(MTU)
             .addAddress(VPN_IP, 32)
             .addDnsServer(DNS_PRIMARY)

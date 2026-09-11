@@ -56,6 +56,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import ir.meelano.vpn.R
+import ir.meelano.vpn.ui.theme.LocalPalette
 import ir.meelano.vpn.ui.theme.LocalSpacing
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -99,6 +100,7 @@ fun VpnControlPanel(
     onOpenSheet: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val p = LocalPalette.current
     val connected = phase is ConnectPhase.Connected
     val connecting = phase !is ConnectPhase.Idle && phase !is ConnectPhase.Connected && phase !is ConnectPhase.Failed
     val failed = phase is ConnectPhase.Failed
@@ -114,7 +116,7 @@ fun VpnControlPanel(
             .fillMaxWidth()
             .background(
                 Brush.verticalGradient(
-                    listOf(Meelano.Surface, Meelano.Bg)
+                    listOf(p.surface, p.bg)
                 )
             )
             .padding(top = 18.dp, bottom = 22.dp),
@@ -157,6 +159,7 @@ private fun ConnectRing(
     onLongPress: () -> Unit,
     size: Int = 172,
 ) {
+    val p = LocalPalette.current
     val view = LocalView.current
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -190,9 +193,9 @@ private fun ConnectRing(
     LaunchedEffect(Unit) { appear.animateTo(1f, Motion.enter) }
 
     val ringColor = when {
-        failed -> Meelano.Danger
-        connected -> Meelano.Accent
-        else -> Meelano.Accent.copy(alpha = 0.85f)
+        failed -> p.danger
+        connected -> p.accent
+        else -> p.accent.copy(alpha = 0.85f)
     }
     val glowAlpha = when {
         failed -> 1f
@@ -216,7 +219,7 @@ private fun ConnectRing(
             .clip(CircleShape)
             .background(
                 Brush.linearGradient(
-                    listOf(Meelano.BezelTop, Meelano.BezelBottom),
+                    listOf(p.bezelTop, p.bezelBottom),
                     start = Offset.Zero,
                     end = Offset(size * 0.9f, size * 1.1f),
                 )
@@ -241,7 +244,7 @@ private fun ConnectRing(
                 .clip(CircleShape)
                 .background(
                     Brush.radialGradient(
-                        listOf(Meelano.Bg, Meelano.Well),
+                        listOf(p.bg, p.well),
                         center = Offset(size * 0.44f, size * 0.38f),
                         radius = size * 0.55f,
                     )
@@ -255,7 +258,7 @@ private fun ConnectRing(
 
             // track
             drawArc(
-                color = Color.White.copy(alpha = 0.06f), 0f, 360f, false,
+                color = p.tint(0.06f), 0f, 360f, false,
                 topLeft = top, size = arcSize,
                 style = Stroke(width = stroke, cap = StrokeCap.Round),
             )
@@ -268,7 +271,7 @@ private fun ConnectRing(
                 brush = Brush.sweepGradient(
                     0f to ringColor.copy(alpha = 0.25f),
                     0.55f to ringColor,
-                    1f to Meelano.AccentDeep,
+                    1f to p.accentDeep,
                 ),
                 startAngle = -90f, sweepAngle = sweepAngle, useCenter = false,
                 topLeft = top, size = arcSize,
@@ -277,7 +280,7 @@ private fun ConnectRing(
             // indeterminate sweep on top of the determinate arc: shows "still working" honestly
             if (connecting && sweep.value > 0f) {
                 drawArc(
-                    color = Color.White.copy(alpha = 0.5f),
+                    color = p.tint(0.5f),
                     startAngle = -90f + sweep.value * 360f, sweepAngle = 28f, useCenter = false,
                     topLeft = top, size = arcSize,
                     style = Stroke(width = stroke * 0.5f, cap = StrokeCap.Round),
@@ -286,7 +289,7 @@ private fun ConnectRing(
             // idle hint ring
             if (!connected && !connecting && !failed) {
                 drawCircle(
-                    color = Color.White.copy(alpha = 0.10f * breathe),
+                    color = p.tint(0.10f * breathe),
                     radius = arcSize.width / 2,
                     center = Offset(size / 2f, size / 2f),
                     style = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 12f))),
@@ -297,7 +300,7 @@ private fun ConnectRing(
                 rotate(sheen, pivot = Offset(size / 2f, size / 2f)) {
                     drawArc(
                         brush = Brush.linearGradient(
-                            listOf(Color.Transparent, Color.White.copy(alpha = 0.16f), Color.Transparent)
+                            listOf(Color.Transparent, p.tint(0.16f), Color.Transparent)
                         ),
                         startAngle = 0f, sweepAngle = 70f, useCenter = false,
                         topLeft = top, size = arcSize,
@@ -313,10 +316,11 @@ private fun ConnectRing(
 /** The mark inside the well: a power glyph that morphs into a "connected" check-ish dot. */
 @Composable
 private fun PowerGlyph(connected: Boolean, failed: Boolean, size: Int) {
+    val p = LocalPalette.current
     val tint = when {
-        failed -> Meelano.Danger
-        connected -> Meelano.Accent
-        else -> Meelano.Muted
+        failed -> p.danger
+        connected -> p.accent
+        else -> p.muted
     }
     val scale by animateFloatAsState(if (connected) 1.06f else 1f, Motion.enter, label = "glyph")
     Canvas(Modifier.size((size * 0.30f).dp).scale(scale)) {
@@ -336,15 +340,16 @@ private fun PowerGlyph(connected: Boolean, failed: Boolean, size: Int) {
 
 @Composable
 private fun StatusLine(phase: ConnectPhase, node: FeedNode?) {
+    val p = LocalPalette.current
     val (text, color) = when (phase) {
-        is ConnectPhase.Idle -> "برای اتصال لمس کنید" to Meelano.Muted
-        is ConnectPhase.Connected -> (node?.name ?: "Vip Meelano") to Meelano.Text
+        is ConnectPhase.Idle -> "برای اتصال لمس کنید" to p.muted
+        is ConnectPhase.Connected -> (node?.name ?: "Vip Meelano") to p.text
         is ConnectPhase.Failed -> when (phase.reason) {
             // the one failure that is a property of *this build*, not of the network: say so plainly
-            ir.meelano.vpn.vpn.CoreApi.NOT_LINKED -> "هسته‌ی تونل در این بیلد وصل نشده است" to Meelano.Warn
-            else -> "اتصال برقرار نشد" to Meelano.Danger
+            ir.meelano.vpn.vpn.CoreApi.NOT_LINKED -> "هسته‌ی تونل در این بیلد وصل نشده است" to p.warn
+            else -> "اتصال برقرار نشد" to p.danger
         }
-        else -> "در حال اتصال… ${(phase.progress * 100).toInt()}%" to Meelano.Muted
+        else -> "در حال اتصال… ${(phase.progress * 100).toInt()}%" to p.muted
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (node != null && phase is ConnectPhase.Connected) {
@@ -364,6 +369,7 @@ private fun StatusLine(phase: ConnectPhase, node: FeedNode?) {
 /** Speed + session, tabular so digits never reflow. Skeleton (not a spinner) when unknown. */
 @Composable
 private fun SpeedStrip(traffic: Traffic, enabled: Boolean) {
+    val p = LocalPalette.current
     // a carved well, not three floating numbers: the strip is the readout of an instrument, and an
     // instrument has a bezel. The dark-to-ink vertical gradient is what makes it read as recessed.
     val shape = RoundedCornerShape(14.dp)
@@ -375,25 +381,26 @@ private fun SpeedStrip(traffic: Traffic, enabled: Boolean) {
             .padding(horizontal = 22.dp)
             .clip(shape)
             .background(
-                Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.34f), Meelano.Well)),
+                Brush.verticalGradient(listOf(p.shade(0.34f), p.well)),
                 shape,
             )
             .background(
-                Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.22f), Color.Transparent)),
+                Brush.verticalGradient(listOf(p.shade(0.22f), Color.Transparent)),
                 shape,
             )
-            .border(1.dp, Color.White.copy(alpha = 0.08f), shape)
+            .border(1.dp, p.tint(0.08f), shape)
             .padding(vertical = 9.dp, horizontal = 10.dp),
     ) {
         val style = TextStyle(fontFeatureSettings = "tnum", fontWeight = FontWeight.SemiBold)
-        Metric(if (enabled) humanRate(traffic.rxPerSec) else "—", Meelano.Accent, style, R.drawable.ic_download)
-        Metric(if (enabled) humanRate(traffic.txPerSec) else "—", Meelano.Muted, style, R.drawable.ic_upload)
-        Metric(if (enabled) humanDuration(traffic.seconds) else "—", Meelano.Text, style, 0)
+        Metric(if (enabled) humanRate(traffic.rxPerSec) else "—", p.accent, style, R.drawable.ic_download)
+        Metric(if (enabled) humanRate(traffic.txPerSec) else "—", p.muted, style, R.drawable.ic_upload)
+        Metric(if (enabled) humanDuration(traffic.seconds) else "—", p.text, style, 0)
     }
 }
 
 @Composable
 private fun Metric(value: String, color: Color, style: TextStyle, iconRes: Int = 0) {
+    val p = LocalPalette.current
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         if (iconRes != 0) {
             Icon(
@@ -401,7 +408,7 @@ private fun Metric(value: String, color: Color, style: TextStyle, iconRes: Int =
                 Modifier.size(12.dp), tint = color.copy(alpha = 0.75f),
             )
         } else {
-            Text("سشن", color = Meelano.Muted, fontSize = 10.sp)
+            Text("سشن", color = p.muted, fontSize = 10.sp)
         }
         Spacer(Modifier.height(2.dp))
         Text(value, color = color, fontSize = 13.sp, style = style)
@@ -410,6 +417,7 @@ private fun Metric(value: String, color: Color, style: TextStyle, iconRes: Int =
 
 @Composable
 private fun Flag(cc: String?, modifier: Modifier = Modifier) {
+    val p = LocalPalette.current
     val sp = LocalSpacing.current
     val res = Flags.resFor(cc)
     if (res == 0) {
@@ -418,12 +426,12 @@ private fun Flag(cc: String?, modifier: Modifier = Modifier) {
             modifier
                 .width(sp.flagW).height(sp.flagH)
                 .clip(RoundedCornerShape(3.dp))
-                .background(Color.White.copy(alpha = 0.10f)),
+                .background(p.tint(0.10f)),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 cc?.trim()?.uppercase()?.take(2) ?: "??",
-                fontSize = 6.5.sp, color = Meelano.MutedFaint, fontWeight = FontWeight.Bold,
+                fontSize = 6.5.sp, color = p.mutedFaint, fontWeight = FontWeight.Bold,
             )
         }
     } else {
@@ -535,18 +543,19 @@ fun ServerRow(
     onClick: () -> Unit,
     onTogglePin: () -> Unit,
 ) {
+    val p = LocalPalette.current
     val accent = when (node.grade) {
-        "A" -> Meelano.Accent
-        "B" -> Color(0xFF8BD9F5)
-        "C" -> Meelano.Warn
-        else -> Meelano.Danger
+        "A" -> p.accent
+        "B" -> p.info
+        "C" -> p.warn
+        else -> p.danger
     }
     Row(
         Modifier
             .fillMaxWidth()
             .height(64.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(if (selected) Meelano.Accent.copy(alpha = 0.08f) else Color.Transparent)
+            .background(if (selected) p.accent.copy(alpha = 0.08f) else Color.Transparent)
             .combinedClickable(onClick = onClick, onLongClick = onTogglePin)
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -554,9 +563,9 @@ fun ServerRow(
         Flag(cc = node.cc)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(node.name, color = Meelano.Text, fontSize = 14.sp)
+            Text(node.name, color = p.text, fontSize = 14.sp)
             Text(
-                node.subtitle, color = Meelano.Muted, fontSize = 11.sp,
+                node.subtitle, color = p.muted, fontSize = 11.sp,
                 style = TextStyle(fontFeatureSettings = "tnum"),
             )
         }
@@ -566,7 +575,7 @@ fun ServerRow(
                 .width(56.dp)
                 .height(4.dp)
                 .clip(RoundedCornerShape(2.dp))
-                .background(Color.White.copy(alpha = 0.08f))
+                .background(p.tint(0.08f))
         ) {
             Box(
                 Modifier

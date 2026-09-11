@@ -1,5 +1,7 @@
 package ir.meelano.vpn.ui
 
+import ir.meelano.vpn.ui.theme.LocalPalette
+
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -75,6 +77,7 @@ fun ServerListSheet(
     syncing: Boolean,
     onDismiss: () -> Unit,
 ) {
+    val p = LocalPalette.current
     val ctx = LocalContext.current
     val sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var seg by remember { mutableStateOf(if (vip.isEmpty() && free.isNotEmpty()) SEG_FREE else SEG_VIP) }
@@ -99,8 +102,8 @@ fun ServerListSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Meelano.Surface,
-        contentColor = Meelano.Text,
+        containerColor = p.surface,
+        contentColor = p.text,
         dragHandle = null,
     ) {
         Column(Modifier.fillMaxWidth()) {
@@ -110,7 +113,7 @@ fun ServerListSheet(
                     .padding(top = 10.dp)
                     .size(width = 32.dp, height = 3.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(Color.White.copy(alpha = 0.18f))
+                    .background(p.tint(0.18f))
                     .align(Alignment.CenterHorizontally)
             )
 
@@ -120,7 +123,7 @@ fun ServerListSheet(
             ) {
                 Text(
                     stringResource(R.string.sheet_servers),
-                    fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Meelano.Text,
+                    fontSize = 17.sp, fontWeight = FontWeight.Bold, color = p.text,
                 )
                 Spacer(Modifier.weight(1f))
                 MeelanoIconButton(
@@ -212,7 +215,7 @@ fun ServerListSheet(
             ) {
                 Text(
                     stringResource(R.string.last_update, relTime(vm.generatedAt(if (seg == SEG_FREE) "free" else "vip"))),
-                    fontSize = 11.sp, color = Meelano.MutedFaint, modifier = Modifier.weight(1f),
+                    fontSize = 11.sp, color = p.mutedFaint, modifier = Modifier.weight(1f),
                 )
                 MeelanoButton(
                     label = stringResource(R.string.row_retest),
@@ -259,6 +262,7 @@ internal fun Chip(label: String, on: Boolean, onClick: () -> Unit) {
 /** loading is a shape, not a spinner: the eye already knows where the rows will land */
 @Composable
 private fun SkeletonRow() {
+    val p = LocalPalette.current
     val t = rememberInfiniteTransition(label = "sk")
     val a by t.animateFloat(
         0.16f, 0.32f,
@@ -268,14 +272,14 @@ private fun SkeletonRow() {
         Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(width = 19.dp, height = 14.dp).clip(RoundedCornerShape(3.dp)).background(Color.White.copy(alpha = a)))
+        Box(Modifier.size(width = 19.dp, height = 14.dp).clip(RoundedCornerShape(3.dp)).background(p.tint(a)))
         Spacer(Modifier.size(12.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Box(Modifier.fillMaxWidth(0.45f).height(9.dp).clip(RoundedCornerShape(4.dp)).background(Color.White.copy(alpha = a)))
-            Box(Modifier.fillMaxWidth(0.25f).height(7.dp).clip(RoundedCornerShape(4.dp)).background(Color.White.copy(alpha = a * 0.7f)))
+            Box(Modifier.fillMaxWidth(0.45f).height(9.dp).clip(RoundedCornerShape(4.dp)).background(p.tint(a)))
+            Box(Modifier.fillMaxWidth(0.25f).height(7.dp).clip(RoundedCornerShape(4.dp)).background(p.tint(a * 0.7f)))
         }
         Spacer(Modifier.size(12.dp))
-        Box(Modifier.size(width = 56.dp, height = 4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = a)))
+        Box(Modifier.size(width = 56.dp, height = 4.dp).clip(RoundedCornerShape(2.dp)).background(p.tint(a)))
     }
 }
 
@@ -292,6 +296,7 @@ private fun EmptyState(vip: Boolean, onRetry: () -> Unit) {
 
 @Composable
 private fun AutoRow(on: Boolean, onChange: (Boolean) -> Unit, title: String, body: String) {
+    val p = LocalPalette.current
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val shrink by animateFloatAsState(if (pressed) 0.994f else 1f, label = "autoRow")
@@ -305,17 +310,17 @@ private fun AutoRow(on: Boolean, onChange: (Boolean) -> Unit, title: String, bod
             .background(
                 Brush.verticalGradient(
                     if (on) {
-                        listOf(Meelano.Accent.copy(alpha = if (pressed) 0.18f else 0.13f), Meelano.Accent.copy(alpha = 0.05f))
+                        listOf(p.accent.copy(alpha = if (pressed) 0.18f else 0.13f), p.accent.copy(alpha = 0.05f))
                     } else {
                         listOf(
-                            if (pressed) Color.White.copy(alpha = 0.08f) else Color.Transparent,
-                            if (pressed) Color.Black.copy(alpha = 0.12f) else Color.Transparent,
+                            if (pressed) p.tint(0.08f) else Color.Transparent,
+                            if (pressed) p.shade(0.12f) else Color.Transparent,
                         )
                     },
                 ),
                 shape,
             )
-            .border(1.dp, if (on) Meelano.Accent.copy(alpha = 0.34f) else Color.Transparent, shape)
+            .border(1.dp, if (on) p.accent.copy(alpha = 0.34f) else Color.Transparent, shape)
             .clickable(interactionSource = src, indication = null) { onChange(!on) }
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -324,11 +329,11 @@ private fun AutoRow(on: Boolean, onChange: (Boolean) -> Unit, title: String, bod
             Text(
                 title,
                 fontSize = 14.sp,
-                color = if (on) Meelano.Text else Meelano.Muted,
+                color = if (on) p.text else p.muted,
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.height(2.dp))
-            Text(body, fontSize = 11.sp, color = Meelano.MutedFaint, maxLines = 2, lineHeight = 16.sp)
+            Text(body, fontSize = 11.sp, color = p.mutedFaint, maxLines = 2, lineHeight = 16.sp)
         }
         Spacer(Modifier.size(12.dp))
         MeelanoSwitch(checked = on, onChange = onChange)

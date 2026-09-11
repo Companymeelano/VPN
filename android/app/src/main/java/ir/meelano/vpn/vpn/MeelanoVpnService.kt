@@ -222,7 +222,14 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_vpn)
-            .setContentTitle("Meelano")
+            // the app name comes from resources, so the rename to "M•A VPN" is one line in
+            // strings.xml and the notification follows it; the package id stays ir.meelano.vpn
+            // on purpose (changing it would orphan every install that already trusts us).
+            .setContentTitle(getString(R.string.app_name))
+            // accent from @color so the shade the system derives from the notification tracks the
+            // theme: mint on graphite in dark, the darker green on paper in light.
+            .setColor(androidx.core.content.ContextCompat.getColor(this, R.color.accent))
+            .setColorized(false)
             .setContentText(text)
             .setContentIntent(open)
             .setOngoing(true)
