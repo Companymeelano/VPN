@@ -55,6 +55,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 env:
   ANDROID_HOME: ${{ github.workspace }}/android-sdk
@@ -119,6 +120,8 @@ jobs:
           echo "### نسخه: $name ($code)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: build
+        id: build
+        continue-on-error: true
         working-directory: android
         env:
           MEELANO_FEED_BASE: ${{ inputs.feed_base || 'https://ainetmee.ir/v' }}
@@ -136,10 +139,40 @@ jobs:
           # سِکِرِتِ HMAC فقط برای *وریفای* آپدیت در کلاینت است؛ اگر ست نشده باشد فیلد خالی می‌ماند
           # و کلاینت امضای فایل را بررسی نمی‌کند — پس ریلیز واقعی بدون آن نساز.
           if [ -n "${MEELANO_FEED_SECRET:-}" ]; then args+=(-PMEELANO_FEED_SECRET="$MEELANO_FEED_SECRET"); fi
-          gradle "${args[@]}"
+          gradle "${args[@]}" --continue 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+          exit "${PIPESTATUS[0]}"
+
+      # لاگ کامل از این سندباکس قابل دانلود نیست (میزبان blob)، پس خلاصه‌ی خطاها را به‌شکل
+      # کامنت روی PR برمی‌گردانیم: خواندنی‌ترین راه برای دیدن «چرا build نشد» بدون دسترسی به Actions.
+      - name: report to PR
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.number }}
+        run: |
+          set -uo pipefail
+          log=build.log
+          [ -f "$log" ] || { echo "no build log"; exit 0; }
+          errs=$(grep -E "^e: file://|^> Task .*FAILED|^FAILURE:|What went wrong" "$log" \
+                 | sed "s#$(pwd)/android/##g" | head -70 || true)
+          [ -n "$errs" ] || errs="(بدون خطای کامپایل — احتمالاً مشکل از مراحل دیگر؛ خلاصه‌ی build را ببین)"
+          {
+            echo "## build apk — خروج"
+            echo '```'
+            echo "$errs"
+            echo '```'
+            echo
+            echo "تعداد خطوط خطا: $(grep -cE "^e: file://" "$log" || true)"
+          } > report.md
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file report.md || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "$errs" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: collect + hash
         id: out
+        if: steps.build.outcome == 'success'
         run: |
           set -euo pipefail
           variant="${{ inputs.variant || 'debug' }}"
