@@ -78,6 +78,26 @@ object FeedJson {
         )
     }
 
+    /**
+     * Write a whole payload in the shape `payload()` reads back. This is what lets a list the app built
+     * itself (DirectFeed / pasted configs) ride the same cold-start path as one fetched from /v/:
+     * one file, one decoder, one cache - no second code path that only gets tested when it breaks.
+     */
+    fun encodePayload(kind: String, nodes: List<FeedNode>, generatedAt: Long, ttl: Int, notes: List<String> = emptyList()): String {
+        val arr = JSONArray()
+        nodes.forEach { arr.put(encode(it)) }
+        return JSONObject()
+            .put("schema", 2)
+            .put("kind", kind)
+            .put("generatedAt", generatedAt)
+            .put("ttl", ttl)
+            .put("count", nodes.size)
+            .put("namePolicy", "masked:brand+cc")
+            .put("servers", arr)
+            .put("meta", JSONObject().put("source", "on-device").put("notes", JSONArray(notes)))
+            .toString()
+    }
+
     fun encode(n: FeedNode): JSONObject = JSONObject()
         .put("id", n.id).put("slot", n.slot).put("title", n.name).put("subtitle", n.subtitle)
         .put("cc", n.cc ?: "").put("tier", n.tier).put("proto", n.proto)
@@ -89,7 +109,15 @@ object FeedJson {
         .put("method", n.method ?: "").put("cipher", n.cipher ?: "")
         .put("insecure", n.insecure).put("supportsUdp", n.supportsUdp)
         .put("raw", n.raw ?: "")
-        .apply { if (!n.tune.isEmpty) put("tune", n.tune.toJson()) }
+        .apply {
+            if (!n.tune.isEmpty) put("tune", n.tune.toJson())
+            // These two used to be missing, so a cached payload came back without them: alterId fell to
+            // 0 (which is only correct for modern vmess - old panels still ship 1/4/16, and the tunnel
+            // then fails *after a restart*, when the cache is what feeds the core) and any credentialed
+            // line lost its username.
+            n.alterId?.let { put("alterId", it) }
+            n.username?.let { put("username", it) }
+        }
         .put(
             "quality",
             JSONObject().put("grade", n.grade).put("reliability", n.reliability.toDouble())

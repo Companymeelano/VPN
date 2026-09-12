@@ -49,7 +49,21 @@ class ServerFeedRepository(
         const val KIND_VIP = "vip"
         const val KIND_FREE = "free"
 
+        /** Pasted VIP configs. Inside getDir("feed") so one `rm -rf` of the app's cache clears them. */
+        private const val VIP_LOCAL_FILE = "vip_local.txt"
+
         fun isVip(node: FeedNode) = node.tier == KIND_VIP
+
+        /** Masking brand for lists built on the phone - same policy as the host, different file. */
+        const val VIP_BRAND = "Vip M\u2022A"
+        const val FREE_BRAND = "Free M\u2022A"
+
+        /**
+         * A phone-side list is honest at six hours, not at ten minutes: these public lists churn every
+         * few hours and the device has no gate to re-verify through, so re-running the fetch every
+         * foreground would buy nothing but warmth.
+         */
+        const val DIRECT_TTL_SEC = 6 * 3600
     }
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -108,7 +122,26 @@ class ServerFeedRepository(
 
     /* ------------------------------------------------------------ fetch */
 
+    /**
+     * Which builder produced the list. HOST (the default) is the /v/ build: probed, gated through
+     * CONNECT-to-Google, ranked by a multi-day reliability ledger. DIRECT produces the list on the
+     * phone so the app needs no host of yours at all; AUTO calls the host and only falls back when it
+     * cannot be reached. All three end in the same apply() + the same cache file, so nothing downstream
+     * - sorting, pinned nodes, the connect path, the sheet - has to know which one ran.
+     */
     suspend fun refresh(kind: String) = withContext(Dispatchers.IO) {
+        when (AppSettings.feedMode) {
+            AppSettings.FEED_DIRECT -> refreshDirect(kind)
+            AppSettings.FEED_AUTO -> {
+                refreshHost(kind)
+                // "the host is down" must not mean "no list": fall through to the device builder
+                if ((if (kind == KIND_VIP) _vip.value else _free.value).isEmpty()) refreshDirect(kind)
+            }
+            else -> refreshHost(kind)
+        }
+    }
+
+    private suspend fun refreshHost(kind: String) = withContext(Dispatchers.IO) {
         _syncing.value = true
         try {
             val req = Request.Builder()
@@ -147,6 +180,159 @@ class ServerFeedRepository(
         } finally {
             _syncing.value = false
         }
+    }
+
+    /* ------------------------------------------------------------ on-device builder */
+
+    private val _directNotes = MutableStateFlow<List<String>>(emptyList())
+
+    /** Why a device-built list looks the way it does - shown in the sheet footer, never as an error. */
+    val directNotes: StateFlow<List<String>> = _directNotes
+
+    /** One line for Settings, so the user always knows where today's list came from. */
+    fun sourceLabel(): String = when (AppSettings.feedMode) {
+        AppSettings.FEED_DIRECT -> "آنبرد (بدون هاست)"
+        AppSettings.FEED_AUTO -> "هاست، در قطع شدن: آنبرد"
+        else -> "هاست"
+    }
+
+    /**
+     * Free: the public config lists. VIP: whatever you pasted in the app (+ your own subscription URL).
+     * What DIRECT mode does *not* do is the host's gate, ban ledger and ranking - that work needs a
+     * machine that is reachable from everywhere and is awake tomorrow. We say so in the footer instead
+     * of pretending the two builders are equal.
+     */
+    private suspend fun refreshDirect(kind: String) {
+        _syncing.value = true
+        try {
+            val extra = AppSettings.feedExtraUrl.takeIf { it.startsWith("http") }?.let {
+                DirectFeed.Upstream(
+                    "user", it,
+                    if (it.contains(".json")) DirectFeed.Kind.JSON else DirectFeed.Kind.CONFIG
+                )
+            }
+            val res = if (kind == KIND_VIP) {
+                localVip(extra)
+            } else {
+                DirectFeed.buildFree(
+                    brand = FREE_BRAND,
+                    extra = extra,
+                    fetch = { u -> fetchText(u.url, u.maxBytes) },
+                    probe = { nodes -> probeBatch(nodes) },
+                )
+            }
+            _directNotes.value = res.notes
+            if (res.nodes.isEmpty()) {
+                // Nothing usable this time: keep showing the last good list (and its cache), because a
+                // filtered GitHub response is a Tuesday, not a reason to hand the user an empty screen.
+                Log.w(TAG, "direct $kind produced nothing")
+                return
+            }
+            val now = System.currentTimeMillis() / 1000L
+            apply(FeedPayload(kind, now, DIRECT_TTL_SEC, res.nodes), kind)
+            runCatching {
+                File(filesDir, "$kind.json")
+                    .writeText(FeedJson.encodePayload(kind, res.nodes, now, DIRECT_TTL_SEC, res.notes))
+            }.onFailure { Log.w(TAG, "direct cache write failed: ${it.message}") }
+            // No probeAndReconcile(): these were dialed *now*, from this network. Re-probing 12 sockets
+            // for a number we already have is exactly the duplicated work that made the old build slow.
+        } catch (t: Throwable) {
+            Log.w(TAG, "direct $kind failed: ${t.message}")
+        } finally {
+            _syncing.value = false
+        }
+    }
+
+    /**
+     * The user's own VIP configs, kept in the app's private dir. Probed here rather than trusted: a
+     * dead node should read dead on the phone it is about to be dialed from, and this is the one place
+     * where a phone's opinion is *better* than the host's (the host measures from its own DC).
+     */
+    private suspend fun localVip(extra: DirectFeed.Upstream?): DirectFeed.Result {
+        val blob = StringBuilder()
+        runCatching { File(filesDir, VIP_LOCAL_FILE).readText() }.getOrNull()?.let { blob.append(it).append('
+') }
+        var sources = 0
+        if (extra != null) {
+            fetchText(extra.url, extra.maxBytes)?.let {
+                sources++
+                blob.append(it)
+            }
+        }
+        val parsed = NodeUri.parseBlob(blob.toString(), tier = KIND_VIP, brand = VIP_BRAND)
+        val head = NodeUri.dedupe(parsed, max = 48)
+        val rtt = probeBatch(head)
+        val nodes = head.mapIndexed { i, n ->
+            val ms = rtt[n.id]
+            n.copy(
+                slot = i + 1,
+                latencyMs = if (ms != null && ms >= 0) ms else null,
+                grade = if (ms == null || ms < 0) "D" else NodeUri.grade(ms),
+                reliability = if (ms != null && ms >= 0) 1f else 0f,
+                samples = 1,
+            )
+        }.sortedWith(compareBy({ if (it.latencyMs == null) 1 else 0 }, { it.latencyMs ?: Long.MAX_VALUE }))
+        val notes = ArrayList<String>(2)
+        notes += if (parsed.isEmpty()) "هنوز چیزی وارد نکرده‌اید: در تنظیمات، پیکربندی‌هایتان را بچسبانید"
+        else "محلی · ${parsed.size} خط خوانده شد"
+        if (sources > 0) notes += "اشتراکِ شخصی از لینکِ خودتان خوانده شد"
+        if (sources == 0 && blob.toString().isBlank()) notes += "لینکِ اشتراک تنظیم نشده"
+        notes += "${nodes.count { it.latencyMs != null }} نود از همین شبکه پاسخ داد"
+        return DirectFeed.Result(nodes, sources, maxOf(1, sources), parsed.size, head.size, notes)
+    }
+
+    /**
+     * One capped GET, on the cold client (30 s read) because a public list can be slow, with the same
+     * DoH/pinned fallback the host path uses since GitHub names get poisoned too.
+     *
+     * No Accept-Encoding header on purpose: OkHttp only *transparently* inflates gzip when it added the
+     * header itself; a hand-written one means we would be reading compressed bytes as text.
+     */
+    private suspend fun fetchText(url: String, maxBytes: Int): String? = withContext(Dispatchers.IO) {
+        val req = Request.Builder().url(url)
+            .header("User-Agent", "M\u2022A-VPN/${BuildConfig.VERSION_NAME}")
+            .build()
+        open(req, httpCold)?.use { resp ->
+            if (!resp.isSuccessful) return@use null
+            val src = resp.body?.byteStream() ?: return@use null
+            val out = java.io.ByteArrayOutputStream(32 * 1024)
+            val chunk = ByteArray(32 * 1024)
+            var read = 0
+            while (read < maxBytes) {
+                val n = src.read(chunk)
+                if (n <= 0) break
+                out.write(chunk, 0, n)
+                read += n
+            }
+            // Truncating mid-line can cut a UTF-8 sequence in half; drop the partial tail before parsing.
+            val text = out.toString("UTF-8")
+            if (read >= maxBytes) text.substringBeforeLast('
+') else text
+        }
+    }
+
+    /** Batch dial through the same helper the "why did it not connect" card uses: 1 socket per node. */
+    private suspend fun probeBatch(nodes: List<FeedNode>): Map<String, Long> {
+        if (nodes.isEmpty()) return emptyMap()
+        val res = NetGuard.tcpProbe(nodes.map { Pair(it.host, it.port) }, timeoutMs = 1500, limit = nodes.size)
+        return nodes.mapIndexed { i, n -> n.id to res.getOrElse(i) { -1L } }.toMap()
+    }
+
+    /* -------------------------------------------------- the user's own configs (VIP, on-device) */
+
+    fun localVipText(): String = runCatching { File(filesDir, VIP_LOCAL_FILE).readText() }.getOrDefault("")
+
+    fun hasLocalVip(): Boolean = File(filesDir, VIP_LOCAL_FILE).length() > 0L
+
+    /**
+     * Save pasted configs. Blank clears the vault. The caller decides when to refresh - saving and
+     * fetching are separate so the keyboard closes instantly and the probe runs where it belongs.
+     */
+    suspend fun saveLocalVip(text: String): Int = withContext(Dispatchers.IO) {
+        val trimmed = text.trim()
+        val file = File(filesDir, VIP_LOCAL_FILE)
+        if (trimmed.isEmpty()) file.delete() else file.writeText(trimmed + "\n")
+        trimmed.lineSequence().count { it.isNotBlank() && !it.trimStart().startsWith("#") }
     }
 
     /**
@@ -278,6 +464,10 @@ class ServerFeedRepository(
     }
 
     private suspend fun flush(batch: List<Report>) = withContext(Dispatchers.IO) {
+        // The reports exist to feed the host's reliability ledger. With no host (DIRECT) there is
+        // nothing to upload and a bounded channel to keep draining, so drop them here rather than
+        // after building the JSON body.
+        if (AppSettings.feedMode == AppSettings.FEED_DIRECT) return@withContext
         val arr = JSONArray()
         batch.forEach {
             arr.put(JSONObject().put("sid", it.nodeId).put("ok", it.ok)
@@ -340,40 +530,42 @@ data class FeedPayload(val kind: String, val generatedAt: Long, val ttl: Int, va
 
 /** Normalised node. `raw` is what the core actually consumes; the rest is for the UI. */
 data class FeedNode(
+    // Defaults everywhere: a node can now be built from a single pasted line (NodeUri) without dragging
+    // thirty "null" arguments through the call site. The feed path passes every field anyway.
     val id: String,
-    val slot: Int,
-    val name: String,
-    val subtitle: String,
-    val cc: String?,
+    val slot: Int = 0,
+    val name: String = "",
+    val subtitle: String = "",
+    val cc: String? = null,
     var kind: String = "vip",
-    val tier: String,
-    val proto: String,
-    val host: String,
-    val port: Int,
-    val tls: String?,
-    val network: String?,
-    val sni: String?,
-    val path: String?,
-    val hostHeader: String?,
-    val alpn: String?,
-    val flow: String?,
-    val pbk: String?,
-    val sid: String?,
-    val fingerprint: String?,
-    val userId: String?,
-    val alterId: Int?,
-    val password: String?,
-    val username: String?,
-    val method: String?,
-    val cipher: String?,
-    val insecure: Boolean,
-    val supportsUdp: Boolean,
-    val raw: String?,
-    val grade: String,
-    val latencyMs: Long?,
-    val reliability: Float,
-    val samples: Int,
-    val config: String?,
+    val tier: String = "vip",
+    val proto: String = "",
+    val host: String = "",
+    val port: Int = 0,
+    val tls: String? = null,
+    val network: String? = null,
+    val sni: String? = null,
+    val path: String? = null,
+    val hostHeader: String? = null,
+    val alpn: String? = null,
+    val flow: String? = null,
+    val pbk: String? = null,
+    val sid: String? = null,
+    val fingerprint: String? = null,
+    val userId: String? = null,
+    val alterId: Int? = null,
+    val password: String? = null,
+    val username: String? = null,
+    val method: String? = null,
+    val cipher: String? = null,
+    val insecure: Boolean = false,
+    val supportsUdp: Boolean = true,
+    val raw: String? = null,
+    val grade: String = "D",
+    val latencyMs: Long? = null,
+    val reliability: Float = 0f,
+    val samples: Int = 0,
+    val config: String? = null,
     /**
      * The server's per-node transport patch (see net/Regime.kt). A *patch*, not a full config: absent
      * keys stay the client's decision. Default = empty, so an old feed payload still parses.
