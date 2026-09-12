@@ -187,8 +187,11 @@ class NodeUriTest {
 
     @Test
     fun gradeMatchesTheServersThresholds() {
+        // Score.php walks `free.grades` with `$lat <= maxLatencyMs`, so the boundary belongs to the
+        // better grade - and the phone must disagree with the panel by exactly zero rows.
         assertEquals("A", NodeUri.grade(399))
-        assertEquals("B", NodeUri.grade(400))
+        assertEquals("A", NodeUri.grade(400))
+        assertEquals("B", NodeUri.grade(401))
         assertEquals("B", NodeUri.grade(1000))
         assertEquals("C", NodeUri.grade(1001))
         assertEquals("C", NodeUri.grade(2200))

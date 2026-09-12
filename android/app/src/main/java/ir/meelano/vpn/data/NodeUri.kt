@@ -96,7 +96,7 @@ object NodeUri {
         }
         if (scheme !in TUNNEL_SCHEMES) return null
         var rest = token.substring(schemeEnd + 3)
-        val remark = rest.substringAfter('#', "")
+        val remark = unescape(rest.substringAfter('#', ""))
         rest = rest.substringBefore('#')
         val q = parseQuery(rest.substringAfter('?', ""))
         val authority = rest.substringBefore('?')
@@ -109,7 +109,9 @@ object NodeUri {
         if (scheme == "vmess") {
             val j = decodeBase64(cred.ifBlank { authority }) ?: return null
             val o = MiniJson.parse(j) as? Map<*, *> ?: return null
-            val h = o["host"]?.toString()?.ifBlank { null } ?: return null
+            // the classic vmess bug: dialing `host` (a CDN front, meant for the Host header) instead of
+            // `add`. It connects to something and blames nothing, so every node in existence looks alive.
+            val h = (o["add"] ?: o["address"])?.toString()?.ifBlank { null } ?: return null
             val p = o["port"].toString().trim('"').toIntOrNull() ?: return null
             if (!isPublicAddress(h) || p !in 1..65535) return null
             val uid = o["id"]?.toString()?.ifBlank { null } ?: return null
@@ -147,7 +149,9 @@ object NodeUri {
 
             else -> {
                 val secret = cred.ifBlank { null }
-                if (scheme != "vless" && secret == null) return null   // trojan/hy2 die without a password
+                // None of these dial without their secret - trojan/hy2 need the password, vless the uuid.
+                // A half-built row is worse than no row: the user taps it, it fails, and the app is to blame.
+                if (secret == null) return null
                 base.copy(
                     id = id(scheme, host, port, secret ?: q["pbk"], q["sid"]),
                     userId = if (scheme == "vless") secret else null,
@@ -166,7 +170,10 @@ object NodeUri {
                     flow = q["flow"]?.ifBlank { null },
                     pbk = q["pbk"]?.ifBlank { null },
                     sid = q["sid"]?.ifBlank { null },
-                    fingerprint = q["fp"]?.ifBlank { null },
+                    // v2rayN writes `fingerprint=`, sing-box-style links write `fp=`, a few panels `sfp=`.
+                    // All three mean the same thing, and Reality without it is just a plain TLS dial.
+                    fingerprint = q["fp"]?.ifBlank { null } ?: q["fingerprint"]?.ifBlank { null }
+                        ?: q["sfp"]?.ifBlank { null },
                     insecure = q["allowInsecure"] == "1" || q["insecure"] == "1",
                 )
             }
