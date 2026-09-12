@@ -1,0 +1,36 @@
+[
+  {
+    "protocol": "socks5",
+    "username": null,
+    "password": null,
+    "host": "41.79.10.22",
+    "port": 1080,
+    "timeout": 0.41,
+    "exit_ip": "41.79.10.22",
+    "checked_at": "2026-09-10T12:00:00+00:00",
+    "asn": {"autonomous_system_number": 36873, "autonomous_system_organization": "Wio Networks"},
+    "geolocation": {"country": {"iso_code": "KE", "names": {"en": "Kenya"}}, "city": {"names": {"en": "Nairobi"}}}
+  },
+  {
+    "protocol": "http",
+    "username": "u1",
+    "password": "p1",
+    "host": "188.166.100.30",
+    "port": 3128,
+    "timeout": 183,
+    "geolocation": {"country": {"iso_code": "NL", "names": {"en": "Netherlands"}}}
+  },
+  {
+    "protocol": "socks4",
+    "host": "127.0.0.1",
+    "port": 1080,
+    "geolocation": {"country": {"iso_code": "US"}}
+  },
+  {
+    "protocol": "http",
+    "host": "203.0.113.50",
+    "port": 8080,
+    "timeout": 0.9,
+    "geolocation": {"country": {"iso_code": "ZZ"}}
+  }
+]

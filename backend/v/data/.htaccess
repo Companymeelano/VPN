@@ -1,0 +1,36 @@
+# Nothing in this directory is public: cache, ledger, your VIP list, uploaded APKs.
+# The feed PHP scripts read it through PHP, so blocking direct access costs nothing.
+# Keep this file. If your panel lets you add a rule outside .htaccess, also block /v/data in it.
+
+<IfModule mod_authz_core.c>
+  Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+  Order deny,allow
+  Deny from all
+</IfModule>
+
+# The APK folder is served on purpose (that is how users download updates),
+# but only as a file, never as a listing.
+Options -Indexes
+
+<Files "ledger.json">
+  <IfModule mod_authz_core.c>Require all denied</IfModule>
+  <IfModule !mod_authz_core.c>Order deny,allow
+Deny from all</IfModule>
+</Files>
+<Files "dns.json">
+  <IfModule mod_authz_core.c>Require all denied</IfModule>
+  <IfModule !mod_authz_core.c>Order deny,allow
+Deny from all</IfModule>
+</Files>
+<FilesMatch "^(vip_raw\.txt|version\.json|.*\.lock|.*\.cnt|.*\.log)$">
+  <IfModule mod_authz_core.c>Require all denied</IfModule>
+  <IfModule !mod_authz_core.c>Order deny,allow
+Deny from all</IfModule>
+</FilesMatch>
+<FilesMatch "^\.">
+  <IfModule mod_authz_core.c>Require all denied</IfModule>
+  <IfModule !mod_authz_core.c>Order deny,allow
+Deny from all</IfModule>
+</FilesMatch>

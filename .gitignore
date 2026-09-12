@@ -1,0 +1,27 @@
+# runtime artifacts of the feed endpoint (created on the host, never committed)
+/backend/v/data/cache/
+/backend/v/data/locks/
+/backend/v/data/ratelimit/
+/backend/v/data/log/
+/backend/v/data/*.json
+/backend/v/data/vip_raw.txt
+/backend/v/data/fixtures/*.out
+/backend/v/apk/*
+!/backend/v/apk/.htaccess
+# local overrides that contain secrets
+/backend/v/config.local.php
+/backend/v/sources.local.php
+/backend/v/admin/.env
+# scratch (the whole tools/ dir used to be scratch; it is not any more - tools/check-theme.py is a
+# CI gate now, so only throwaways inside tools/scratch/ are ignored)
+/tools/scratch/
+*.log
+.DS_Store
+
+# build outputs (the APK is distributed through the host /v/apk/, not through git)
+/android/**/build/
+/android/**/.gradle/
+/android/local.properties
+/android/keystore.properties
+*.keystore
+*.jks

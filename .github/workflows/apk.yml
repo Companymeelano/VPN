@@ -1,0 +1,426 @@
+name: build apk
+
+# این workflow تنها راه رسیدن به یک APK واقعی است، چون build اندروید به Android SDK +
+# Maven Central نیاز دارد که در محیط توسعه‌ی ما در دسترس نیست. رانرهای GitHub هر دو را دارند.
+#
+# نحوه‌ی استفاده:
+#   1) Actions ▸ “build apk” ▸ Run workflow  (variant=debug برای تست روی گوشی)
+#   2) از Artifact دانلود کن: meelano-<name>-<code>-debug.apk
+#   2b) یا فقط یک تگ بزن:  git tag v2.0.0-beta.1 && git push origin v2.0.0-beta.1
+#       ⇒ بیلد گرفته می‌شود و Release با لینک مستقیم ساخته می‌شود (این خودکارترین راه است)
+#   3) برای ریلیز امضاشده: سه secret زیر را پر کن و variant=release بزن
+#        MEELANO_KEYSTORE_B64   -> base64 -w0 meelano.keystore
+#        MEELANO_KEY_PASS       -> keyPassword
+#        MEELANO_STORE_PASS     -> storePassword
+#        MEELANO_KEY_ALIAS      -> alias
+#   4) فایل نهایی را با همان نام public_html/v/apk/meelano-<name>-<code>.apk بگذار؛
+#      بک‌اند خودش version.json را از روی نام فایل می‌سازد (backend/v/lib/Version.php).
+#
+# عمداً اینجا «نسخه‌ی ساخت» و «نسخه‌ی APK» یکی شده‌اند تا versionCode/Name از app/build.gradle.kts
+# خوانده شود — دو جا نگه‌داشتن نسخه، همان چیزی است که باعث می‌شود آپدیت خودکار بی‌صدا کار نکند.
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: 'debug (قابل نصب روی گوشی تست) یا release (امضای خودت)'
+        type: choice
+        required: true
+        default: debug
+        options: [debug, release]
+      feed_base:
+        description: 'MEELANO_FEED_BASE'
+        required: true
+        default: 'https://ainetmee.ir/v'
+      feed_key:
+        description: 'MEELANO_FEED_KEY (اختیاری؛ هدر دسترسی فید)'
+        required: false
+        default: ''
+      core_linked:
+        description: 'هسته‌ی تونل به این بیلد وصل است؟ (false = فقط UI/فید/آپدیت؛ ریلیز با false رد می‌شود)'
+        type: choice
+        required: true
+        default: 'false'
+        options: ['false', 'true']
+      self_update:
+        description: 'اجازه‌ی خودآپدیت در این بیلد (true/false)'
+        type: choice
+        required: true
+        default: 'true'
+        options: ['true', 'false']
+  push:
+    # main = نردبان سبز؛ تگ = دکمه‌ی انتشار (Release با لینک مستقیم). چرا تگ و نه dispatch:
+    # dispatch کردن workflow به اجازه‌ی actions:write نیاز دارد که توکن محیط توسعه ندارد،
+    # ولی push تگ با همان اجازه‌ی push کار می‌کند. برای tag، فیلتر paths روی تغییرات
+    # کامیتِ تگ اعمال می‌شود — و تگ همیشه روی کامیتی می‌خورد که android/** را لمس کرده.
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - 'android/**'
+      - '.github/workflows/apk.yml'
+  # workflow_dispatch فقط وقتی در منوی Actions ظاهر می‌شود که فایل روی شاخه‌ی پیش‌فرض باشد؛
+  # تا آن زمان، همین workflow روی PR اجرا می‌شود و همان APK را می‌دهد.
+  pull_request:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '.github/workflows/apk.yml'
+
+permissions:
+  # contents:write فقط برای یک چیز لازم است: ساختن Release با asset. build چیزی را commit نمی‌کند.
+  # issues:write برای همان مرحله‌ی «report to PR» لازم است: کامنت روی PR بدون آن ۴۰۳ می‌گیرد و
+  # `|| true` آن را بی‌صدا می‌کند — دقیقاً همان چیزی که یک خطای روشن را به «بیلد قرمزِ بی‌دلیل»
+  # تبدیل می‌کند. (pull-requests:write برای comment کافی نیست؛ مسیر API زیرمسئله‌ی issues است.)
+  contents: write
+  pull-requests: write
+  issues: write
+
+env:
+  ANDROID_HOME: ${{ github.workspace }}/android-sdk
+  GRADLE_USER_HOME: ${{ github.workspace }}/.gradle-home
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: android sdk
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: 'false'
+
+      # gradle بدون wrapper: مخزن عمداً gradle-wrapper.jar (باینری) را نگه نمی‌دارد؛
+      # این اکشن توزیع را نصب می‌کند و کش می‌کند. نسخه با AGP 8.6 هماهنگ است.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+          cache-read-only: false
+
+      - name: keystore (release only)
+        if: ${{ inputs.variant == 'release' }}
+        env:
+          KS_B64: ${{ secrets.MEELANO_KEYSTORE_B64 }}
+          STORE_PASS: ${{ secrets.MEELANO_STORE_PASS }}
+          KEY_PASS: ${{ secrets.MEELANO_KEY_PASS }}
+          ALIAS: ${{ secrets.MEELANO_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KS_B64:-}" ]; then
+            echo "::error::MEELANO_KEYSTORE_B64 تنظیم نشده. با 'openssl genrsa'/'keytool' یک keystore بساز و:"
+            echo "  base64 -w0 meelano.keystore | gh secret set MEELANO_KEYSTORE_B64"
+            exit 1
+          fi
+          printf '%s' "$KS_B64" | base64 -d > "$GITHUB_WORKSPACE/meelano.keystore"
+          cat > android/keystore.properties <<EOF
+          storeFile=$GITHUB_WORKSPACE/meelano.keystore
+          storePassword=$STORE_PASS
+          keyAlias=$ALIAS
+          keyPassword=$KEY_PASS
+          EOF
+
+      - name: version from gradle
+        id: ver
+        working-directory: android
+        run: |
+          set -euo pipefail
+          code=$(grep -oP 'versionCode = \K[0-9_]+' app/build.gradle.kts | tr -d '_')
+          name=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "### نسخه: $name ($code)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: kotlin comment balance
+        # One stray `/*` inside a KDoc silently swallows the rest of the file, and Kotlin block comments
+        # *nest*, so a nested opener does not even fix itself at the next `*/`: the failure surfaces as an
+        # "unresolved reference" cascade in another file. Ten seconds here, instead of that again.
+        run: |
+          set -euo pipefail
+          python3 "$GITHUB_WORKSPACE/tools/check-comments.py"
+
+      - name: unit tests (the core contract)
+        id: tests
+        # تنها جایی در این پروژه که می‌شود «درست کار می‌کند» را بدون گوشی اثبات کرد: CoreProfiles و
+        # net/Regime عمداً بدون Android نوشته شده‌اند. پیش از بسته‌بندی اجرا می‌شود، چون یک پروفایلِ
+        # غیرقابل‌پارس از بیرون دقیقاً مثل «سرور مرده» به‌نظر می‌رسد و هیچ لاگی ندارد.
+        working-directory: android
+        run: |
+          # `set +e` و نه `|| true`: شلِ پیش‌فرضِ اکشنز با -e اجرا می‌شود، پس بی این خط
+          # gradle که می‌سوخت step همان‌جا می‌مرد - بدون rc، بدون ::error::، بدون گزارش.
+          # اما `|| true` هم دروغ می‌گفت: خودش PIPESTATUS را صفر می‌کند و «تست‌ها سبز»
+          # را به‌جای قرمز نشان می‌داد. خاموش‌کردنِ -e هر دو مشکل را حل می‌کند.
+          set +e; set -uo pipefail
+          gradle :app:testDebugUnitTest --no-daemon --console=plain --stacktrace \
+            -PMEELANO_FEED_BASE="${{ inputs.feed_base || 'https://ainetmee.ir/v' }}" \
+            2>&1 | tee "$GITHUB_WORKSPACE/test.log"
+          rc="${PIPESTATUS[0]}"
+          if [ "$rc" != 0 ]; then
+            echo "::error::unit tests failed (rc=$rc) - see the PR comment"
+            {
+              echo "## unit tests — $rc"
+              echo '```'
+              grep -E "FAILED|expected:|AssertionError|^e: " "$GITHUB_WORKSPACE/test.log" | head -40
+              # پیامِ واقعیِ assertion فقط در XML هست؛ gradle در کنسول آن را کوتاه می‌کند
+              for f in app/build/test-results/testDebugUnitTest/*.xml; do
+                [ -f "$f" ] || continue
+                grep -o 'testcase name="[^"]*"\|failure message="[^"]*"' "$f" | cut -c1-260 | head -60
+              done
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$rc"
+
+      - name: build
+        id: build
+        continue-on-error: true
+        working-directory: android
+        env:
+          MEELANO_FEED_BASE: ${{ inputs.feed_base || 'https://ainetmee.ir/v' }}
+          MEELANO_FEED_KEY_IN: ${{ inputs.feed_key }}
+          MEELANO_FEED_SECRET: ${{ secrets.MEELANO_FEED_SECRET }}
+          SELF_UPDATE: ${{ inputs.self_update || 'true' }}
+          CORE_LINKED: ${{ inputs.core_linked || 'false' }}
+          VARIANT: ${{ inputs.variant || 'debug' }}
+        run: |
+          set -euo pipefail
+          task=":app:assemble${VARIANT^}"
+          args=("$task" --no-daemon --console=plain --stacktrace
+                -PMEELANO_FEED_BASE="$MEELANO_FEED_BASE"
+                -PMEELANO_SELF_UPDATE="$SELF_UPDATE"
+                -PMEELANO_CORE_LINKED="$CORE_LINKED")
+          [ -n "${MEELANO_FEED_KEY_IN:-}" ] && args+=(-PMEELANO_FEED_KEY="$MEELANO_FEED_KEY_IN")
+          # سِکِرِتِ HMAC فقط برای *وریفای* آپدیت در کلاینت است؛ اگر ست نشده باشد فیلد خالی می‌ماند
+          # و کلاینت امضای فایل را بررسی نمی‌کند — پس ریلیز واقعی بدون آن نساز.
+          if [ -n "${MEELANO_FEED_SECRET:-}" ]; then args+=(-PMEELANO_FEED_SECRET="$MEELANO_FEED_SECRET"); fi
+          gradle "${args[@]}" --continue 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+          exit "${PIPESTATUS[0]}"
+
+      # channel #3، وقتی هیچ‌کدام از دو راه بالا کار نمی‌کنند (میزبان blob از برخی محیط‌ها
+      # مسدود است و gh pr comment هم بی‌صدا رد می‌شود): پیام خطا روی همین شاخه کامیت می‌شود.
+      # [skip ci] در پیام الزامی است، وگرنه هر کامیت یک رانِ جدید می‌سازد و چرخه بسته نمی‌شود.
+      - name: report into the branch
+        if: always() && (steps.build.outcome == 'failure' || steps.tests.outcome == 'failure')
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BR: ${{ github.head_ref || github.ref_name }}
+        run: |
+          set +e; set -uo pipefail
+          {
+            echo "# گزارش خطای بیلد (خودکار؛ دفعهٔ بعد بازنویسی می‌شود)"
+            echo
+            echo '```'
+            grep -E "FAILED|^e: |error:|expected:|AssertionError" "$GITHUB_WORKSPACE/test.log" 2>/dev/null | head -30 || true
+            # build.log وقتی وجود ندارد که تست زودتر ترکیده — و `[ -f ]` نه‌به‌نه یعنی این step
+            # با grepِ بی‌فایل بمیرد و هیچ گزارشی نوشته نشود (همین اتفاق افتاد)
+            [ -f "$GITHUB_WORKSPACE/build.log" ] && grep -E "^e: |error:" "$GITHUB_WORKSPACE/build.log" | head -20 || true
+            for f in android/app/build/test-results/testDebugUnitTest/*.xml; do
+              [ -f "$f" ] || continue
+              sed -n 's/.*\(<failure[^>]*message="[^"]*"/\1/p' "$f" | cut -c1-400 | head -12
+            done
+            echo '```'
+          } > "$RUNNER_TEMP/CI-FAILURE.md"
+          # نوشتن با Contents API، نه git push: همین‌جا مهم است که پیام *حتماً* جایی بنشیند، و
+          # push از روی merge-refِ رویداد pull_request کار نمی‌کند (کامیتِ ادغام به شاخه راه نمی‌یابد).
+          body=$(base64 -w0 "$RUNNER_TEMP/CI-FAILURE.md")
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/contents/CI-FAILURE.md?ref=$BR" --jq .sha 2>/dev/null || true)
+          args=(gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/CI-FAILURE.md"
+                -f message="ci: گزارش خطای بیلد [skip ci]" -f content="$body" -f branch="$BR")
+          [ -n "$sha" ] && args+=(-f sha="$sha")
+          "${args[@]}" >/dev/null || echo "::warning::writing CI-FAILURE.md failed (token lacks contents:write?)"
+
+      # لاگ کامل از این سندباکس قابل دانلود نیست (میزبان blob)، پس خلاصه‌ی خطاها را به‌شکل
+      # کامنت روی PR برمی‌گردانیم: خواندنی‌ترین راه برای دیدن «چرا build نشد» بدون دسترسی به Actions.
+      - name: report to PR
+        # continue-on-error on purpose: a *reporting* failure (no comment permissions on a push event, an
+        # empty log, a gh hiccup) must never be the reason a good build is red - and before this, it was.
+        continue-on-error: true
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.number }}
+        run: |
+          set -uo pipefail
+          # هر دو لاگ: اگر unit tests بترکند، build.log اصلاً وجود ندارد و گزارش بی‌محتوا می‌شد
+          log=build.log
+          if [ ! -f "$log" ] && [ -f test.log ]; then log=test.log; fi
+          [ -f "$log" ] || { echo "no build log"; exit 0; }
+          # جزئیاتِ تست همیشه می‌چسبد، حتی وقتی build.log اصلاً ساخته نشده (تست زودتر ترکیده):
+          # بیِ پیامِ assertion، «testDebugUnitTest FAILED» هیچ چیزی برای رفع کردن دست نمی‌دهد
+          extra=$(grep -E "FAILED|expected:|AssertionError" test.log 2>/dev/null | head -25)
+          xml=$(ls android/app/build/test-results/testDebugUnitTest/*.xml 2>/dev/null | head -6)
+          if [ -n "$xml" ]; then
+            det=$(grep -ho 'failure message="[^"]*"' $xml 2>/dev/null | cut -c1-300 | head -20)
+            if [ -n "$det" ]; then extra=$(printf '%s\n%s\n' "$extra" "$det"); fi
+          fi
+          # بلوک «چه اشتباهی شد» + ۱۲۰ خط آخر لاگ: در مرحله‌ی configuration هیچ خطای
+          # کامپایلوری وجود ندارد و بدون این، لاگ بی‌فایده است
+          {
+            echo "## build apk — خروج"
+            echo
+            echo '```'
+            grep -A24 "\* What went wrong" "$log" | head -60 || true
+            grep -E "^> Task .*FAILED|^[a-zA-Z]+: error:|Caused by:" "$log" | head -20 || true
+            # خودِ خطا + ۷ خط بعدش: «None of the following candidates is applicable» بی لیستِ
+            # نامزدها هیچی بهت نمی‌گوید؛ کامپایلور اورلودهای درست را همان‌جا ردیف می‌کند
+            awk '/^e: file:\/\//{p=8} p&&p--' "$log" | head -160 || true
+            if [ -n "${extra:-}" ]; then echo; echo "### unit tests"; echo; echo '```'; echo "$extra"; echo '```'; fi
+            echo '```'
+            echo
+            echo "<details><summary>۱۲۰ خط آخر لاگ gradle</summary>"
+            echo
+            echo '```'
+            tail -40 "$log" | sed "s#$(pwd)/android/##g"
+            echo '```'
+            echo "</details>"
+          } > report.md
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file report.md || true
+
+      - name: surface failure text
+        # کانال سوم، و تنها کانالی که *همیشه* کار می‌کند: annotation روی همین check-run.
+        # artifact روی میزبان blob است (از بسیاری محیط‌های سندباکسی/جغرافیایی مسدود) و
+        # gh pr comment بدون مجوزِ issues:write بی‌صدا می‌میرد؛ ::error:: هیچ توکنی نمی‌خواهد
+        # و شرحِ خطا را همان‌جا می‌چسباند. عمداً exit 0: گزارش‌دهندة خطا نباید خطای دوم بسازد.
+        if: always() && (steps.build.outcome == 'failure' || steps.tests.outcome == 'failure')
+        run: |
+          set +e
+          for f in "$GITHUB_WORKSPACE/test.log" "$GITHUB_WORKSPACE/build.log"; do
+            [ -f "$f" ] || continue
+            {
+              grep -hE "^(e: |i: |Caused by:|> Task .* FAILED|\* What went wrong)" -A3 "$f"
+              # کنسولِ gradle نامِ تستِ شکست‌خورده را می‌گوید؛ expected/actual فقط در XML است
+              grep -hE "FAILED$" "$f" | head -12
+              for x in android/app/build/test-results/testDebugUnitTest/*.xml; do
+                [ -f "$x" ] || continue
+                sed -n 's/.*<\(failure\|error\)[^>]*message="\([^"]*\)".*/\2/p' "$x" | cut -c1-240 | head -10
+              done
+              grep -hA10 "What went wrong" "$f"
+            } | head -46 | tr -d '\r\001-\010' | sed -e 's/%/%25/g' -e '/^--$/d' -e 's/[<>&]/ /g' -e 's/^/::error::/'
+          done
+          exit 0
+
+      - name: clear failure report
+        # گزارشِ خطا وقتی بیلد سبز شد بی‌معنی می‌شود؛ پاکش کن، وگرنه ماهِ بعد یک
+        # CI-FAILURE.md کهنه وسط درخت آویزان است و همه فکر می‌کنند بیلد خراب است.
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BR: ${{ github.head_ref || github.ref_name }}
+        run: |
+          set +e
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/contents/CI-FAILURE.md?ref=$BR" --jq .sha 2>/dev/null)
+          [ -n "$sha" ] || exit 0
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/contents/CI-FAILURE.md" \
+            -f message="ci: گزارش خطای بیلد پاک شد - بیلد سبز است [skip ci]" \
+            -f sha="$sha" -f branch="$BR" >/dev/null && echo "removed stale CI-FAILURE.md"
+          exit 0
+
+      - name: collect + hash
+        id: out
+        if: steps.build.outcome == 'success'
+        run: |
+          set -euo pipefail
+          variant="${{ inputs.variant || 'debug' }}"
+          src=$(find android/app/build/outputs/apk/$variant -name '*.apk' | head -1)
+          [ -n "$src" ] || { echo "::error::APK تولید نشد"; exit 1; }
+          # نامِ فایلِ asset عمداً بدون پسوندِ variant است: Version.php::scan() با
+          # `^(.+)-(\d+\.\d+(\.\d+)?)-(\d+)\.apk$` ایندکس می‌کند، پس «…-debug.apk» روی هاست
+          # یعنی no_apk_published. variant در عنوانِ Release و در note می‌ماند (جایی که خوانده می‌شود،
+          # نه جایی که پارس می‌شود)؛ بنابراین همین فایل را می‌توان مستقیم در public_html/v/apk/ گذاشت.
+          out="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}.apk"
+          cp "$src" "./$out"
+          sha=$(sha256sum "$out" | cut -d' ' -f1)
+          size=$(stat -c%s "$out")
+          {
+            echo "## $out"
+            echo
+            echo "| مورد | مقدار |"
+            echo "|---|---|"
+            echo "| sha256 | \`$sha\` |"
+            echo "| حجم | $size بایت |"
+            echo "| نصب | \`adb install -r $out\` |"
+            echo "| مسیر هاست | \`public_html/v/apk/$out\` (همین فایل، بدون تغییرنام) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "file=$out" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+          echo "size=$size" >> "$GITHUB_OUTPUT"
+
+      # Release با APK + sha256 + آیکون ۵۱۲. چرا Release و نه Artifact: artifact بعد از ۹۰ روز
+      # می‌میرد و صفحه‌اش برای هر دانلود دوباره redirect می‌کند؛ asset یک ریلیز لینک مستقیم و ثابت است
+      # که می‌شود آن را کپی کرد روی public_html/v/apk/ و به کاربران داد.
+      - name: publish release
+        if: ${{ github.event_name != 'pull_request' && steps.out.outputs.file != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FILE: ${{ steps.out.outputs.file }}
+          SHA: ${{ steps.out.outputs.sha256 }}
+          SIZE: ${{ steps.out.outputs.size }}
+          VARIANT: ${{ inputs.variant || 'debug' }}
+        run: |
+          set -uo pipefail
+          case "$GITHUB_REF" in
+            refs/tags/*) tag="${GITHUB_REF_NAME}" ;;
+            *) tag="apk-$(date -u +%Y%m%d-%H%M)-${VARIANT}" ;;
+          esac
+          # فقط ۶۴ هگز، نه قالبِ sha256sum: Version.php::checksum() همین را می‌خواهد (هرچند از
+          # نسخه‌ی تازه، قالبِ sha256sum را هم می‌خواند)
+          printf '%s\n' "$SHA" > "$FILE.sha256"
+          pre=""
+          case "$tag" in *alpha*|*beta*|*rc*) pre="--prerelease" ;; esac
+          {
+            echo "بیلد \`${VARIANT}\` از کامیت \`${GITHUB_SHA::7}\` — تگ \`$tag\`"
+            echo
+            echo "- حجم: \`$SIZE\` بایت · sha256: \`$SHA\`"
+            echo "- نصب روی گوشی: \`adb install -r $FILE\`"
+            echo "- برای آپدیت خودکار: \`$FILE\` و \`$FILE.sha256\` را در \`public_html/v/apk/\` بگذار — نام فایل از قبل با قاعده‌ی \`Version.php::scan()\` می‌خواند، پس تغییرنام لازم نیست"
+            echo "- این بیلد debug است (کلید debug). ریلیز کاربران را با keystore خودت بساز: docs/ANDROID-BUILD.md"
+          } > notes.md
+          assets="$FILE $FILE.sha256"
+          [ -f design/preview/assets/ic-store-512.png ] && assets="$assets design/preview/assets/ic-store-512.png"
+          # خروجی کامل gh به‌صورت annotation: لاگ build از بیرون قابل دانلود نیست، این تنها کانال اطمینان‌یافتنی است
+          gh release create "$tag" $assets --title "Meelano VPN — $tag ($VARIANT)" --notes-file notes.md $pre >rel.log 2>&1 \
+            || gh release upload "$tag" $assets --clobber >>rel.log 2>&1 \
+            || { echo "::error::release failed — $(tr '\n' '|' < rel.log | cut -c1-500)"; exit 1; }
+          url=$(gh release view "$tag" --json url -q .url)
+          echo "$url"
+          for f in $assets; do echo "asset: $f -> $url/download/$f"; done
+          {
+            echo "### لینک دانلود APK"; echo
+            echo "$url/download/$FILE"; echo
+            echo "- sha256: \`$SHA\` · حجم: $SIZE بایت"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # channel #2: artifact. وقتی کسی به Actions دسترسی ندارد (یا gh pr comment بی‌صدا رد می‌شود،
+      # که در این مخزن رخ داده)، «چرا قرمز شد» بدون لاگ یعنی حدس‌زدنِ کور. لاگِ خام به‌عنوان
+      # artifact پیوست می‌شود: `gh run download <run> -n meelano-failure-log`. فقط روی شکست، فقط
+      # دو فایلِ لاگ، ۷ روز.
+      - name: failure log
+        # اگر این step وسط کار می‌ماند هیچ‌وقت اجرا نمی‌شد: build با continue-on-error شغل
+        # شکست‌خورده حساب نمی‌کند، پس failure() نادرست بود و لاگ هیچ‌جا نمی‌رسید.
+        if: always() && (steps.build.outcome == 'failure' || steps.tests.outcome == 'failure')
+        uses: actions/upload-artifact@v4
+        with:
+          name: meelano-failure-log
+          path: |
+            ${{ github.workspace }}/test.log
+            ${{ github.workspace }}/build.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - uses: actions/upload-artifact@v4
+        # `if` و `ignore` لازم‌اند: بی آن‌ها وقتی build نمی‌سوزد این step با «Input required and
+        # not supplied: path» قرمز می‌شود و خطای *واقعی* را زیر خودش گم می‌کند.
+        if: steps.out.outcome == 'success'
+        with:
+          name: meelano-apk-${{ inputs.variant || 'debug' }}
+          path: ${{ steps.out.outputs.file }}
+          if-no-files-found: ignore
+          retention-days: 30

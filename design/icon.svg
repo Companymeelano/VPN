@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  M•A — نشانه‌ی اصلی (vector).  نسخه‌ی ۱۰۸۰ برای مارکت؛ آیکونِ لانچرِ واقعی در
+  android/app/src/main/res/drawable/ic_launcher_monochrome.xml (+ mipmap-*/ic_launcher_foreground.xml)
+  است و همان هندسه را با همان عددی می‌کشد که BRAND.md §1.5 مستند کرده است.
+
+  هندسه (گرید ۲۴ واحدی، قلم ۲٫۰، سرِ گرد، بدون زاویه):
+    • هر دو پا روی y=17.8، هر دو رأس روی y=7.2، دهانه‌ها برابر (1.8 و 2.0 واحد)
+    • رأسِ میانیِ M تا y=11.6 پایین می‌آید  →  عمقِ «تونل»
+    • نوارِ A کج نیست: دروازه — از 16.8 تا 20.8، شعاع ۲٫۰ در y=13.8، با دو پرچ ۰٫۸ واحدی پایین
+    • نقطه مثبت است و روی خطِ ground می‌نشیند؛ یک پرتو کوتاه (11.8→13.4) آن را به M می‌بندد تا
+      خط «پیوسته» بماند: بسته‌ای که هنوز در حالِ عبور است
+    • کف‌پا 45°، فاصله‌ی دو حرف = ۴ واحد، کادرِ امن ۶۶٪
+  دو کمانِ خالی (درهٔ M و زیرِ A) تنها جایِ نورِ سبزنعنایی‌اند؛ در مونوکرومِ Adaptive همان
+  کمان‌ها با رنگِ خودِ سیستم پر می‌شوند، پس نشان در هر تمی نشان است.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080" role="img" aria-label="M•A">
+  <defs>
+    <radialGradient id="halo" cx="0.5" cy="0.42" r="0.62">
+      <stop offset="0" stop-color="#22C77E" stop-opacity="0.20"/>
+      <stop offset="0.55" stop-color="#22C77E" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#0E9E68" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="slab" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#1A2026"/>
+      <stop offset="0.5" stop-color="#13171C"/>
+      <stop offset="1" stop-color="#0A0E13"/>
+    </linearGradient>
+    <linearGradient id="ink" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F4FAFB"/>
+      <stop offset="1" stop-color="#D3E0E6"/>
+    </linearGradient>
+    <!-- field texture: two families of hairlines at +/-18°, never more than 4% -->
+    <pattern id="hatch" width="36" height="36" patternUnits="userSpaceOnUse" patternTransform="rotate(18)">
+      <path d="M0 0 V36" stroke="#EAF2F5" stroke-opacity="0.03" stroke-width="1"/>
+      <path d="M18 0 V36" stroke="#22C77E" stroke-opacity="0.035" stroke-width="1"/>
+    </pattern>
+    <pattern id="hatch2" width="44" height="44" patternUnits="userSpaceOnUse" patternTransform="rotate(-18)">
+      <path d="M0 0 V44" stroke="#EAF2F5" stroke-opacity="0.025" stroke-width="1"/>
+    </pattern>
+    <radialGradient id="vig" cx="0.5" cy="0.5" r="0.72">
+      <stop offset="0.55" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#04070A" stop-opacity="0.55"/>
+    </radialGradient>
+    <filter id="soft" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+
+    <!-- the mark itself, in the 24-unit grid; everything else is framing -->
+    <g id="mark" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+      <path d="M2.8 17.8 L2.8 7.2 L7.3 11.6 L11.8 7.2 L11.8 17.8"/>
+      <path d="M15.8 17.8 L18.8 7.2 L21.8 17.8"/>
+      <path d="M16.8 14.6 L16.8 13.8 A2 2 0 0 1 20.8 13.8 L20.8 14.6"/>
+      <path d="M11.8 15.4 L13.4 15.4"/>
+    </g>
+    <!-- the packet is a positive dot, sitting on the ground line and tied to both letters -->
+    <circle id="dot" cx="14.6" cy="15.4" r="1.15"/>
+    <!-- the two arches that carry light -->
+    <g id="gate" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M2.8 17.8 L2.8 7.2 L7.3 11.6 L11.8 7.2 L11.8 17.8"/>
+      <path d="M16.8 14.6 L16.8 13.8 A2 2 0 0 1 20.8 13.8 L20.8 14.6"/>
+    </g>
+  </defs>
+
+  <!-- slab -->
+  <rect width="1080" height="1080" rx="230" fill="url(#slab)"/>
+  <rect width="1080" height="1080" rx="230" fill="url(#hatch)"/>
+  <rect width="1080" height="1080" rx="230" fill="url(#hatch2)"/>
+  <rect width="1080" height="1080" rx="230" fill="url(#halo)"/>
+  <rect width="1080" height="1080" rx="230" fill="url(#vig)"/>
+  <rect x="3" y="3" width="1074" height="1074" rx="227" fill="none" stroke="#EAF2F5" stroke-opacity="0.06"/>
+
+  <!-- mark, centred: 24 units * 28 = 672, offset (1080-672)/2 = 204 -->
+  <g transform="translate(204,204) scale(28)">
+    <!-- the only light in the picture lives in the M notch and the A arch -->
+    <g filter="url(#soft)">
+      <use href="#gate" stroke="#22C77E" stroke-opacity="0.45" stroke-width="1.1"/>
+      <circle cx="14.6" cy="15.4" r="1.9" fill="#22C77E" fill-opacity="0.35"/>
+    </g>
+    <use href="#mark" stroke="#0A0E13" stroke-opacity="0.55" transform="translate(0,0.18)"/>
+    <use href="#mark" stroke="url(#ink)"/>
+    <use href="#dot" fill="url(#ink)"/>
+  </g>
+
+  <!-- safe zone of an adaptive icon: 66% of the tile, for review only -->
+  <circle cx="540" cy="540" r="356" fill="none" stroke="#22C77E" stroke-opacity="0.08" stroke-dasharray="6 10"/>
+</svg>

@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Persian-first. A few hard rules baked into this file:
+  - "اتصال" for the primary action in every state (changing the verb makes the control feel broken
+    when the label moves);
+  - never the word "قطع" as a button — the disconnect action is the same control, not a second one;
+  - full-width digits (۴۲) for human-facing text, Latin tabular digits for anything measured
+    (latency, MB/s) because the tabular font only has Latin glyphs and mixed digits look worse;
+  - no exclamation marks in errors, no blame.
+-->
+<resources>
+    <string name="app_name">M•A VPN</string>
+    <string name="app_short">M•A</string>
+    <string name="brand_vip">Vip Meelano</string>
+
+    <!-- control core -->
+    <string name="action_connect">اتصال</string>
+    <string name="action_disconnect">قطع</string>
+    <string name="action_cancel">لغو</string>
+    <string name="status_idle">آماده‌ی اتصال</string>
+    <string name="status_connecting">در حال اتصال</string>
+    <string name="status_connected">وصل است</string>
+    <string name="status_reconnecting">وصل مجدد</string>
+    <string name="status_failed">وصل نشد</string>
+    <string name="phase_profile">آماده‌سازی پروفایل</string>
+    <string name="phase_dns">تنظیم DNS</string>
+    <string name="phase_handshake">دست‌دادن با سرور</string>
+    <string name="phase_tunnel">باز کردن تونل</string>
+    <string name="phase_verify">بررسی ترافیک</string>
+    <string name="phase_failed">خطا</string>
+    <string name="download">↓ دریافت</string>
+    <string name="upload">↑ ارسال</string>
+    <string name="session">سشن</string>
+    <string name="retry">تلاش دوباره</string>
+    <string name="show_log">مشاهده جزئیات</string>
+    <string name="copy_log">کپی برای پشتیبانی</string>
+
+    <!-- server list -->
+    <string name="sheet_servers">انتخاب سرور</string>
+    <string name="seg_vip">وی‌آی‌پی</string>
+    <string name="seg_free">رایگان</string>
+    <string name="seg_auto">خودکار</string>
+    <string name="filter_all">همه</string>
+    <string name="filter_near">نزدیک</string>
+    <string name="filter_fast">سریع</string>
+    <string name="filter_works">کار می‌کند</string>
+    <string name="row_latency">پینگ</string>
+    <string name="row_best">بهترین</string>
+    <string name="row_slow">سریع نیست</string>
+    <string name="row_down">قطعی</string>
+    <string name="row_locked">ویژه</string>
+    <string name="row_pin">سنجاق کردن</string>
+    <string name="row_unpin">برداشتن سنجاق</string>
+    <string name="row_copy">کپی کانفیگ</string>
+    <string name="row_retest">تست دوباره</string>
+    <string name="row_copied">کانفیگ کپی شد</string>
+    <string name="auto_desc">هر ۲۴ ساعت یک بار بهترین نود را انتخاب کن</string>
+    <string name="empty_free_title">فعلاً نود آزادی نیست که تست را رد نکرده باشد</string>
+    <string name="empty_free_body">لیست رایگان هر چند دقیقه عوض می‌شود. «تست دوباره» را بزن تا فهرست تازه بگیریم.</string>
+    <string name="empty_vip_title">لیست ویژه به اپ نرسید</string>
+    <string name="empty_vip_body">اینترنت را چک کن؛ اگر وصل است، از پشتیبانی بخواه فایل را دوباره بسازد.</string>
+    <string name="last_update">آخرین به‌روزرسانی فهرست: %1$s</string>
+
+    <!-- control kit (Controls.kt): نوار وضعیتِ بالای صفحه، گروه‌های تنظیمات، دکمه‌های لیست -->
+    <string name="st_connected">متصل</string>
+    <string name="st_idle">آماده</string>
+    <string name="refresh">به‌روزرسانی فهرست</string>
+    <string name="sync_now">همگام‌سازی</string>
+    <string name="retest_all">تست دوباره‌ی همه</string>
+    <string name="group_vpn">اتصال و تونل</string>
+    <string name="group_data">داده و حریم خصوصی</string>
+    <string name="group_general">عمومی</string>
+    <string name="danger_zone">یک کلیک فاصله تا پاک‌شدن تنظیمات</string>
+
+    <!-- onboarding / trust -->
+    <string name="ob_title">آماده‌ایم</string>
+    <string name="ob_perm_title">یک اجازه، همان اول</string>
+    <string name="ob_perm_body">برای ساختن تونل، اندروید اجازه‌ی ساخت VPN را می‌خواهد. پنجره‌ی سیستم را «مجاز» بزن؛ بعدی دیگر نمی‌آید.</string>
+    <string name="ob_battery_title">وقتی اپ را می‌بندی، تونل باید بماند</string>
+    <string name="ob_battery_body">«بدون بهینه‌سازی باتری» را انتخاب کن تا اتصال در پس‌زمینه زنده بماند.</string>
+    <string name="ob_done">شروع</string>
+
+    <!-- settings -->
+    <string name="settings">تنظیمات</string>
+    <string name="set_keepalive">حالت هوشمند اتصال</string>
+    <string name="set_keepalive_body">قطع در لحظه‌ی بستن اپ کابوس کاربر است. وصل می‌مانیم؛ روی وای‌فای ضعیف یک‌بار با تأخیر دوباره وصل می‌شویم.</string>
+    <string name="set_killswitch">Kill Switch</string>
+    <string name="set_killswitch_body">اگر تونل رفت، ترافیک تا برگشتنش بیرون نمی‌رود.</string>
+    <string name="set_dns">DNS امن</string>
+    <string name="set_dns_body">ترافیک DNS داخل تونل می‌رود؛ DNS سرور ارائه‌دهنده استفاده نمی‌شود.</string>
+    <string name="set_reduced">کاهش انیمیشن</string>
+    <string name="set_reduced_body">حلقه‌ها آرام و بدون حرکت می‌شوند؛ برای باتری و حس روانی.</string>
+    <string name="set_lang">زبان</string>
+    <string name="set_theme">پوسته</string>
+    <string name="theme_system">سیستم</string>
+    <string name="theme_dark">تیره</string>
+    <string name="theme_light">روشن</string>
+    <string name="set_update">بروزرسانی خودکار</string>
+    <string name="set_update_body">فایل نسخه را چک کن و موقع Wi‑Fi خودش نصب کند.</string>
+    <string name="set_feedback">ارسال گزارش وضعیت</string>
+    <string name="set_feedback_body">فقط نتیجه‌ی تست هر نود (موفق/ناموفق و زمان). بدون آی‌پی، بدون دستگاه.</string>
+    <string name="set_reset">پاک‌سازی تنظیمات و حافظه</string>
+    <string name="set_version">نسخه %1$s (%2$d)</string>
+    <string name="set_server_count">%1$d نود آماده</string>
+
+    <!-- update -->
+    <string name="upd_title">نسخه‌ی جدید آماده است</string>
+    <string name="upd_body">حجم %1$s · تغییرات: %2$s</string>
+    <string name="upd_now">همین الان</string>
+    <string name="upd_wifi">وقتی Wi‑Fi رسید</string>
+    <string name="upd_skipping">این نسخه را رد می‌کنم</string>
+    <string name="upd_mandatory">برای ادامه‌ی کار اپ باید به‌روز شود</string>
+    <string name="upd_verifying">بررسی سلامت فایل</string>
+    <string name="upd_downloading">دریافت %1$d٪</string>
+    <string name="upd_ready">آماده‌ی نصب — یک تأیید لازم است</string>
+    <string name="upd_corrupt">فایل نصب سالم نبود؛ دوباره تلاش می‌کنیم</string>
+    <string name="upd_noperm">اجازه‌ی نصب از این منبع را روشن کن</string>
+    <string name="upd_open_settings">تنظیمات</string>
+
+    <!-- notifications -->
+    <string name="notif_ch_state">وضعیت اتصال</string>
+    <string name="notif_ch_state_desc">نشان می‌دهد VPN وصل است؛ اندروید با این کانال تونل را زنده نگه می‌دارد</string>
+    <string name="notif_ch_update">بروزرسانی</string>
+    <string name="notif_update_title">M•A VPN وصل است</string>
+    <string name="notif_updating">در حال دریافت نسخه‌ی جدید</string>
+    <string name="notif_open">باز کردن</string>
+    <string name="notif_disconnect">قطع</string>
+    <string name="tile_label">M•A VPN</string>
+    <string name="tile_off">خاموش</string>
+    <string name="tile_on">وصل</string>
+    <string name="tile_connecting">در حال اتصال…</string>
+
+    <!-- shared -->
+    <string name="cd_power">کلید اتصال و قطع</string>
+    <string name="cd_flag">پرچم کشور</string>
+    <string name="close">بستن</string>
+    <string name="ok">باشه</string>
+
+    /* ---- resistance (phase 6): the dials that decide whether a node carries traffic at all ---- */
+    <string name="group_resist">مقاومت در برابر انسداد</string>
+    <string name="set_regime">حالت سانسور</string>
+    <string name="set_regime_body">«خودکار» یعنی از روی سنجشِ زنده‌ی مسیر تصمیم می‌گیریم. اگر اتصال مکرراً می‌افتد، «سنگین» را انتخاب کنید؛ در روزهای قطعی سراسری «قطعی» دست‌ودلبازتر است.</string>
+    <string name="regime_auto">خودکار</string>
+    <string name="regime_calm">آرام</string>
+    <string name="regime_tight">سنگین</string>
+    <string name="regime_blackout">قطعی</string>
+    <string name="set_frag">تکه‌تکه‌سازی TLS</string>
+    <string name="set_frag_body">پیام دست‌دادن TLS را به بسته‌های کوچک تقسیم می‌کند؛ دقیقاً برای همان حالتی که TCP باز می‌شود ولی TLS می‌میرد. کمی به تأخیر اضافه می‌کند.</string>
+    <string name="set_mux">اتصال مشترک (Mux)</string>
+    <string name="set_mux_body">چند stream روی یک اتصال: دست‌دادنِ کمتر، دیده‌شدنِ کمتر. روی لینک پرنویز ممکن است افت سرعت بدهد؛ آن‌وقت خاموشش کنید.</string>
+    <string name="set_reality">اولویت Reality</string>
+    <string name="set_reality_body">گره‌های Reality بالای فهرست می‌آیند؛ فعلاً مقاوم‌ترین ترابریِ در دسترس همین است.</string>
+    <string name="set_boot">اتصال خودکار بعد از روشن شدن گوشی</string>
+    <string name="set_boot_body">بعد از بوت تونل بدون دخالت شما برمی‌گردد — فقط وقتی شبکه در دسترس باشد و قفل صفحه باز شده باشد.</string>
+    <string name="set_mtu">اندازه‌ی بسته (MTU)</string>
+    <string name="set_mtu_body">۱۲۸۰ روی شبکه‌ی موبایل ایران کمترین تکه‌تکه‌شدن و کمترین ریسِط را دارد؛ ۱۵۰ فقط روی فیبر تمیز.</string>
+    <string name="probe_title">آخرین سنجشِ مسیر</string>
+    <string name="probe_none">هنوز سنجشی انجام نشده؛ بعد از اولین همگام‌سازیِ فهرست خودکار اجرا می‌شود.</string>
+    <string name="chart_title">دقیقه‌های اخیر</string>
+    <string name="chart_peak">اوج</string>
+    <string name="chart_down">دانلود</string>
+    <string name="chart_up">آپلود</string>
+    <string name="chart_events">بازنشانیِ اتصال</string>
+    <string name="chart_empty">هنوز نمونه‌ای جمع نشده؛ بعد از اتصال پر می‌شود</string>
+    <string name="diag_open">گزارشِ عیب‌یابی را بفرست</string>
+    <string name="diag_title">گزارشِ عیب‌یابی</string>
+    <string name="diag_copy">کپی</string>
+    <string name="diag_share">ارسال</string>
+    <string name="diag_copied">همین حالا در حافظه کپی شد</string>
+    <string name="diag_no_share">برنامه‌ای برای ارسال پیدا نشد؛ متن را خودت کپی کن</string>
+    <string name="diag_lines">%1$d خط</string>
+    <!-- ساخت فهرست سرور روی خود گوشی (بدون وابستگی به هاست) -->
+    <string name="group_feed">فهرست سرورها</string>
+    <string name="feed_source">از کجا ساخته شود</string>
+    <string name="feed_source_host">هاست</string>
+    <string name="feed_source_auto">خودکار</string>
+    <string name="feed_source_direct">بدون هاست</string>
+    <string name="feed_source_body">«هاست» یعنی سرور نودها را از بیرون و از درون تست، و بر پایهٔ سابقهٔ چندروزه رتبه بدهد. «بدون هاست» برنامه خودش فهرست‌های عمومی را می‌خواند و فقط از همین گوشی تست می‌کند — برای روزهایی که هاست در دسترس نیست یا می‌خواهی بدون آن کار کنی. «خودکار» اول هاست را می‌آزماید و اگر نرسید، روی گوشی می‌سازد.</string>
+    <string name="feed_now">فهرستِ امروز: %1$s</string>
+    <string name="feed_vip_title">پیکربندیِ دستی (وی‌آی‌پی)</string>
+    <string name="feed_vip_body">هر خط یک vless:// یا vmess:// یا trojan:// یا ss:// یا لینکِ اشتراک. این‌ها فقط در همین گوشی می‌مانند و به هیچ سروری فرستاده نمی‌شوند؛ حتی در حالت «هاست» هم به‌عنوان نودِ محلی افزوده می‌شوند.</string>
+    <string name="feed_vip_placeholder">اینجا بچسبان…</string>
+    <string name="feed_vip_save">ذخیره و ساخت فهرست</string>
+    <string name="feed_vip_clear">پاک کردن</string>
+    <string name="feed_vip_saved">%1$d خط ذخیره شد</string>
+    <string name="feed_vip_none">هنوز چیزی وارد نکرده‌ای</string>
+    <string name="feed_sub_url">لینکِ اشتراک (اختیاری)</string>
+    <string name="feed_sub_save">ذخیرهٔ لینک</string>
+    <string name="feed_sub_update">به‌روزرسانی لینک</string>
+    <string name="feed_sub_url_body">در حالت «بدون هاست» همین لینک هم خوانده می‌شود؛ اگر لینکِ خودت را داری، فهرستِ وی‌آی‌پی کاملاً مستقل از سرور ساخته می‌شود.</string>
+    <string name="diag_note">این گزارش آدرسِ سرور، IP، یا کانفیگ ندارد؛ برای پشتیبانی همین را بفرست. متن را می‌توانی با انگشت انتخاب هم بکنی.</string>
+</resources>

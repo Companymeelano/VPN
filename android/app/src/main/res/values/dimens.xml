@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 4/8 spacing scale -->
+    <dimen name="s1">4dp</dimen>
+    <dimen name="s2">8dp</dimen>
+    <dimen name="s3">12dp</dimen>
+    <dimen name="s4">16dp</dimen>
+    <dimen name="s5">24dp</dimen>
+    <dimen name="s6">32dp</dimen>
+
+    <dimen name="card_radius">16dp</dimen>
+    <dimen name="sheet_radius">20dp</dimen>
+    <dimen name="row_height">64dp</dimen>
+    <dimen name="touch">48dp</dimen>
+
+    <dimen name="ring_size">172dp</dimen>
+    <dimen name="ring_stroke">6dp</dimen>
+    <dimen name="flag_w">19dp</dimen>
+    <dimen name="flag_h">14dp</dimen>
+
+    <!-- QS tile: 32dp image inside a 40dp+ box; keep the glyph inside 24dp or it crops on some OEM skins -->
+    <dimen name="qs_icon">32dp</dimen>
+</resources>
