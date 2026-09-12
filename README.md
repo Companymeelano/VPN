@@ -61,6 +61,9 @@ curl 'http://localhost/v/?action=selftest&key=<toolKey>'
 **حتماً** `?action=selftest` را اجرا کن: مشخص می‌کند هاست تو اتصال outbound به پورت‌های غیراستاندارد
 را باز می‌گذارد یا نه (این تنها چیزی است که تعیین می‌کند تست پروکسی سمت سرور ممکن است یا نه).
 
+نقشهٔ همهٔ فراخوانی‌ها (اپ ← سرور، با `path:line`، هدرها، مهلت‌ها، و جدولِ رمزهای دو طرف):
+[`docs/SERVER-CALLS.md`](docs/SERVER-CALLS.md).
+
 ## قرارداد
 [`docs/API-CONTRACT.md`](docs/API-CONTRACT.md) — شکل پاسخ `vip.json`/`free.json` (یک schema برای هر دو)،
 `version.json`، و `feedback`. نکته‌ی کلیدیِ خواسته‌شده: **نام سرویس‌ها در پاسخ وجود ندارد**؛

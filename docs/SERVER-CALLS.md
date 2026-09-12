@@ -1,5 +1,10 @@
 # همهٔ فراخوانی‌های سرور (و وصل‌کردنشان به هاست خودت)
 
+تقسیمِ کار: `API-CONTRACT.md` *شکلِ بدنه* را نگه می‌دارد (اسکیما، فیلدها، قوانینِ سازگاری) و
+`BACKEND-DEPLOY.md` *قدم‌های استقرار* را؛ این سند وسط را پر می‌کند — هر تماس، هر پارامتر، هر هدر، هر
+عددِ زمانی، و اینکه کدام خطِ Kotlin آن را می‌خواند. اگر یک سندِ تک‌Piece می‌خواهی که از صفر تا نصب روی
+هاست بردت، همین است.
+
 این تنها مرجعِ «اپ چطور با سرور حرف می‌زند» است: هر درخواست، هر پارامتر، هر هدر، هر عددِ زمانی، و
 اینکه اگر آن تماس خراب شود کاربر دقیقاً چه می‌بیند. بقیهٔ اسناد *چرایی* را توضیح می‌دهند
 ([`API-CONTRACT.md`](API-CONTRACT.md) برای قراردادِ بدنه، [`AI.md`](AI.md) برای لایهٔ پیشنهاد،
@@ -192,73 +197,42 @@ GET /v/?action=advice&err=tls_timeout&proto=vless&tier=free&regime=tight
 
 ---
 
-## ۷) استقرار روی هاست اشتراکی — قدم‌به‌قدم (cPanel، PHP، بدون SSH لازم)
+## ۷) استقرار روی هاست — خلاصه؛ جزئیات در سندِ خودش
 
-۱. **فایل‌ها** — کلِ `backend/v/` را داخل `public_html/v/` بریز (نه `backend/v` را با نامِ دیگر؛ مسیرِ
-   `data/` و `apk/` به `__DIR__` قفل است). `config.local.php` را نساز نه ویرایش کن: `config.php`
-   با هر آپدیت بازنویسی می‌شود، و `:201` آخرِ فایل `config.local.php` را deep-merge می‌کند.
+`docs/BACKEND-DEPLOY.md` تنها مرجعِ استقرار است (آپلود، انتخابِ PHP، پنل، لیستِ VIP، عیب‌یابی). اینجا فقط
+همان‌ها که *قراردادِ تماس* را می‌بندند، به ترتیب:
 
-۲. **دسترسی نوشتن** — `data/` باید برای PHP نوشتنی باشد (معمولاً ۷۵۵ کافی است؛ اگر نشد ۷۷۵ و بعد
-   `data/.htaccess` را چک کن که باشد — همان چیزی است که کش، ledger، و لیستِ VIP خام را از وب می‌بندد).
-   `?action=health` با `"writable": false` همین را می‌گوید.
-
-۳. **رمزها** — `public_html/v/config.local.php`:
-
-   ```php
-   <?php
-   return [
-       'secret'  => bin2hex(random_bytes(32)),          // 64 هگز؛ همین مقدار در BuildConfig.MEELANO_FEED_SECRET
-       'access'  => [
-           'feedKey'       => 'یک‌رشته‌ی‌تصادفی‌۳۲تایی',   // اپ با هدر X-Feed-Key می‌فرستد
-           'toolKey'       => 'کلیدِ‌ابزارِ‌دیگر',          // refresh|selftest|stats؛ در اپ نیست
-           'adminPassHash' => '',                        // از /v/admin/hash.php?pass=… بگیر و پیست کن
-           'adminSessionTtl' => 7200,
-       ],
-       'update'  => [ 'publicBase' => 'https://دامنه‌ت/v/apk', 'channel' => 'stable' ],
-       'vip'     => [ 'sourceFile' => 'vip_raw.txt' ],   // لیست VIP: از پنل پیست کن
-   ];
-   ```
-   (هر کلیدی که ننویسی، مقدارِ `config.php` می‌ماند؛ `secret` خالی = نسخهٔ امضانشده = اپ نصب‌شده با
-   `MEELANO_FEED_SECRET=CHANGE_ME_64_HEX` فقط وقتی کار می‌کند که همان مقدارِ پیش‌فرض باشد. یکی‌شان را
-   عوض کنی، باید هر دو را عوض کنی.)
-
-۴. **فایلِ VIP** — `public_html/v/data/vip_raw.txt` (الگو: `data/vip_raw.example.txt`) یا از پنل پیست کن.
-   هر فرمتی که `Parser.php` تحمل می‌کند: sublink، `ss://`، `vless://`، JSON، HTML، base64.
-
-۵. **APK** — `public_html/v/apk/meelano-<name>-<code>.apk` + `….sha256`. سپس:
+1. کلِ `backend/v/` داخل `public_html/v/` — مسیرهای `data/` و `apk/` به `__DIR__` قفل‌اند، پس پوشه را
+   جابه‌جا/تغییرنام نکن.
+2. `public_html/v/config.local.php` را بساز (`config.php` با هر آپدیت بازنویسی می‌شود؛ `:201` آخرش
+   `config.local.php` را deep-merge می‌کند). حداقلِ کلیدها: `secret`، `access.feedKey`، `access.toolKey`،
+   `access.adminPassHash` (از `/v/admin/hash.php?pass=…`)، `update.publicBase`.
+3. `data/` نوشتنی باشد — `?action=health` با `"writable": false` همان را می‌گوید، و `data/.htaccess`
+   باید بماند (کش، ledger، و لیستِ VIP خام را از وب می‌بندد).
+4. لیستِ VIP: `data/vip_raw.txt` یا پیست از پنل (الگو: `data/vip_raw.example.txt`)؛ هر فرمتی که
+   `Parser.php` تحمل می‌کند: sublink، `ss://`، `vless://`، JSON، HTML، base64.
+5. APK در `public_html/v/apk/meelano-<versionName>-<versionCode>.apk` + `….sha256` کنارش.
+6. دو پاسخ را ببین:
 
    ```bash
-   curl -s "https://دامنه‌ت/v/?action=version&vc=1" | head -c 400   # باید versionName/apkUrl/sha256/sig باشد
+   curl -s "https://دامنه‌ت/v/?action=health"
+   curl -s "https://دامنه‌ت/v/?action=version&vc=1" | head -c 400   # versionName/apkUrl/sha256/sig
+   curl -s "https://دامنه‌ت/v/?action=selftest&key=<toolKey>&html"  # ۲۲ بررسی؛ ردکردنش یعنی هنوز آماده نیست
    ```
 
-۶. **خودآزمون** — `…/v/?action=selftest&key=<toolKey>&html` یک صفحه می‌دهد که همین را می‌سنجد: نوشتنِ
-   `data/`، کشِ gzip، ETag، خروجیِ پروب (اگر outbound TCP بسته باشد `autoDisableOnBlocked` رتبه‌بندی را
-   به بازخوردِ کاربران می‌سپارد — این فالتِ سالم است، نه خرابی)، موجودبودنِ APK، و اینکه `index.php`
-   بدونِ rewrite هم جواب می‌دهد. `php backend/v/tests/run.php` را هم می‌توانی روی هاست اجرا کنی
-   (شبکه لازم ندارد؛ fixture می‌خواند).
-
-۷. **اپ را به همین هاست وصل کن**:
+7. اپ را به همین هاست وصل کن (این مرحله **بیلد** است، نه هاست):
 
    ```bash
    ./gradlew assembleDebug \
      -PMEELANO_FEED_BASE=https://دامنه‌ت/v \
-     -PMEELANO_FEED_KEY=<feedKey> \
-     -PMEELANO_FEED_SECRET=<secret>
+     -PMEELANO_FEED_KEY=<feedKey> -PMEELANO_FEED_SECRET=<secret>
    ```
-   یا در `android/local.properties` (همان‌جا می‌ماند و commit نمی‌شود — رج: `docs/ANDROID-BUILD.md`).
-   در CI، ورودی‌های `workflow_dispatch` همان‌هاست: `feed_base`، `feed_key`، و سِرّ در
-   `secrets.MEELANO_FEED_SECRET`.
 
-۸. **کرون (اختیاری است، نه لازم)** — فید *when asked* ساخته می‌شود و `serveStaleWhileRebuild = true`
-   یعنی پاسخِ کهنه فوراً داده می‌شود و بازسازی در پس‌زمینه run می‌شود. اگر می‌خواهی همیشه تازه باشد:
-
-   ```
-   */10 * * * * curl -s "https://دامنه‌ت/v/?action=refresh&key=<toolKey>" >/dev/null 2>&1
-   ```
-   (هر `vip`/`free` build حدود ۰٫۸–۱٫۵ ثانیه CPU؛ `maxCandidates = 900` و `budgetMs = 18000` سقفِ
-   محافظِ همان CPU‌اند. روی هاست‌های ضعیف، `free.probe.enabled = false` همه‌چیز را سالم و سبک می‌کند.)
-
----
+   یا در `android/local.properties` تا commit نشود (`docs/ANDROID-BUILD.md`). در CI همان‌ها ورودیِ
+   `workflow_dispatch`‌اند: `feed_base`، `feed_key`، و سِرّ در `secrets.MEELANO_FEED_SECRET`.
+8. کرون اختیاری است: فید *when asked* ساخته می‌شود و `serveStaleWhileRebuild = true` یعنی پاسخِ کهنه
+   فوراً می‌آید و بازسازی در پس‌زمینه است. اگر همیشه‌تازه می‌خواهی:
+   `*/10 * * * * curl -s "…/v/?action=refresh&key=<toolKey>" >/dev/null`
 
 ## ۸) رمزها هر دو طرفِ خودشان را می‌خواهند
 

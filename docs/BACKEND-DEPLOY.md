@@ -74,7 +74,7 @@ cPanel → **Select PHP Version / MultiPHP Manager** → نسخه را روی `8
    این لایه‌ی اصلی امنیت است، نه HMAC).
 2. پنل → «بروزرسانی اپ» → `versionName`، `versionCode` (حتماً بیشتر از قبل)، توضیح فارسی،
    آپلود APK (یا اگر با FTP در `v/apk/` گذاشته‌ای، از فهرست انتخابش کن) → انتشار.
-3. خروجی `https://ainetmee.ir/v/?action=version?vc=<versionCode فعلی>` را چک کن:
+3. خروجی `https://ainetmee.ir/v/?action=version&vc=<versionCode فعلی>` را چک کن (دقت کن `&` است، نه `?` دوم):
    `updateAvailable`, `apkUrl`, `sha256`, `sig`.
    نام فایل را هم الگوی `meelano-<versionName>-<versionCode>.apk` بگذار تا اگر `version.json`
    پاک شد، سرور خودش از روی پوشه بسازدش.
@@ -110,3 +110,8 @@ cPanel → **Select PHP Version / MultiPHP Manager** → نسخه را روی `8
 | free همیشه خالی | outbound بلاک (خودآزمون را ببین) | `free.probe.enabled=false` + کاهش `free.minNodes` |
 | ۴۰۳ روی `/v/data/...` نمی‌آید | `.htaccess` بی‌اثر (nginx/LiteSpeed بدون AllowOverride) | مسیر `vip_raw.txt` را به بیرون public_html ببر |
 | اپ می‌گوید checksum_mismatch | فایل APK روی هاست با `version.json` هم‌خوان نیست | از پنل دوباره Publish کن |
+
+---
+
+قراردادِ هر تماس (پارامترها، هدرها، پاسخ‌ها، و کجا در اپ خوانده می‌شود):
+[`SERVER-CALLS.md`](SERVER-CALLS.md).
