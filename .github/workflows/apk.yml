@@ -205,11 +205,10 @@ jobs:
           # جزئیاتِ تست همیشه می‌چسبد، حتی وقتی build.log اصلاً ساخته نشده (تست زودتر ترکیده):
           # بیِ پیامِ assertion، «testDebugUnitTest FAILED» هیچ چیزی برای رفع کردن دست نمی‌دهد
           extra=$(grep -E "FAILED|expected:|AssertionError" test.log 2>/dev/null | head -25)
-          xml=$(ls app/../android/app/build/test-results/testDebugUnitTest/*.xml 2>/dev/null | head -6)
+          xml=$(ls android/app/build/test-results/testDebugUnitTest/*.xml 2>/dev/null | head -6)
           if [ -n "$xml" ]; then
             det=$(grep -ho 'failure message="[^"]*"' $xml 2>/dev/null | cut -c1-300 | head -20)
-            [ -n "$det" ] && extra="$extra
-$det"
+            if [ -n "$det" ]; then extra=$(printf '%s\n%s\n' "$extra" "$det"); fi
           fi
           # بلوک «چه اشتباهی شد» + ۱۲۰ خط آخر لاگ: در مرحله‌ی configuration هیچ خطای
           # کامپایلوری وجود ندارد و بدون این، لاگ بی‌فایده است
