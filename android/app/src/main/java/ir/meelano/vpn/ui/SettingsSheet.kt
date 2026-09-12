@@ -506,14 +506,6 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
 }
 
 /**
- * The row is title + one-line body + a switch, 56dp tall, and the *whole row* is the touch target.
- * A switch that is 32dp with a 12dp label gap is the classic 44%-miss target; the row-as-target is how
- * Material's own settings app does it. The row also lights up when pressed — otherwise tapping the
- * text does visibly nothing at all, and "did that register?" is the most common reason people toggle
- * something twice and turn a feature off by accident.
- */
-@Composable
-/**
  * Text entry in the kit's own language: a carved well, an inner top shadow, and the caret in accent.
  * BasicTextField rather than a Material field, because M3 would import its own opinion about padding,
  * focus rings and label floats - all four of which fight the surfaces this app is built from.
@@ -556,6 +548,14 @@ private fun FeedWell(
     }
 }
 
+/**
+ * The row is title + one-line body + a switch, 56dp tall, and the *whole row* is the touch target.
+ * A switch that is 32dp with a 12dp label gap is the classic 44%-miss target; the row-as-target is how
+ * Material's own settings app does it. The row also lights up when pressed — otherwise tapping the
+ * text does visibly nothing at all, and "did that register?" is the most common reason people toggle
+ * something twice and turn a feature off by accident.
+ */
+@Composable
 private fun SwitchRow(title: String, body: String, on: Boolean, onChange: (Boolean) -> Unit) {
     val p = LocalPalette.current
     val src = remember { MutableInteractionSource() }
