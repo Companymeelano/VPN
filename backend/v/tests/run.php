@@ -1052,6 +1052,77 @@ t('fleet evidence reads block.json into the tuner', function () {
     return in_array($fleet['regime'], ['calm', 'tight', 'blackout', ''], true) ? true : 'bad regime: ' . $fleet['regime'];
 });
 
+/* ---------------------------------------------------------------- deploy contract */
+
+t('the rewrite rules do not brick the admin panel', function () use ($root) {
+    // A host without SSH has exactly one way to paste the VIP list, rebuild the cache and mint its
+    // keys: /v/admin/. `RewriteRule ^(lib|admin)/ - [F,L]` shipped like that once and returned 403 on
+    // every deploy - which is indistinguishable from "the panel does not exist" to the owner.
+    $ht = (string) @file_get_contents($root . '/.htaccess');
+    if (preg_match('/RewriteRule[^\n]*\^\(lib\|admin\)/', $ht)) {
+        return 'admin/ is blanket-forbidden by the rewrite rule -> /v/admin/ answers 403';
+    }
+    if (preg_match('/RewriteRule[^\n]*\^admin\/[^\n]*\[F/', $ht)) {
+        return 'admin/ is forbidden by its own rewrite rule';
+    }
+    if (!preg_match('/RewriteRule\s+\^lib\/.*\[F/', $ht)) {
+        return 'lib/ is no longer protected by the rewrite rules';
+    }
+    $admin = (string) @file_get_contents($root . '/admin/.htaccess');
+    if ($admin === '') {
+        return 'admin/.htaccess is missing -> the folder is only protected by its login gate';
+    }
+    foreach (['index.php', 'hash.php'] as $f) {
+        if (strpos($admin, 'Files "' . $f . '"') === false) {
+            return 'admin/.htaccess does not grant ' . $f;
+        }
+    }
+    if (strpos($admin, 'Require all denied') === false) {
+        return 'admin/.htaccess grants the entry points but denies nothing else';
+    }
+    return true;
+});
+
+t('the files that hold secrets are denied over http', function () use ($root) {
+    // .htaccess escapes its dots (config\.local\.php), so strip backslashes before matching - otherwise
+    // the pattern for a filename never matches and the test fails while the rules are perfectly fine.
+    $strip = function ($f) {
+        return str_replace('\\', '', (string) @file_get_contents($f));
+    };
+    $v = $strip($root . '/.htaccess');
+    $dat = $strip($root . '/data/.htaccess');
+    $need = [
+        'config.local.php (in /v/.htaccess)' => ['~config\.local\.php~', $v],
+        'vip_raw.txt (in /v/.htaccess)'      => ['~vip_raw\.txt~', $v],
+        'ledger.json (in data/.htaccess)'    => ['~ledger\.json~', $dat],
+        'vip_raw.txt (in data/.htaccess)'    => ['~vip_raw\.txt~', $dat],
+        'dotfiles (in data/.htaccess)'       => ['~FilesMatch "\^\.~', $dat],
+    ];
+    foreach ($need as $what => $rule) {
+        if (!preg_match($rule[0], $rule[1])) {
+            return $what . ' is no longer denied';
+        }
+    }
+    return true;
+});
+
+t('hash.php still prints a paste-ready config.local.php', function () use ($root) {
+    $src = (string) @file_get_contents($root . '/admin/hash.php');
+    foreach (["'secret' =>", 'feedKey', 'toolKey', 'adminPassHash', 'publicBase'] as $key) {
+        if (strpos($src, $key) === false) {
+            return 'hash.php output lost ' . $key . ' - the owner has to hand-write config.local.php again';
+        }
+    }
+    if (strpos($src, 'rateLimit') === false) {
+        return 'hash.php hashes passwords without a rate limit (bcrypt is CPU, and this page is public)';
+    }
+    if (strpos($src, 'method="post"') === false) {
+        return 'hash.php only takes the password via GET -> it lands in the hosting access log';
+    }
+    return true;
+});
+
+
 
 function meelano_summary()
 {

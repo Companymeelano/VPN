@@ -12,7 +12,13 @@ Options -Indexes -MultiViews
   RewriteRule ^(vip|free|version|health|status|stats|selftest|refresh|feedback)(\.json|\.txt)?/?$ index.php?action=$1 [QSA,L,NC]
 
   # never serve the internals directly
-  RewriteRule ^(lib|admin)/ - [F,L]
+  RewriteRule ^lib/ - [F,L]
+
+  # NOTE: `admin/` is deliberately NOT forbidden here. The control panel is the only way to paste the
+  # VIP list, rebuild the cache or mint the keys, and a shared host has no shell - blanket-denying the
+  # directory does not harden anything, it bricks the deploy (the panel guards itself: login gate +
+  # CSRF + session, and admin/.htaccess allows nothing but its two entry points). If you are reading
+  # this thinking "admin should be blocked": block the *files*, not the two PHP entry points.
 </IfModule>
 
 <IfModule mod_headers.c>
