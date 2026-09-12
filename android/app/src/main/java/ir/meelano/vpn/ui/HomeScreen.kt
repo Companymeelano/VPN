@@ -1,6 +1,8 @@
 package ir.meelano.vpn.ui
 
+import ir.meelano.vpn.ui.theme.LocalMotionPrefs
 import ir.meelano.vpn.ui.theme.LocalPalette
+import ir.meelano.vpn.ui.theme.Motion
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
@@ -334,10 +336,16 @@ private fun BottomRow(nodes: Int, syncing: Boolean, onServers: () -> Unit, onSet
  */
 @Composable
 private fun AmbientGlow(accent: Color, intensity: Float) {
-    val reduced = AppSettings.reducedMotion
-    val t = rememberInfiniteTransition(label = "glow")
-    val pulse by t.animateFloat(0.72f, 1f, infiniteRepeatable(tween(2400, easing = LinearEasing), RepeatMode.Reverse), label = "pulse")
-    val k = if (reduced) 1f else pulse
+    // LocalMotionPrefs, not AppSettings directly: the theme folds the system-wide animation scale into
+    // the same object, and this is the heaviest loop in the app - a full-screen radial gradient behind
+    // the whole home screen, re-rendered every frame for 2.4s at a time, for as long as the app is open.
+    val t = if (LocalMotionPrefs.current.loopsAllowed()) rememberInfiniteTransition(label = "glow") else null
+    val pulse = t?.animateFloat(
+        0.72f, 1f,
+        infiniteRepeatable(tween(Motion.breathMs, easing = LinearEasing), RepeatMode.Reverse),
+        label = "pulse",
+    )
+    val k = pulse?.value ?: 1f
     Canvas(Modifier.fillMaxSize()) {
         drawRect(
             Brush.radialGradient(

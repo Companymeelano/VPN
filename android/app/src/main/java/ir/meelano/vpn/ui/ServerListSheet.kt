@@ -1,5 +1,6 @@
 package ir.meelano.vpn.ui
 
+import ir.meelano.vpn.ui.theme.LocalMotionPrefs
 import ir.meelano.vpn.ui.theme.LocalPalette
 
 import androidx.compose.animation.core.LinearEasing
@@ -262,23 +263,25 @@ internal fun Chip(label: String, on: Boolean, onClick: () -> Unit) {
 @Composable
 private fun SkeletonRow() {
     val p = LocalPalette.current
-    val t = rememberInfiniteTransition(label = "sk")
-    val a by t.animateFloat(
+    // up to four of these can be on screen at once; with motion off none of them animates
+    val t = if (LocalMotionPrefs.current.loopsAllowed()) rememberInfiniteTransition(label = "sk") else null
+    val a = t?.animateFloat(
         0.16f, 0.32f,
-        infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse), label = "a"
+        infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse), label = "a",
     )
+    val alpha = a?.value ?: 0.24f
     Row(
         Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(width = 19.dp, height = 14.dp).clip(RoundedCornerShape(3.dp)).background(p.tint(a)))
+        Box(Modifier.size(width = 19.dp, height = 14.dp).clip(RoundedCornerShape(3.dp)).background(p.tint(alpha)))
         Spacer(Modifier.size(12.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Box(Modifier.fillMaxWidth(0.45f).height(9.dp).clip(RoundedCornerShape(4.dp)).background(p.tint(a)))
-            Box(Modifier.fillMaxWidth(0.25f).height(7.dp).clip(RoundedCornerShape(4.dp)).background(p.tint(a * 0.7f)))
+            Box(Modifier.fillMaxWidth(0.45f).height(9.dp).clip(RoundedCornerShape(4.dp)).background(p.tint(alpha)))
+            Box(Modifier.fillMaxWidth(0.25f).height(7.dp).clip(RoundedCornerShape(4.dp)).background(p.tint(alpha * 0.7f)))
         }
         Spacer(Modifier.size(12.dp))
-        Box(Modifier.size(width = 56.dp, height = 4.dp).clip(RoundedCornerShape(2.dp)).background(p.tint(a)))
+        Box(Modifier.size(width = 56.dp, height = 4.dp).clip(RoundedCornerShape(2.dp)).background(p.tint(alpha)))
     }
 }
 

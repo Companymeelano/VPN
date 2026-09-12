@@ -881,15 +881,17 @@ private fun Chevron(ink: Color, size: Dp = 9.dp) {
 private fun Comet(size: Dp = 15.dp, inkIn: Color = Color.Unspecified) {
     val p = LocalPalette.current
     val ink = if (inkIn == Color.Unspecified) p.accentInk else inkIn
-    val reduced = LocalMotionPrefs.current.reduced
-    val t = rememberInfiniteTransition(label = "comet")
-    val spin by t.animateFloat(
+    // The transition is *not created* when motion is off, instead of running and having its value
+    // ignored: a 900ms loop is 60-120 wakeups a minute on a phone that asked for none of that. The
+    // spinner then draws as a static arrow of dots, which still reads as "this control is busy".
+    val t = if (LocalMotionPrefs.current.loopsAllowed()) rememberInfiniteTransition(label = "comet") else null
+    val spin = t?.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart),
         label = "cometSpin",
     )
-    val f = if (reduced) 0.25f else spin
+    val f = spin?.value ?: 0.25f
     Canvas(Modifier.size(size)) {
         val r = this.size.minDimension / 2f
         val dot = (r * 0.26f).coerceAtLeast(1.2f)

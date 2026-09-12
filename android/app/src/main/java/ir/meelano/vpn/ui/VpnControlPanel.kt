@@ -1,5 +1,6 @@
 package ir.meelano.vpn.ui
 
+import ir.meelano.vpn.ui.theme.LocalMotionPrefs
 import ir.meelano.vpn.ui.theme.Motion
 
 import androidx.compose.animation.core.Animatable
@@ -168,22 +169,38 @@ private fun ConnectRing(
         label = "press",
     )
 
-    // idle: slow breath. connected: sheen rotation. Both are GPU-cheap (one transform each).
-    val breath = rememberInfiniteTransition(label = "breath")
-    val breathe by breath.animateFloat(
+    // idle: slow breath. connected: sheen rotation. Both are GPU-cheap (one transform each) - but "cheap"
+    // is not "free". With reduced motion (our own switch, or the system's animation scale at 0) the
+    // transition must not be *started*: an infinite transition that nobody reads still schedules a frame
+    // callback every vsync for as long as the screen is on, which is the one thing a battery review catches.
+    val loops = LocalMotionPrefs.current.loopsAllowed()
+    val breath = if (loops) rememberInfiniteTransition(label = "breath") else null
+    val breathe = breath?.animateFloat(
         initialValue = 0.86f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2400), RepeatMode.Reverse), label = "breathe",
+        animationSpec = infiniteRepeatable(tween(Motion.breathMs, easing = LinearEasing), RepeatMode.Reverse),
+        label = "breathe",
     )
-    val sheen by breath.animateFloat(
+    val sheen = breath?.animateFloat(
         initialValue = 0f, targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(6000, easing = LinearEasing), RepeatMode.Restart),
+        animationSpec = infiniteRepeatable(tween(Motion.sheenMs, easing = LinearEasing), RepeatMode.Restart),
         label = "sheen",
     )
     val sweep = remember { Animatable(0f) }
-    LaunchedEffect(connecting) {
+    LaunchedEffect(connecting, loops) {
         if (connecting) {
-            while (true) sweep.animateTo(1f, tween(1100, easing = LinearEasing))
-            sweep.snapTo(0f)
+            if (!loops) {
+                // a mid-sweep value reads as "in progress" without any animation at all
+                sweep.snapTo(0.5f)
+                return@LaunchedEffect
+            }
+            // the sweep used to be `while (true) sweep.animateTo(1f, …)` with snapTo(0f) *after* the loop:
+            // unreachable reset, so from the second iteration on the target equalled the value, animateTo
+            // returned immediately, and the loop spun the frame clock at full rate for all of `connecting`
+            // with nothing moving on screen.
+            while (true) {
+                sweep.snapTo(0f)
+                sweep.animateTo(1f, tween(Motion.sweepMs, easing = LinearEasing))
+            }
         } else {
             sweep.animateTo(0f, Motion.exit)
         }
@@ -200,7 +217,7 @@ private fun ConnectRing(
         failed -> 1f
         connected -> 0.9f
         connecting -> 0.55f + 0.25f * sin((sweep.value * 2 * PI)).toFloat()
-        else -> 0.18f * breathe
+        else -> 0.18f * (breathe?.value ?: 1f)
     }
 
     Box(
@@ -288,7 +305,7 @@ private fun ConnectRing(
             // idle hint ring
             if (!connected && !connecting && !failed) {
                 drawCircle(
-                    color = p.tint(0.10f * breathe),
+                    color = p.tint(0.10f * (breathe?.value ?: 1f)),
                     radius = arcSize.width / 2,
                     center = Offset(size / 2f, size / 2f),
                     style = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 12f))),
@@ -296,7 +313,7 @@ private fun ConnectRing(
             }
             // rotating sheen while connected: one draw, cheap
             if (connected) {
-                rotate(sheen, pivot = Offset(size / 2f, size / 2f)) {
+                rotate(sheen?.value ?: 0f, pivot = Offset(size / 2f, size / 2f)) {
                     drawArc(
                         brush = Brush.linearGradient(
                             listOf(Color.Transparent, p.tint(0.16f), Color.Transparent)

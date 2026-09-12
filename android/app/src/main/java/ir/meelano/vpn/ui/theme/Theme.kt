@@ -1,7 +1,11 @@
 package ir.meelano.vpn.ui.theme
 
 import android.app.Activity
+import android.database.ContentObserver
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,7 +18,12 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -94,13 +103,15 @@ fun MeelanoTheme(
         dark -> schemeOf(Palette.Dark)
         else -> schemeOf(Palette.Light)
     }
-    val animatorScale = 1f      // read Settings.Global.TRANSITION_ANIMATION_SCALE if you want it live
+    val animatorScale = rememberSystemAnimatorScale()
     CompositionLocalProvider(
         LocalSpacing provides Spacing(),
         // the palette is what the hand-painted screens actually read (MaterialTheme's scheme only
         // reaches M3 components, and almost nothing in this app is an M3 component)
         LocalPalette provides (if (dark) Palette.Dark else Palette.Light),
-        LocalMotionPrefs provides MotionPrefs(reducedMotion, animatorScale),
+        // the system's own "no animations" is folded in here, once, so every consumer of `reduced`
+        // (enter/exit tweens *and* loopsAllowed) respects it without each screen re-reading Settings
+        LocalMotionPrefs provides MotionPrefs(reducedMotion || animatorScale <= 0f, animatorScale),
         LocalDark provides dark,
     ) {
         MaterialTheme(colorScheme = scheme, typography = MeelanoType.asMaterial3(), shapes = MeelanoShapes) {
@@ -122,3 +133,32 @@ object AppThemeMode {
 
 /** Shapes alias kept so screens can ask for `MeelanoShapes` directly. */
 val MeelanoShapesAlias: Shapes get() = MeelanoShapes
+
+/**
+ * The system animator scale, live.
+ *
+ * This used to be a hardcoded `1f` with a comment saying "read Settings.Global if you want it live", which
+ * meant the OS-level "remove animations" toggle changed nothing: the app's 2.4s breathing loops kept
+ * running on a phone that had been told to animate nothing at all, and the QA trick of zeroing the scale
+ * for screenshots showed a UI that no real setting produces.
+ *
+ * A ContentObserver rather than a single read, because this is flipped *while* the app is open.
+ */
+@Composable
+private fun rememberSystemAnimatorScale(): Float {
+    val resolver = LocalContext.current.contentResolver
+    var scale by remember { mutableStateOf(readAnimatorScale(resolver)) }
+    DisposableEffect(resolver) {
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) { scale = readAnimatorScale(resolver) }
+        }
+        val uri = Settings.Global.getUriFor(Settings.Global.ANIMATOR_DURATION_SCALE)
+        runCatching { resolver.registerContentObserver(uri, false, observer) }
+        onDispose { runCatching { resolver.unregisterContentObserver(observer) } }
+    }
+    return scale
+}
+
+private fun readAnimatorScale(resolver: android.content.ContentResolver): Float = runCatching {
+    Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+}.getOrDefault(1f)
