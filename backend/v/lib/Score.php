@@ -81,7 +81,7 @@ final class Ledger
         return $d['nodes'][$id] + ['ok' => 0, 'fail' => 0, 'streak' => 0, 'bannedUntil' => 0, 'lat' => [], 'cli' => []];
     }
 
-    private static function bump($id, $field, $ok, $ms)
+    private static function bump($id, $field, $ok, $ms, $tier = '')
     {
         self::load();
         $d = &self::$d;          // write straight into the static, not a copy of it
@@ -98,6 +98,9 @@ final class Ledger
             }
             $n['last'] = time();
             $n['lat'] = self::push($field, $n['lat'], $ok, $ms);
+            if ($tier !== '') {
+                $n['tier'] = $tier;
+            }
         } else {
             if (!isset($n['cli']) || !is_array($n['cli'])) {
                 $n['cli'] = ['ok' => 0, 'fail' => 0, 'lat' => [], 'streak' => 0];
@@ -137,9 +140,16 @@ final class Ledger
         return $list;
     }
 
-    public static function recordServer($id, $ok, $ms = 0)
+    /**
+     * @param string $tier 'vip' when the measured node is one of *our* servers. The tier matters
+     *     downstream: the share of failed probes is read as evidence of filtering (see
+     *     Builder::fleetEvidence), and a public proxy list fails ~99% of the time for reasons that have
+     *     nothing to do with filtering. Without this flag the free pool alone was driving every node -
+     *     including the VIP ones - into blackout tuning.
+     */
+    public static function recordServer($id, $ok, $ms = 0, $tier = '')
     {
-        self::bump($id, 'server', $ok, $ms);
+        self::bump($id, 'server', $ok, $ms, $tier);
     }
 
     public static function recordClient($id, $ok, $ms = 0)

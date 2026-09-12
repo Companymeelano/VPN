@@ -131,6 +131,46 @@ t('emoji flag -> cc FI', function () use ($configs) {
     }
     return 'node missing';
 });
+t('a server probe records which tier it measured', function () {
+    Ledger::recordServer('ledger-tier-test-vip', false, 42, 'vip');
+    Ledger::recordServer('ledger-tier-test-free', false, 42);
+    $vip = Ledger::view('ledger-tier-test-vip');
+    $free = Ledger::view('ledger-tier-test-free');
+    if (!isset($vip['tier']) || $vip['tier'] !== 'vip') return 'vip row lost its tier: ' . json_encode($vip);
+    if (isset($free['tier'])) return 'free row grew a tier: ' . json_encode($free);
+    return true;
+});
+t('the free pool cannot move the fleet regime on its own', function () {
+    // A healthy host once inferred "blackout" for every node - VIP included - because ~99% of the
+    // *public* proxies it had probed were dead. So: flood the ledger with free-tier failures next to a
+    // healthy private tier and check the fail share stays clean. The temp data dir is emptied at
+    // bootstrap, so our own writes above are the only other rows (one vip fail), and 0.05 leaves room
+    // for that while still being far from the ~0.5 a free-inclusive share would give.
+    $orig = Util::cfg();
+    Util::setConfig(array_replace_recursive($orig, ['tune' => ['minLedgerNodesForFailShare' => 1]]));
+    try {
+        for ($i = 0; $i < 40; $i++) {
+            Ledger::recordServer('fleet-free-' . $i, false, 0);
+        }
+        for ($i = 0; $i < 40; $i++) {
+            Ledger::recordServer('fleet-vip-' . $i, true, 40);
+        }
+        $ev = Builder::fleetEvidence('vip');
+        if (!is_array($ev)) return 'fleetEvidence returned ' . gettype($ev);
+        $freeShare = $ev['tcpFail'];
+        if ($freeShare > 0.05) return 'free-pool failures leaked into the regime evidence: tcpFail=' . $freeShare;
+        // and the other direction - private failures must still be heard, or this is just a mute button
+        for ($i = 0; $i < 40; $i++) {
+            Ledger::recordServer('fleet-vip-' . $i, false, 0);
+        }
+        $ev2 = Builder::fleetEvidence('vip');
+        if ($ev2['tcpFail'] < 0.4) return 'vip failures were ignored too: tcpFail=' . $ev2['tcpFail'];
+        return true;
+    } finally {
+        Util::setConfig($orig);
+    }
+});
+
 t('an ss line whose userinfo is not method:password is dropped, not published', function () {
     // exactly what the live free pool produced: a UUID-style userinfo decoded as if it were SIP002,
     // which yields a cipher nobody can dial - a TCP probe still calls it "alive, 4ms, grade B"

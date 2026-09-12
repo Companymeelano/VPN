@@ -143,6 +143,7 @@ $config = [
         'ewmaAlpha'          => 0.25,   // how fast client evidence replaces the old verdict
         'minVotesForRegime'  => 3,      // do not move the fleet on one user's bad evening
         'evidenceMaxAge'     => 3600,   // after an hour of silence, stop trusting the regime vote
+        'minLedgerNodesForFailShare' => 5,  // how many of OUR OWN servers must have been probed before that fail share may move the regime (public proxies fail ~99% of the time; that is not filtering)
     ],
 
     /*

@@ -133,7 +133,8 @@ final class Builder
             }
             foreach ($tcp as $id => $r) {
                 if (!isset($gate[$id]) || $kind === 'vip') {
-                    Ledger::recordServer($id, !empty($r['ok']), isset($r['ms']) ? (int) $r['ms'] : 0);
+                    Ledger::recordServer($id, !empty($r['ok']), isset($r['ms']) ? (int) $r['ms'] : 0,
+                        $kind === 'vip' ? 'vip' : '');
                 }
             }
         }
@@ -441,19 +442,33 @@ final class Builder
      * verdict from 20 minutes ago is still better than no verdict, and a missing file must produce a
      * working feed, not a warning.
      */
-    private static function fleetEvidence($kind)
+    /**
+     * Aggregated blockage evidence. Public because the admin panel, `?action=status` and the test suite
+     * all want to see *why* the fleet is being tuned a certain way, and there is nothing sensitive in it.
+     */
+    public static function fleetEvidence($kind)
     {
         $fleet = ['tcpFail' => 0.0, 'tlsFail' => 0.0, 'dnsPoisoned' => false, 'reports' => 0, 'regime' => '', 'at' => 0];
         // our own probe history: the fail share across every node we have ever measured from this host
+        // Our own probe history, but only across the private tier: a dead public proxy in the free pool
+        // is the normal state of the internet, not evidence that the country is filtering us. Counting it
+        // anyway produced tcpFail=0.991 on a healthy host and pinned the whole fleet - VIP included - in
+        // blackout tuning (seen live on ainetmee.ir, 2026-09-12).
         $ok = 0;
         $fail = 0;
+        $vipNodes = 0;
         $rows = (array) Ledger::load();
         $nodes = isset($rows['nodes']) && is_array($rows['nodes']) ? $rows['nodes'] : [];
         foreach ($nodes as $row) {
+            if (!isset($row['tier']) || $row['tier'] !== 'vip') {
+                continue;
+            }
             $ok += (int) (isset($row['ok']) ? $row['ok'] : 0);
             $fail += (int) (isset($row['fail']) ? $row['fail'] : 0);
+            $vipNodes++;
         }
-        if ($ok + $fail > 0) {
+        $needNodes = (int) Util::cfg('tune.minLedgerNodesForFailShare', 5);
+        if ($ok + $fail > 0 && $vipNodes >= $needNodes) {
             $fleet['tcpFail'] = round($fail / ($ok + $fail), 3);
             $fleet['reports'] = $ok + $fail;
         }
