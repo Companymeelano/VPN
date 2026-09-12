@@ -25,7 +25,7 @@
 ```
 backend/v/
 ├── index.php            entry point: ?action=vip|free|version|feedback|health|stats|selftest|refresh
-├── vip.php free.php version.php health.php     تخت، برای هاست بدون mod_rewrite
+├── vip.php free.php version.php health.php status.php   تخت، برای هاست بدون mod_rewrite
 ├── config.php           همه‌ی تنظیمات (override: config.local.php)
 ├── sources.php          منابع استخر رایگان (override: sources.local.php)
 ├── lib/
@@ -36,15 +36,18 @@ backend/v/
 │   ├── Score.php        ledger + گیت Google/Cloudflare + رتبه‌ی A–D + ban-box
 │   ├── Builder.php      خط لوله‌ی vip/free، ماسک‌کردن نام‌ها، کش، degrade-mode
 │   ├── Version.php      ایندکس APK + version.json امضاشده
+│   ├── Ai.php           لایه‌ی پیشنهاد (اختیاری؛ فید هیچ‌وقت به مدل وابسته نمی‌شود)
+│   ├── AiTune.php       پچ‌های Tune با clamp؛ خروجی نامعتبر = بدون تغییر
 │   └── SelfTest.php     عیب‌یابی استقرار (خروجی json/html)
 ├── admin/index.php      پنل: paste لیست VIP، منابع، rebuild، آپلود APK، selftest
+├── lib/Status.php       صفحه‌ی وضعیت عمومی: JSON و HTML از یک منبع، بدون نامِ upstream
 ├── data/                کش و داده‌ها (با .htaccess از وب بسته)
 └── apk/                 فایل نصب (عمداً بیرون data/ تا قابل‌دانلود بماند)
 ```
 
 ## اجرا و تست
 ```bash
-# تست‌ها: ۶۵ assertion، بدون نیاز به شبکه (fixture + stub)
+# تست‌ها: ۸۹ تست، بدون نیاز به شبکه (fixture + stub)؛ PHP 7.4 و 8.3 هر دو در CI
 php backend/v/tests/run.php
 
 # دستی
@@ -93,8 +96,10 @@ android/
     xml/{file_paths,network_security_config,backup_rules,data_extraction_rules,shortcuts}.xml
 ```
 
-این فایل‌ها اینجا **کامپایل نشده‌اند** (Android SDK در این محیط نیست)؛ راهنمای وصل‌کردن هسته و
-چک‌لیست رفع باگ‌ها: [`docs/ANDROID-INTEGRATION.md`](docs/ANDROID-INTEGRATION.md).
+کامپایلِ Kotlin و تست‌های JVM در CI اجرا می‌شوند (در `build apk` پیش از ساخت APK یک `testDebugUnitTest`)؛
+پس خرابیِ کد هسته/پروفایل‌ساز یک دقیقه زودتر و با نامِ واقعیِ فایل می‌آید. آنچه این‌جا تأیید **نشده**
+رفتار روی دستگاه است. راهنمای وصل‌کردن هسته و چک‌لیست رفع باگ‌ها:
+[`docs/ANDROID-INTEGRATION.md`](docs/ANDROID-INTEGRATION.md)؛ وصل‌کردن AAR: [`docs/CORE-INTEGRATION.md`](docs/CORE-INTEGRATION.md).
 توکن‌ها/حرکت/دسترس‌پذیری: [`docs/DESIGN-SYSTEM.md`](docs/DESIGN-SYSTEM.md) — و همان توکن‌ها در
 پروتوتایپ زنده: [`docs/PROTOTYPE.md`](docs/PROTOTYPE.md). برند و آیکون: [`docs/BRAND.md`](docs/BRAND.md).
 
