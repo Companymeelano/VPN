@@ -208,6 +208,38 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      # channel #3، وقتی هیچ‌کدام از دو راه بالا کار نمی‌کنند (میزبان blob از برخی محیط‌ها
+      # مسدود است و gh pr comment هم بی‌صدا رد می‌شود): پیام خطا روی همین شاخه کامیت می‌شود.
+      # [skip ci] در پیام الزامی است، وگرنه هر کامیت یک رانِ جدید می‌سازد و چرخه بسته نمی‌شود.
+      - name: report into the branch
+        if: failure()
+        continue-on-error: true
+        env:
+          BR: ${{ github.head_ref || github.ref_name }}
+        run: |
+          set -uo pipefail
+          {
+            echo "# گزارش خطای بیلد (خودکار - پاک کردنش لازم نیست، دفعهٔ بعد بازنویسی می‌شود)"
+            echo
+            echo '```'
+            grep -E "FAILED|^e: |error:|expected:|AssertionError" "$GITHUB_WORKSPACE/test.log" 2>/dev/null | head -30
+            grep -E "^e: |error:" "$GITHUB_WORKSPACE/build.log" 2>/dev/null | head -20
+            for f in android/app/build/test-results/testDebugUnitTest/*.xml; do
+              [ -f "$f" ] || continue
+              grep -o 'failure message="[^"]*"' "$f" | cut -c1-300 | head -12
+            done
+            echo '```'
+          } > "$RUNNER_TEMP/CI-FAILURE.md"
+          # روی merge-ref چک‌اوت شده، پس کامیت حتماً روی نوکِ خودِ شاخه ساخته می‌شود - وگرنه
+          # کامیتِ ادغام به شاخهٔ کاربر می‌چسبد و تاریخچه کثیف می‌شود.
+          git fetch -q origin "refs/heads/$BR" || exit 0
+          git -c advice.detachedHead=false checkout -q FETCH_HEAD || exit 0
+          cp "$RUNNER_TEMP/CI-FAILURE.md" CI-FAILURE.md
+          git add -f CI-FAILURE.md
+          git -c user.name=arena-agent -c user.email=297053741+arena-agent@users.noreply.github.com \
+            commit -q -m "ci: گزارش خطای بیلد [skip ci]" || exit 0
+          git push -q origin "HEAD:refs/heads/$BR"
+
       # لاگ کامل از این سندباکس قابل دانلود نیست (میزبان blob)، پس خلاصه‌ی خطاها را به‌شکل
       # کامنت روی PR برمی‌گردانیم: خواندنی‌ترین راه برای دیدن «چرا build نشد» بدون دسترسی به Actions.
       - name: report to PR
