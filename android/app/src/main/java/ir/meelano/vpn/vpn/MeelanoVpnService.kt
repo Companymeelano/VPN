@@ -21,6 +21,7 @@ import ir.meelano.vpn.R
 import ir.meelano.vpn.data.FeedNode
 import ir.meelano.vpn.data.FeedHolder
 import ir.meelano.vpn.keepalive.KeepAlive
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -118,6 +119,11 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
         registerReceiver(stopReceiver, IntentFilter(ACTION_DISCONNECT))
         serviceScope.launch { KeepAlive.onVpnStarted(this@MeelanoVpnService) }
         FeedHolder.init(this)
+        // The 1 Hz sampler starts with the service. It used to be armed only from onTaskRemoved(), i.e.
+        // only after the user swiped the app away - so while the app was open (the normal case: they are
+        // looking at the ring) nothing ever called updateTraffic() and the live speed and session timer
+        // stayed at zero for the whole connection.
+        statHandler.postDelayed(ticker, 1000)
     }
 
     /**
@@ -174,9 +180,24 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
 
     /* ------------------------------------------------------------ ticker + notification */
 
+    /** Set while a sample is in flight, so a blocked read cannot pile up a queue of them. */
+    private val statBusy = AtomicBoolean(false)
+
     private val ticker = object : Runnable {
         override fun run() {
-            updateTraffic()
+            // The handler lives on the main looper, but the work must not: reading the core's counters
+            // crosses into it and can wait on its stats mutex, and "no heavy work on main while the
+            // tunnel is up" is the whole reason the original hang report was fixed. Main is the
+            // metronome; IO does the reading; StateFlow carries it back to the UI.
+            if (statBusy.compareAndSet(false, true)) {
+                serviceScope.launch(Dispatchers.IO) {
+                    try {
+                        updateTraffic()
+                    } finally {
+                        statBusy.set(false)
+                    }
+                }
+            }
             statHandler.postDelayed(this, 1000)
         }
     }
@@ -197,10 +218,27 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
         lastTraceStart = engineStartedAt
         _trace.value = _trace.value.push(rxD.toFloat(), txD.toFloat(), mark = flipped && _trace.value.totalSamples > 0)
 
-        // coalescing rules: >=1s since last push AND the numbers moved by >8% (or state flipped)
+        // Coalescing: at most one push a second, and only when a human would see a difference.
+        //
+        // The old test was `abs(rx - last)*12 > abs(last)*100 + 4096` on *cumulative* counters. rx only
+        // grows, so that is "the total must jump by 833%" - after the first few hundred kilobytes the
+        // notification effectively never updated again, which is how the bug report read as "the speed in
+        // the notification is frozen". 8% of what has moved is what was meant.
+        //
+        // The absolute floor is deliberately large (8 MB since the last push): during a download this
+        // keeps the pace at a few seconds per notify(). notify() is a binder call into system_server and
+        // one per second *while streaming* is exactly what made the whole phone stutter before, so the
+        // 1 Hz clock belongs to the in-app UI, which reads _traffic with no binder at all.
         val now = System.currentTimeMillis()
-        val movedEnough = kotlin.math.abs(rx - lastNotifiedRx) * 12 > kotlin.math.abs(lastNotifiedRx) * 100 + 4096 ||
-            kotlin.math.abs(tx - lastNotifiedTx) * 12 > kotlin.math.abs(lastNotifiedTx) * 100 + 4096
+        val lastRx = lastNotifiedRx.coerceAtLeast(0L)
+        val lastTx = lastNotifiedTx.coerceAtLeast(0L)
+        val delta = (rx - lastRx).coerceAtLeast(0L) + (tx - lastTx).coerceAtLeast(0L)
+        val base = lastRx + lastTx
+        val movedEnough = lastNotifiedRx < 0L ||            // first sample of a session: always push
+            flipped ||                                     // (re)connected: the text changed meaning
+            delta * 100 > base * 8 ||                       // 8% more than everything notified so far
+            delta >= 8_388_608L ||                         // or 8 MB of real traffic
+            now - lastNotifiedAt > 30_000                   // or keep the session timer honest
         if (now - lastNotifiedAt > 1000 && movedEnough) {
             lastNotifiedAt = now
             lastNotifiedRx = rx
