@@ -133,6 +133,14 @@ jobs:
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "### نسخه: $name ($code)" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: kotlin comment balance
+        # One stray `/*` inside a KDoc silently swallows the rest of the file, and Kotlin block comments
+        # *nest*, so a nested opener does not even fix itself at the next `*/`: the failure surfaces as an
+        # "unresolved reference" cascade in another file. Ten seconds here, instead of that again.
+        run: |
+          set -euo pipefail
+          python3 "$GITHUB_WORKSPACE/tools/check-comments.py"
+
       - name: unit tests (the core contract)
         # تنها جایی در این پروژه که می‌شود «درست کار می‌کند» را بدون گوشی اثبات کرد: CoreProfiles و
         # net/Regime عمداً بدون Android نوشته شده‌اند. پیش از بسته‌بندی اجرا می‌شود، چون یک پروفایلِ

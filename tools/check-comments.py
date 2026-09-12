@@ -70,3 +70,6 @@ for f, why in bad:
     print('BAD', f, '->', why)
 if not bad:
     print('comments balanced in every file')
+# CI reads the exit code, not the words: an unbalanced block comment is a build-breaking bug, and a
+# report nobody pipes into `tail -1` is a report nobody reads.
+sys.exit(1 if bad else 0)
