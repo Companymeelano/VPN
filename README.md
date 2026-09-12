@@ -72,6 +72,9 @@ curl 'http://localhost/v/?action=selftest&key=<toolKey>'
 ## اندروید
 `android/app/src/main/java/ir/meelano/vpn/**` — یک ماژول Gradle واقعی (نه اسنیپت)، **با کامپایل موفق در CI**.
 
+> تازه‌ترین APK قابل‌نصب: `v2.3.0-beta.2` →
+> [`meelano-2.3.0-203000.apk`](https://github.com/Companymeelano/VPN/releases/download/v2.3.0-beta.2/meelano-2.3.0-203000.apk)
+> (۱۲٫۴ مگابایت · sha256 `e2082837…f6df7eb` · کنارش `.sha256` خام برای هاست).
 > اولین APK ساخته‌شده: `v2.0.0-beta.1` → `meelano-2.0.0-200000-debug.apk` (۱۱٫۷ مگابایت،
 > sha256 `819a69be…3b5b1f80`) در Releases. با `core_linked=false` ساخته شده: فید، تست، رتبه‌بندی،
 > keep-alive، کاشی QS، نوتیفیکیشن سرعت زنده و جریان آپدیت واقعی‌اند؛ فقط تونل خالی است

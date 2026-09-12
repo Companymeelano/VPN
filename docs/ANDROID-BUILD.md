@@ -99,11 +99,19 @@ SDK لازم: `platform-tools`, `platforms;android-35`, `build-tools;35.0.0`.
 ## ۷) لینک‌های نسخه‌ی فعلی
 | مورد | مقدار |
 |---|---|
-| Release | `https://github.com/Companymeelano/VPN/releases/tag/v2.0.0-beta.1` |
-| APK (asset) | `https://github.com/Companymeelano/VPN/releases/download/v2.0.0-beta.1/meelano-2.0.0-200000-debug.apk` |
-| حجم / sha256 | ۱۲٬۲۸۷٬۹۷۸ بایت · `819a69be5cafc9317b994e98de66d07744c0777316fe63be37fb6e1a3b5b1f80` |
-| نام روی هاست | `public_html/v/apk/meelano-2.0.0-200000.apk` (+ `.sha256`) |
-| وضعیت هسته | `CORE_LINKED=false` — تونل وصل نیست؛ برای ریلیز کاربران `core_linked=true` لازم است |
+| Release | `https://github.com/Companymeelano/VPN/releases/tag/v2.3.0-beta.2` |
+| APK (asset) | `https://github.com/Companymeelano/VPN/releases/download/v2.3.0-beta.2/meelano-2.3.0-203000.apk` |
+| حجم / sha256 | ۱۲٬۹۶۷٬۹۷۴ بایت · `e2082837ee3dfe00b101f93d2210e09c76114ee6dc77d1991ceb50e94f6df7eb` |
+| کنارش | `…meelano-2.3.0-203000.apk.sha256` (۶۴ هگز خام — همان چیزی که `Version.php::checksum()` می‌خواند) |
+| نام روی هاست | همان فایل، بدون تغییرنام: `public_html/v/apk/meelano-2.3.0-203000.apk` |
+| در این نسخه | نمودارِ سرعت با نشانگرِ رویداد، گزارشِ عیب‌یابیِ قابل‌ارسال، کانفیگ‌سازِ موتور-آگاه با ۲۴ تست JVM، صفحهٔ وضعیتِ عمومی، آیکون `M•A` و تمِ روشن، پیش‌فرض‌های ضدفیلترِ ایران |
+| وضعیت هسته | `CORE_LINKED=false` — تونل وصل نیست؛ برای ریلیز کاربران `core_linked=true` لازم است (`docs/CORE-INTEGRATION.md` §۵) |
+
+نسخه‌های قبلی (برای QA مقایسه‌ای): `v2.2.0-beta.1` → `meelano-2.2.0-202000-debug.apk`
+(۱۲٬۹۳۳٬۸۶۶ بایت · `2345c00c47df926fcfcc75e268887757886caf5485b87f7b243a1c1dafc840df`) و
+`v2.0.0-beta.1` → `meelano-2.0.0-200000-debug.apk` (۱۲٬۲۸۷٬۹۷۸ بایت ·
+`819a69be5cafc9317b994e98de66d07744c0777316fe63be37fb6e1a3b5b1f80`). آن دو asset را با پسوند `-debug`
+ساخته بودند و `Version.php` آن نام را رد می‌کرد؛ از این نسخه پسوندِ variant در نام فایل نیست.
 
 REPO خصوصی است، پس این لینک‌ها با لاگین GitHub باز می‌شوند. برای اینکه لینک «عمومی» باشد یا
 `version.json` همان لینک را نشان دهد، فایل را روی `ainetmee.ir` بگذار (این بخش §۵) — لینک GitHub

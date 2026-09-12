@@ -166,12 +166,14 @@ GET /v/?action=advice&err=tls_timeout&proto=vless&tier=free&regime=tight
 
 قاعده‌های عملی که اگر نشکنی دردسر نداری:
 
-- نامِ فایل روی هاست **باید** `meelano-<versionName>-<versionCode>.apk` باشد؛ رگکسش:
-  `^(.+)-(\d+\.\d+(?:\.\d+)?)-(\d+)\.apk$` (`Version.php:96`). پس `meelano-2.3.0-203000-debug.apk`
-  **ایندکس نمی‌شود** و `?action=version` می‌گوید `no_apk_published`. (CI آن را با suffix می‌سازد؛
-  هنگام آپلود روی هاست نام را تمیز کن.)
-- یک `….apk.sha256` کنارش بگذار (فقط ۶۴ رقم هگز، و mtime‌اش باید از APK تازه‌تر باشد — `:163`)؛
-  با آن، `sha256` در JSON حتی بدونِ محاسبهٔ سمت‌سرور درست است.
+- نامِ فایلِ روی هاست **باید** `meelano-<versionName>-<versionCode>.apk` باشد؛ رگکسش:
+  `^(.+)-(\d+\.\d+(?:\.\d+)?)-(\d+)\.apk$` (`Version.php:96`). پس `…-debug.apk` ایندکس **نمی‌شود**
+  و `?action=version` می‌گوید `no_apk_published`. از `v2.3.0-beta.2`، assetِ خودِ CI هم با همین نامِ
+  تمیز منتشر می‌شود، پس فایلِ دانلودی را می‌توانی بیِ تغییرنام در `public_html/v/apk/` بگذاری
+  (پیش‌تر `-debug` می‌گرفت و همین یک بار کل مسیرِ آپدیت را بی‌صدا خاموش کرده بود).
+- یک `….apk.sha256` کنارش بگذار (یا خروجیِ `sha256sum`، که هر دو قالب خوانده می‌شود) و **تازه‌تر از خودِ APK** باشد —
+  تازگی با `filemtime` سنجیده می‌شود، نه با اندازه؛ این خطا یک‌بار باعث شد هر poll یک هَشِ ۱۳ مگابایتی روی
+  هاست اشتراکی زده شود (`Version.php:166-172`).
 - `update.apkDir` بیرون `data/` است (`backend/v/apk`) چون `data/` روی HTTP بسته است؛
   `update.publicBase` را ست کن تا `apkUrl` مطلق و HTTPS باشد.
 - `requireHttpsForApk = true` را خاموش نکن: HTTP یعنی یک MITM می‌تواند APK را عوض کند.
@@ -254,7 +256,7 @@ GET /v/?action=advice&err=tls_timeout&proto=vless&tier=free&regime=tight
 | `503 tool_key_not_configured` | `access.toolKey` خالی | برای ابزارها ستش کن |
 | `401 bad_tool_key` | `?key=` غلط | دقیقاً همان رشته، با `hash_equals` |
 | `payload rejected` (لاگکت: `FeedRepo`) | JSON ناپارس، `schema` پشتیبانی‌نشده، یا `servers` خالی | `?action=vip` را در مرورگر باز کن؛ `count: 0` یعنی لیستِ VIP خام خالی است |
-| `list.php`/`?action=version` → `no_apk_published` | نامِ فایل APK با رگکس نمی‌خواند | نام را به `meelano-<name>-<code>.apk` برگردان |
+| `?action=version` → `no_apk_published` | نامِ فایل APK با رگکس نمی‌خواند | نام را به `meelano-<name>-<code>.apk` برگردان |
 | لیست پر است اما همه `D` | پروبِ سرور از خارج ایران می‌کند و بازخوردِ کاربر هنوز نیست | طبیعی است؛ `feedback.weight = 0.55` به‌مرتبته نظرِ کاربران داخل کشور را غالب می‌کند |
 | سرعتِ اولِ بازکردن اپ پایین | `refresh` در cold start روی شبکه رفته | طبیعی است وقتی کشِ دیسک خالی است؛ از بار دوم `loadCached()` اول می‌آید |
 
