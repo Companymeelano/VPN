@@ -439,7 +439,9 @@ final class Ai
             $s['tokens'] = (int) $s['tokens'] + $tokens;
             $s['cents']   = (float) $s['cents'] + $usd * 100.0;
             $s['calls']   = (int) $s['calls'] + 1;
-            Util::writeAtomic($path, json_encode($s));
+            // Util::jsonEncode, not json_encode: a false return here would write an empty file and the
+            // next reader would read it as "no stats" - a silent reset of the counters that gate the model.
+            Util::writeAtomic($path, Util::jsonEncode($s));
         }
         return [
             'day'    => (string) $s['day'],
@@ -467,7 +469,7 @@ final class Ai
     private static function trip($why)
     {
         $ttl = max(60, (int) Util::cfg('ai.breakerSeconds', 600));
-        Util::writeAtomic(Util::dataDir() . '/' . self::BREAKER_FILE, json_encode([
+        Util::writeAtomic(Util::dataDir() . '/' . self::BREAKER_FILE, Util::jsonEncode([
             'until' => Util::now() + $ttl,
             'why'   => substr((string) $why, 0, 160),
         ]));
