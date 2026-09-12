@@ -664,7 +664,9 @@ t('Util::utf8 keeps valid text and drops invalid bytes', function () {
     }
     $bad = "ok\xC3(\x28tail";                 // 0xC3 needs a continuation byte; here it is garbage
     $fixed = Util::utf8($bad);
-    return preg_match("~^[\x20-\x7E]*tail$~", $fixed) ? true : bin2hex($fixed);
+    // single-quoted: with ~ as the delimiter, the \x7E byte *is* the delimiter and the pattern is
+    // invalid (preg_match returns false, which read as "still broken" for a full cycle here)
+    return preg_match('/^[\x20-\x7E]*tail$/', $fixed) === 1 ? true : bin2hex($fixed);
 });
 t('jsonEncode never returns the error envelope for a malformed string', function () {
     $s = Util::jsonEncode(["remark" => "bad\xC3\x28", "ok" => 1]);
@@ -676,11 +678,13 @@ t('a source line with a broken remark still parses into a node', function () {
     $nodes = Parser::parseBlob($line);
     return count($nodes) === 1 && $nodes[0]["host"] === "127.0.0.1" ? true : json_encode($nodes);
 });
-t("json feed with an invalid byte in one remark still decodes", function () {
-    $json = '[{"server":"127.0.0.1","port":8388,"protocol":"ss","method":"aes-256-gcm",'
-          . '"password":"pass","name":"bad\xC3\x28name","udp":true}]';
-    $nodes = Parser::parseBlob($json);
-    return count($nodes) >= 1 ? true : 'json branch rejected';
+t("a json source with one invalid byte still yields every node", function () use ($root) {
+    $clean = file_get_contents($root . "/data/fixtures/monosans.json");
+    $good = count(Parser::parseBlob($clean));
+    // put the bad byte inside a string value: json_decode() used to reject the whole document for this
+    $dirty = preg_replace("~\"name\"\s*:\s*\"~", "\"name\":\"\xC3\"", $clean, 1);
+    $nodes = count(Parser::parseBlob($dirty));
+    return $good > 0 && $nodes === $good ? true : "clean=$good dirty=$nodes";
 });
 
 echo "\n== SelfTest + entry point ==\n";
