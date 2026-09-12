@@ -68,8 +68,12 @@ on:
 
 permissions:
   # contents:write فقط برای یک چیز لازم است: ساختن Release با asset. build چیزی را commit نمی‌کند.
+  # issues:write برای همان مرحله‌ی «report to PR» لازم است: کامنت روی PR بدون آن ۴۰۳ می‌گیرد و
+  # `|| true` آن را بی‌صدا می‌کند — دقیقاً همان چیزی که یک خطای روشن را به «بیلد قرمزِ بی‌دلیل»
+  # تبدیل می‌کند. (pull-requests:write برای comment کافی نیست؛ مسیر API زیرمسئله‌ی issues است.)
   contents: write
   pull-requests: write
+  issues: write
 
 env:
   ANDROID_HOME: ${{ github.workspace }}/android-sdk
@@ -215,30 +219,30 @@ jobs:
         if: failure()
         continue-on-error: true
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BR: ${{ github.head_ref || github.ref_name }}
         run: |
           set -uo pipefail
           {
-            echo "# گزارش خطای بیلد (خودکار - پاک کردنش لازم نیست، دفعهٔ بعد بازنویسی می‌شود)"
+            echo "# گزارش خطای بیلد (خودکار؛ دفعهٔ بعد بازنویسی می‌شود)"
             echo
             echo '```'
             grep -E "FAILED|^e: |error:|expected:|AssertionError" "$GITHUB_WORKSPACE/test.log" 2>/dev/null | head -30
             grep -E "^e: |error:" "$GITHUB_WORKSPACE/build.log" 2>/dev/null | head -20
             for f in android/app/build/test-results/testDebugUnitTest/*.xml; do
               [ -f "$f" ] || continue
-              grep -o 'failure message="[^"]*"' "$f" | cut -c1-300 | head -12
+              sed -n 's/.*\(<failure[^>]*message="[^"]*"/\1/p' "$f" | cut -c1-400 | head -12
             done
             echo '```'
           } > "$RUNNER_TEMP/CI-FAILURE.md"
-          # روی merge-ref چک‌اوت شده، پس کامیت حتماً روی نوکِ خودِ شاخه ساخته می‌شود - وگرنه
-          # کامیتِ ادغام به شاخهٔ کاربر می‌چسبد و تاریخچه کثیف می‌شود.
-          git fetch -q origin "refs/heads/$BR" || exit 0
-          git -c advice.detachedHead=false checkout -q FETCH_HEAD || exit 0
-          cp "$RUNNER_TEMP/CI-FAILURE.md" CI-FAILURE.md
-          git add -f CI-FAILURE.md
-          git -c user.name=arena-agent -c user.email=297053741+arena-agent@users.noreply.github.com \
-            commit -q -m "ci: گزارش خطای بیلد [skip ci]" || exit 0
-          git push -q origin "HEAD:refs/heads/$BR"
+          # نوشتن با Contents API، نه git push: همین‌جا مهم است که پیام *حتماً* جایی بنشیند، و
+          # push از روی merge-refِ رویداد pull_request کار نمی‌کند (کامیتِ ادغام به شاخه راه نمی‌یابد).
+          body=$(base64 -w0 "$RUNNER_TEMP/CI-FAILURE.md")
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/contents/CI-FAILURE.md?ref=$BR" --jq .sha 2>/dev/null || true)
+          args=(gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/CI-FAILURE.md"
+                -f message="ci: گزارش خطای بیلد [skip ci]" -f content="$body" -f branch="$BR")
+          [ -n "$sha" ] && args+=(-f sha="$sha")
+          "${args[@]}" >/dev/null || echo "::warning::writing CI-FAILURE.md failed (token lacks contents:write?)"
 
       # لاگ کامل از این سندباکس قابل دانلود نیست (میزبان blob)، پس خلاصه‌ی خطاها را به‌شکل
       # کامنت روی PR برمی‌گردانیم: خواندنی‌ترین راه برای دیدن «چرا build نشد» بدون دسترسی به Actions.
