@@ -143,8 +143,10 @@ class NodeUriTest {
             "100.64.1.2",                                        // carrier-grade NAT: the usual fake "alive"
             "0.0.0.0", "239.1.1.1", "8.8.8.8",                  // multicast / Google DNS probe magnets
         ).forEach {
-            assertNull(NodeUri.parseProxyLine("$it:8080"), "should refuse $it")
-            assertNull(NodeUri.parseUri("trojan://pw@$it:443"), "should refuse host $it")
+            // message FIRST: JUnit has assertNull(Object) and assertNull(String, Object) - the
+            // trailing-argument habit belongs to AssertJ, and here it is a compile error
+            assertNull("should refuse $it", NodeUri.parseProxyLine("$it:8080"))
+            assertNull("should refuse host $it", NodeUri.parseUri("trojan://pw@$it:443"))
         }
         assertNull(NodeUri.parseProxyLine("localhost:8080"))
     }
