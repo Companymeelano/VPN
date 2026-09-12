@@ -193,6 +193,21 @@ jobs:
           gradle "${args[@]}" --continue 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
           exit "${PIPESTATUS[0]}"
 
+      # channel #2: artifact. وقتی کسی به Actions دسترسی ندارد (یا gh pr comment بی‌صدا رد می‌شود،
+      # که در این مخزن رخ داده)، «چرا قرمز شد» بدون لاگ یعنی حدس‌زدنِ کور. لاگِ خام به‌عنوان
+      # artifact پیوست می‌شود: `gh run download <run> -n meelano-failure-log`. فقط روی شکست، فقط
+      # دو فایلِ لاگ، ۷ روز.
+      - name: failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: meelano-failure-log
+          path: |
+            ${{ github.workspace }}/test.log
+            ${{ github.workspace }}/build.log
+          if-no-files-found: ignore
+          retention-days: 7
+
       # لاگ کامل از این سندباکس قابل دانلود نیست (میزبان blob)، پس خلاصه‌ی خطاها را به‌شکل
       # کامنت روی PR برمی‌گردانیم: خواندنی‌ترین راه برای دیدن «چرا build نشد» بدون دسترسی به Actions.
       - name: report to PR
