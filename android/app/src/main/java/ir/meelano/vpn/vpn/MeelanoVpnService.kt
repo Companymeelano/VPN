@@ -202,19 +202,41 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
         }
     }
 
-    /** 1 Hz sampling; notification text is only pushed when it actually changed. */
+    /** baseline for the per-tick rate; reset by the session flip, never by the clock */
+    private var lastSampleAt = 0L
+    private var lastSampleRx = 0L
+    private var lastSampleTx = 0L
+
+    /**
+     * 1 Hz sampling; notification text is only pushed when it actually changed.
+     *
+     * The *rate* is bytes-per-second over the tick, not over the session. The old line divided the
+     * increment since the previous sample by `now - engineStartedAt`, which makes the number a running
+     * average that can only decay: a 5 MB/s download reads as ~100 KB/s one minute in, and a dead tunnel
+     * reads as "slowly improving" forever. It was invisible for as long as nothing called this while the
+     * app was open. A light EWMA (alpha 0.4) sits on top, because the raw per-second value flickers
+     * enough to be unreadable next to the ring - but flickering-by-a-little beats lying-by-a-lot.
+     */
     private fun updateTraffic() {
         val rx = engineRx()
         val tx = engineTx()
-        val dt = ((System.currentTimeMillis() - engineStartedAt).coerceAtLeast(1)) / 1000f
-        val rxD = ((rx - _traffic.value.rx) / dt).toLong().coerceAtLeast(0)
-        val txD = ((tx - _traffic.value.tx) / dt).toLong().coerceAtLeast(0)
+        val now = System.currentTimeMillis()
+        val flipped = engineStartedAt != lastTraceStart
+        val tickSec = if (flipped || lastSampleAt == 0L) 0f else (now - lastSampleAt) / 1000f
+        val rxRaw = if (tickSec > 0.05f) ((rx - lastSampleRx).coerceAtLeast(0L) / tickSec).toLong() else -1L
+        val txRaw = if (tickSec > 0.05f) ((tx - lastSampleTx).coerceAtLeast(0L) / tickSec).toLong() else -1L
+        lastSampleAt = now
+        lastSampleRx = rx
+        lastSampleTx = tx
+        val prev = _traffic.value
+        val rxD = smoothRate(rxRaw, prev.rxPerSec, flipped)
+        val txD = smoothRate(txRaw, prev.txPerSec, flipped)
+        val dt = (now - engineStartedAt).coerceAtLeast(1) / 1000f
         _traffic.value = Traffic(rx, tx, rxD, txD, startedAt = engineStartedAt, seconds = dt.toInt())
 
         // one sample per tick, and a marker where the session flipped: the first flip is the connect,
         // a later one is a reconnect. Nobody presses a button for that, so the chart is the only place a
         // user can see it happened at all.
-        val flipped = engineStartedAt != lastTraceStart
         lastTraceStart = engineStartedAt
         _trace.value = _trace.value.push(rxD.toFloat(), txD.toFloat(), mark = flipped && _trace.value.totalSamples > 0)
 
@@ -245,6 +267,12 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
             lastNotifiedTx = tx
             notify(buildNotification(statusLine()))
         }
+    }
+
+    /** -1 marks "no sample yet"; the first real reading always starts from the raw value. */
+    private fun smoothRate(raw: Long, previous: Long, reset: Boolean): Long = when {
+        raw < 0L || reset || previous < 0L -> raw.coerceAtLeast(0L)
+        else -> ((previous * 0.6f) + (raw * 0.4f)).toLong().coerceAtLeast(0L)
     }
 
     private fun notify(n: Notification) {
