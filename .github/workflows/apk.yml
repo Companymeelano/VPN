@@ -146,6 +146,7 @@ jobs:
           python3 "$GITHUB_WORKSPACE/tools/check-comments.py"
 
       - name: unit tests (the core contract)
+        id: tests
         # تنها جایی در این پروژه که می‌شود «درست کار می‌کند» را بدون گوشی اثبات کرد: CoreProfiles و
         # net/Regime عمداً بدون Android نوشته شده‌اند. پیش از بسته‌بندی اجرا می‌شود، چون یک پروفایلِ
         # غیرقابل‌پارس از بیرون دقیقاً مثل «سرور مرده» به‌نظر می‌رسد و هیچ لاگی ندارد.
@@ -200,26 +201,11 @@ jobs:
           gradle "${args[@]}" --continue 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
           exit "${PIPESTATUS[0]}"
 
-      # channel #2: artifact. وقتی کسی به Actions دسترسی ندارد (یا gh pr comment بی‌صدا رد می‌شود،
-      # که در این مخزن رخ داده)، «چرا قرمز شد» بدون لاگ یعنی حدس‌زدنِ کور. لاگِ خام به‌عنوان
-      # artifact پیوست می‌شود: `gh run download <run> -n meelano-failure-log`. فقط روی شکست، فقط
-      # دو فایلِ لاگ، ۷ روز.
-      - name: failure log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: meelano-failure-log
-          path: |
-            ${{ github.workspace }}/test.log
-            ${{ github.workspace }}/build.log
-          if-no-files-found: ignore
-          retention-days: 7
-
       # channel #3، وقتی هیچ‌کدام از دو راه بالا کار نمی‌کنند (میزبان blob از برخی محیط‌ها
       # مسدود است و gh pr comment هم بی‌صدا رد می‌شود): پیام خطا روی همین شاخه کامیت می‌شود.
       # [skip ci] در پیام الزامی است، وگرنه هر کامیت یک رانِ جدید می‌سازد و چرخه بسته نمی‌شود.
       - name: report into the branch
-        if: failure()
+        if: always() && (steps.build.outcome == 'failure' || steps.tests.outcome == 'failure')
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -297,6 +283,23 @@ jobs:
           } > report.md
           gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body-file report.md || true
 
+      - name: surface failure text
+        # کانال سوم، و تنها کانالی که *همیشه* کار می‌کند: annotation روی همین check-run.
+        # artifact روی میزبان blob است (از بسیاری محیط‌های سندباکسی/جغرافیایی مسدود) و
+        # gh pr comment بدون مجوزِ issues:write بی‌صدا می‌میرد؛ ::error:: هیچ توکنی نمی‌خواهد
+        # و شرحِ خطا را همان‌جا می‌چسباند. عمداً exit 0: گزارش‌دهندة خطا نباید خطای دوم بسازد.
+        if: always() && (steps.build.outcome == 'failure' || steps.tests.outcome == 'failure')
+        run: |
+          set +e
+          for f in "$GITHUB_WORKSPACE/test.log" "$GITHUB_WORKSPACE/build.log"; do
+            [ -f "$f" ] || continue
+            {
+              grep -hE "^(e: |i: |Caused by:|> Task .* FAILED|\* What went wrong)" -A3 "$f"
+              grep -hA10 "What went wrong" "$f"
+            } | head -46 | tr -d '\r\001-\010' | sed -e 's/%/%25/g' -e '/^--$/d' -e 's/[<>&]/ /g' -e 's/^/::error::/'
+          done
+          exit 0
+
       - name: collect + hash
         id: out
         if: steps.build.outcome == 'success'
@@ -372,9 +375,29 @@ jobs:
             echo "- sha256: \`$SHA\` · حجم: $SIZE بایت"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # channel #2: artifact. وقتی کسی به Actions دسترسی ندارد (یا gh pr comment بی‌صدا رد می‌شود،
+      # که در این مخزن رخ داده)، «چرا قرمز شد» بدون لاگ یعنی حدس‌زدنِ کور. لاگِ خام به‌عنوان
+      # artifact پیوست می‌شود: `gh run download <run> -n meelano-failure-log`. فقط روی شکست، فقط
+      # دو فایلِ لاگ، ۷ روز.
+      - name: failure log
+        # اگر این step وسط کار می‌ماند هیچ‌وقت اجرا نمی‌شد: build با continue-on-error شغل
+        # شکست‌خورده حساب نمی‌کند، پس failure() نادرست بود و لاگ هیچ‌جا نمی‌رسید.
+        if: always() && (steps.build.outcome == 'failure' || steps.tests.outcome == 'failure')
+        uses: actions/upload-artifact@v4
+        with:
+          name: meelano-failure-log
+          path: |
+            ${{ github.workspace }}/test.log
+            ${{ github.workspace }}/build.log
+          if-no-files-found: ignore
+          retention-days: 7
+
       - uses: actions/upload-artifact@v4
+        # `if` و `ignore` لازم‌اند: بی آن‌ها وقتی build نمی‌سوزد این step با «Input required and
+        # not supplied: path» قرمز می‌شود و خطای *واقعی* را زیر خودش گم می‌کند.
+        if: steps.out.outcome == 'success'
         with:
           name: meelano-apk-${{ inputs.variant || 'debug' }}
           path: ${{ steps.out.outputs.file }}
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 30
