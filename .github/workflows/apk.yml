@@ -307,6 +307,22 @@ jobs:
           done
           exit 0
 
+      - name: clear failure report
+        # گزارشِ خطا وقتی بیلد سبز شد بی‌معنی می‌شود؛ پاکش کن، وگرنه ماهِ بعد یک
+        # CI-FAILURE.md کهنه وسط درخت آویزان است و همه فکر می‌کنند بیلد خراب است.
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BR: ${{ github.head_ref || github.ref_name }}
+        run: |
+          set +e
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/contents/CI-FAILURE.md?ref=$BR" --jq .sha 2>/dev/null)
+          [ -n "$sha" ] || exit 0
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/contents/CI-FAILURE.md" \
+            -f message="ci: گزارش خطای بیلد پاک شد - بیلد سبز است [skip ci]" \
+            -f sha="$sha" -f branch="$BR" >/dev/null && echo "removed stale CI-FAILURE.md"
+          exit 0
+
       - name: collect + hash
         id: out
         if: steps.build.outcome == 'success'
