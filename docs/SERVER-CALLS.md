@@ -37,14 +37,15 @@ curl -s "https://دامنه‌ت/v/?action=selftest&key=<toolKey>" | head -c 600
 
 | کجا در اپ | درخواست | پارامترها / بدنه | هدرها | مهلت | اگر بخورد |
 |---|---|---|---|---|---|
-| `data/ServerFeedRepository.kt:111` `refresh()` | `GET ?action=vip` و `?action=free` | — | `Accept-Encoding: gzip`، `X-Feed-Key`، `If-None-Match` | ۴s connect / ۶s read — و ۳۰s read تا وقتی `files/feed/<kind>.json` نساخته باشد (`:66`) | لیستِ کش‌شده روی دیسک می‌ماند؛ هیچ دیالوگی باز نمی‌شود |
-| `ServerFeedRepository.kt:280` `flush()` | `POST ?action=feedback` | JSON: `reports[]`, `block`, `regime`, `app` | `X-Feed-Key` | همان کلاینت | بی‌صدا رها می‌شود (`feedback dropped (offline)`) |
-| `ui/AdviceCard.kt:70` `fetchAdvice()` | `GET ?action=advice` | `err`, `proto`, `tier`, `regime` (urlencode) | `X-Feed-Key` | ۲٫۵s | کارت نمایش داده نمی‌شود — وینِ «اتصال برقرار نشد» سرِ جایش است |
-| `update/UpdateManager.kt:72` `checkNow()` | `GET ?action=version` | `vc=<versionCode>`، و در صورت ست‌بودن `key=<feedKey>` | `Accept-Encoding: gzip` | ۶s | `State.Idle`؛ هیچ اخطاری به کاربر داده نمی‌شود |
+| `data/ServerFeedRepository.kt:132` `refresh()` | `GET ?action=vip` و `?action=free` | — | `Accept-Encoding: gzip`، `X-Feed-Key`، `If-None-Match` | ۴s connect / ۶s read — و ۳۰s read تا وقتی `files/feed/<kind>.json` نساخته باشد (`:83`) | لیستِ کش‌شده روی دیسک می‌ماند؛ هیچ دیالوگی باز نمی‌شود |
+| `ServerFeedRepository.kt:497` `flush()` | `POST ?action=feedback` | JSON: `reports[]`, `block`, `regime`, `app` | `X-Feed-Key` | همان کلاینت | بی‌صدا رها می‌شود (`feedback dropped (offline)`) |
+| `ui/AdviceCard.kt:121` `fetchAdvice()` | `GET ?action=advice` | `err`, `proto`, `tier`, `regime` (urlencode) | `X-Feed-Key` | ۲٫۵s | کارت نمایش داده نمی‌شود — وینِ «اتصال برقرار نشد» سرِ جایش است |
+| `update/UpdateManager.kt:69` `checkNow()` | `GET ?action=version` | `vc=<versionCode>`، و در صورت ست‌بودن `key=<feedKey>` | `Accept-Encoding: gzip` | ۶s | `State.Idle`؛ هیچ اخطاری به کاربر داده نمی‌شود |
 | `UpdateManager` دانلود APK | `GET <apkUrl>` | — | — | ۶۰s read | `Failed("checksum")` یا `Failed("download")`، نصب صدا نمی‌کند |
 
-**هیچ تماس دیگری از اپ بیرون نمی‌رود.** پروبِ نود (`ServerFeedRepository.kt:319`) یک `Socket.connect()`
-مستقیم به `host:port` نود است، نه HTTP؛ و صفحهٔ وضعیت (`status.php`) برای آدم‌هاست، اپ آن را صدا نمی‌زند.
+**هیچ تماس دیگری از اپ بیرون نمی‌رود** — جز یک استثنا که پایین‌تر آمده: پروبِ نود
+(`ServerFeedRepository.kt:540`) یک `Socket.connect()` مستقیم به `host:portِ` خودِ نود است، نه HTTP؛
+و صفحهٔ وضعیت (`status.php`) برای آدم‌هاست، اپ آن را صدا نمی‌زند.
 
 ### ترتیبِ واقعیتِ شروعِ سرد (چیزی که بیشتر باگ‌های «لیست خالی» اینجاست)
 `ServerFeedRepository.kt:93-99` — اول `loadCached()` از `files/feed/{vip,free}.json`، **بعد** `refresh()`.
@@ -311,3 +312,75 @@ GET /v/?action=advice&err=tls_timeout&proto=vless&tier=free&regime=tight
   رشتهٔ آزاد از اپ بیرون می‌رود `err`ِ مشاوره و `err`ِ بازخورد است، و `Diagnostics.redact()` همین قاعده را
   برای گزارشی که کاربر *دستی* می‌فرستد اعمال می‌کند (رج: `data/Diagnostics.kt`).
 - `why`ِ مدل زبانی هیچ‌وقت به اپ نمی‌رسد (`lib/Ai.php`)؛ فقط عدد و بایتِ اقدام.
+
+---
+
+## ۱۲) حالت «بدون هاست» — وقتی اپ فهرست را خودش می‌سازد
+
+از `۲٫۴`، کاربر می‌تواند در **تنظیمات ← فهرست سرورها** منبعِ ساختِ فهرست را عوض کند. این یک
+«آفلاین‌مود» تزئینی نیست: مسیرِ فهرست واقعاً از داخلِ اپ ساخته می‌شود و هاستِ تو برای *فهرست* اصلاً
+صدا زده نمی‌شود. کد: `data/NodeUri.kt` (پارس)، `data/DirectFeed.kt` (چیدنِ فهرست)،
+`ServerFeedRepository.refreshDirect()` (اتصال به شبکه و کش).
+
+سه حالت، که در `AppSettings.feedMode` می‌ماند (`FEED_HOST` پیش‌فرض است تا کسی که هاستش سالم است متوجه
+چیزی نشود):
+
+| حالت | فهرست رایگان | فهرست وی‌آی‌پی | تماس به `/v/` |
+|---|---|---|---|
+| **هاست** | `?action=free` — پروب + گیت + رتبه‌بندیِ چندهفته‌ای | `?action=vip` + چسباندنِ کانفیگِ کاربر (merge) | همهٔ §۱ |
+| **خودکار** | اول هاست؛ اگر نرسید، آنبرد | مثل رایگان | تا وقتی هاست جواب می‌دهد |
+| **بدون هاست** | `DirectFeed` از فهرست‌های عمومی | فقط کانفیگِ خودِ کاربر (+ لینک اشتراکش) | فقط `?action=version` — و آن هم با خاموش‌کردن «بروزرسانی خودکار» می‌رود |
+
+### در حالت «بدون هاست» اپ چه کار می‌کند
+
+۱. پنج فهرستِ *config-grade* را از `raw.githubusercontent.com` می‌خواند (vless / trojan / ss / vmess /
+   hysteria2 از `gfpcom/free-proxy-list`)، هر کدام سقف ۱٫۴ مگابایت. فهرست‌های پروکسیِ خام
+   (`TheSpeedX`, `monosans`, …) نیامده‌اند: خروجی‌شان `ip:port:user:pass` است و `CoreApi` نمی‌تواند
+   HTTP/SOCKS را به‌عنوان outbound دیال کند — گذاشتنشان یعنی پرکردن لیست با ردیف‌هایی که کاربر
+   می‌زند و شکست می‌خورند.
+۲. `NodeUri.parseBlob` هر خط را می‌خواند: `vless/vmess/trojan/ss/hy2`، خطِ base64ِ اشتراک، و آرایۀ JSON.
+   اعتبارسنجی‌های عمدی: cipher سفیدلیست‌شده برای `ss` (هرچه UUID-مانند باشد رد می‌شود)، آدرس
+   خصوصی/CGNAT/loopback رد، بدون رمز هیچ تونلی ساخته نمی‌شود.
+۳. سقف ۱۶۰ کاندید، دی‌دوپ روی `proto|host:port`، بعد `NetGuard.tcpProbe` روی ۳۶ تای اول
+   (۱٫۵ ثانیه، موازی، یک سوکت به هر نود). نمره از همان آستانه‌های سرور: A≤۴۰۰ B≤۱۰۰۰ C≤۲۲۰۰ D.
+۴. نام‌ها ماسک می‌شوند (`brand + کشور`) — همان قاعده‌ای که سرور اعمال می‌کند، پس نامِ سرویسِ upstream
+   حتی در این حالت هم به صفحهٔ نمی‌رسد.
+۵. خروجی در همان `files/feed/free.json` با همان schema نوشته می‌شود؛ یعنی `apply()`، سورتِ
+   pinned، شیتِ سرورها، و مسیر اتصال هیچ‌کدام نمی‌دانند فهرست از کجا آمده.
+
+### چیزی که این حالت *ندارد* (و نداشتنش عمدی است)
+
+- **گیت**: سرور قبل از انتشار، از inside به `google.com:443` / `1.1.1.1` / `gstatic` CONNECT می‌زند تا
+  پروکسی که فقط «پورتش باز است» را حذف کند. این ۳ راندتریپ به ازای هر نود است؛ روی LTE یعنی باتری و
+  یعنی دادهٔ کاربر.
+- **دفترِ سابقه و بن**: سه شکست → شش ساعت بن. گوشی فردا روشن نیست.
+- **رتبهٔ چندهفته‌ای (`reliability`)**: در حالت آنبرد `samples=1` است، پس «انتخاب خودکار» فقط با
+  latency کار می‌کند.
+- **بازخورد**: `?action=feedback` در این حالت اصلاً ارسال نمی‌شود (`flush()` اول چک می‌کند) — چون
+  مقصدی ندارد.
+- **`tune` سرور**: پچِ ترابریِ هر نود از `config.php` می‌آید؛ بدون سرور، رجولاتِ خودِ اپ
+  (`AppSettings.regime`) تنها منبع است.
+
+### وی‌آی‌پی بدون هاست
+
+`NodeUri` همان چیزی را می‌خواند که `Parser.php` می‌خواند (vless/vmess/trojan/ss/hy2/tuic، اشتراک
+base64، خروجی HTML/تلگرام، JSON، `ip:port:user:pass`)، و کاربر می‌تواند کانفیگ‌هایش را مستقیم در
+**تنظیمات ← فهرست سرورها ← پیکربندیِ دستی** بچسباند. محل ذخیره:
+`files/feed/vip_local.txt` — داخلِ دایرکتوری خصوصی اپ، بدون بکاپ خودکار، بدون هیچ ارسالِ شبکه‌ای.
+این همان جایی است که deep-link هم می‌نشیند: اسکیم‌های `vless/vmess/trojan/ss/hysteria2` که از
+برنامهٔ دیگری share می‌شوند (`MainActivity.IMPORT_SCHEMES`)؛ قبلاً
+`MainActivity` آن را به `VpnViewModel.requestImport` می‌داد و *هیچ‌کس* نمی‌خواندش.
+
+نکتهٔ مهم: کانفیگ‌های چسبانده‌شده در حالت **هاست** و **خودکار** هم روی لیستِ سرور merge می‌شوند
+(`mergeLocalVip()`، همان‌جا پروب و نمره می‌گیرند) — عوض‌کردن منبعِ فهرست نباید چیزی را از لیست کاربر
+حذف کند.
+
+### دو چیزی که در این حالت هنوز بیرون می‌رود
+
+1. درخواست‌های HTTPS به `raw.githubusercontent.com` (و اگر لینک اشتراکِ شخصی گذاشته باشی، به آن دامنه).
+   یعنی GitHub در لاگش می‌بیند که این IP این فایل‌ها را خواسته — درونِ ایران این را باید بدانی؛ اگر
+   برایت مهم است، همان فهرست را در یک هاستِ شخصی/مirror بگذار و در «لینکِ اشتراک» آدرسش را وارد کن.
+2. `?action=version` برای بروزرسانی. تنها راه بستنش: خاموش‌کردن «بروزرسانی خودکار» در همان شیت.
+
+هزینهٔ باتری: یک بیلد = ۵ درخواست + حداکثر ۳۶ سوکت، و TTLِ آنبرد ۶ ساعت است
+(`DIRECT_TTL_SEC`) — یعنی در استفادهٔ عادی روزی دو بار، آن‌هم وقتی اپ باز است.

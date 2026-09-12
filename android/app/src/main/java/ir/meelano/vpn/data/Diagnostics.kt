@@ -45,6 +45,9 @@ object Diagnostics {
         val error: String = "",
         val blockReport: String = "",
         val feedCount: Int = 0,
+        /** which builder made today's list - "هاست" or "آنبرد". Useful because a thin list has two very
+         *  different explanations, and this line is the one that tells support which one it is. */
+        val feedSource: String = "",
     )
 
     fun render(i: Input): String {
@@ -65,7 +68,7 @@ object Diagnostics {
         line(sb, "MUX", onOff(i.muxEnabled))
         line(sb, "Kill-switch", onOff(i.killSwitch))
         line(sb, "DNS امن", onOff(i.secureDns))
-        line(sb, "فید", "${i.feedCount} گره")
+        line(sb, "فید", "${i.feedCount} گره" + if (i.feedSource.isNotBlank()) " · ${i.feedSource}" else "")
         val node = listOf(i.nodeLabel, i.nodeGrade, if (i.nodeLatencyMs >= 0) "${i.nodeLatencyMs}ms" else "")
             .filter { it.isNotBlank() }
             .joinToString(" · ")

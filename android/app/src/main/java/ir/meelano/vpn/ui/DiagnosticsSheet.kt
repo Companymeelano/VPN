@@ -101,6 +101,7 @@ fun DiagnosticsSheet(
                 error = error,
                 blockReport = AppSettings.lastBlockReport,
                 feedCount = vip.size + free.size,
+                feedSource = vm.feedSourceLabel(),
             )
         )
     }

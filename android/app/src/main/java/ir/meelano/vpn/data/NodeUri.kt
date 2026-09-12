@@ -33,10 +33,14 @@ object NodeUri {
         "rc4-md5", "bf-cfb", "cast5-cfb", "idea-cfb", "rc2-cfb", "seed-cfb",
     )
 
-    /** Protocols this app can hand to a core. Anything else is refused, not half-built. */
-    private val TUNNEL_SCHEMES = setOf("vless", "vmess", "trojan", "ss", "hy2")
+    /**
+     * Protocols this app can hand to a core. Anything else is refused, not half-built.
+     * `hysteria2` is the long spelling AndroidManifest declares in its intent filter, so the share
+     * sheet can hand us one; it normalises to `hy2`, which is what `CoreApi` and `Ladder` speak.
+     */
+    private val TUNNEL_SCHEMES = setOf("vless", "vmess", "trojan", "ss", "hy2", "hysteria2")
 
-    private val URI_RE = Regex("""(?i)\b(vless|vmess|trojan|ss|hy2)://[^\s"'<>\\]+""")
+    private val URI_RE = Regex("""(?i)\b(vless|vmess|trojan|ss|hy2|hysteria2)://[^\s"'<>\\]+""")
     private val PROXY_LINE = Regex(
         """(?i)^(?:(socks5|socks4|http)://)?(?:([^\s:@/]+)(?::([^\s:@/]*))?@)?""" +
             """((?:\d{1,3}\.){3}\d{1,3}|[a-z0-9._-]+):(\d{2,5})(.*)$"""
@@ -86,7 +90,10 @@ object NodeUri {
     fun parseUri(token: String): FeedNode? {
         val schemeEnd = token.indexOf("://")
         if (schemeEnd <= 0) return null
-        val scheme = token.substring(0, schemeEnd).lowercase(Locale.ROOT)
+        val scheme = when (val raw = token.substring(0, schemeEnd).lowercase(Locale.ROOT)) {
+            "hysteria2" -> "hy2"
+            else -> raw
+        }
         if (scheme !in TUNNEL_SCHEMES) return null
         var rest = token.substring(schemeEnd + 3)
         val remark = rest.substringAfter('#', "")

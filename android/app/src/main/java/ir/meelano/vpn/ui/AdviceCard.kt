@@ -59,7 +59,56 @@ import org.json.JSONObject
  *    list. Everything the advice can say, the app can do in one tap.
  */
 
-private data class Advice(val title: String, val body: String, val action: String, val canned: Boolean)
+private data class Advice(
+    val title: String,
+    val body: String,
+    val action: String,
+    /** "the server wrote this, not us" - the UI prints a small attribution line when it is false */
+    val canned: Boolean = true,
+)
+
+/**
+ * DIRECT mode has no /v/ to ask, and «چرا وصل نشد» is the answer a user needs most when the network is
+ * hostile - so the four verdicts the server writes most often live here too, in the app's own voice,
+ * using the action vocabulary the buttons already speak (`switch_node`, `change_regime`, retry). No new
+ * control, no invented promise, and no request to a host the user switched off.
+ */
+private fun localAdvice(err: String): Advice = when {
+    err.startsWith("dns_failed") -> Advice(
+        "نامِ سرور حل نشد",
+        "DNSِ همین شبکه اسم را برنمی‌گرداند. از تنظیمات «DNS امن» را روشن کن و دوباره امتحان کن؛ " +
+            "اگر باز هم نشد، این نود فعلاً از همین‌جا قابل‌دسترس نیست.",
+        "retry",
+    )
+
+    err.startsWith("permission") -> Advice(
+        "اجازهٔ VPN داده نشده",
+        "اندروید برای هر اتصال یک بار تأیید می‌خواهد. دوباره دکمهٔ وصل‌شدن را بزن و در پنجرهٔ سیستم " +
+            "«اتصال» را انتخاب کن.",
+        "retry",
+    )
+
+    err.contains("handshake") || err.contains("tls") || err.contains("certificate") -> Advice(
+        "دست‌دهیِ TLS کامل نشد",
+        "یا گواهی با نامِ توی کانفیگ نمی‌خواند، یا مسیرِ میانی handshake را می‌بندد. حالت مقاومت را روی " +
+            "«قطعی» بگذار؛ بسته‌های کوتاه‌تر و Fragment روشن این کار را درست می‌کند.",
+        "change_regime",
+    )
+
+    err.contains("timeout") || err.contains("unreachable") || err.contains("connect") -> Advice(
+        "پورتِ سرور باز نشد",
+        "احتمالاً نود مرده است یا بندرش بسته. از فهرست یک نودِ A دیگر بردار؛ اگر همه همین‌طور بودند، " +
+            "حالت مقاومت را عوض کن.",
+        "switch_node",
+    )
+
+    else -> Advice(
+        "هستهٔ اتصال جواب نداد",
+        "بدون سرورِ خودی، قضاوت فقط از روی همین گوشی است: یک نود دیگر را امتحان کن و اگر باز هم نشد، " +
+            "حالت مقاومت را عوض کن.",
+        "retry",
+    )
+}
 
 private val adviceCache = ConcurrentHashMap<String, Advice>()
 private val adviceClient by lazy {
@@ -110,7 +159,11 @@ fun AdviceCard(
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val regime = AppSettings.effectiveRegime().name.lowercase()
     var advice by remember(err, proto, tier) { mutableStateOf<Advice?>(null) }
-    LaunchedEffect(err, proto, tier, regime) { advice = fetchAdvice(err, proto, tier, regime) }
+    LaunchedEffect(err, proto, tier, regime) {
+        // no host to ask in on-device mode: the local verdicts answer instead of the card vanishing
+        advice = if (AppSettings.feedMode == AppSettings.FEED_DIRECT) localAdvice(err)
+        else fetchAdvice(err, proto, tier, regime)
+    }
     val a = advice ?: return
     if (a.body.isBlank()) return
 

@@ -168,6 +168,9 @@ class ServerFeedRepository(
                             resp.header("ETag")?.let { etags[kind] = it }
                             lastDnsPoisoned = false
                             apply(parsed, kind)
+                            // pasted configs never outrank the server's ranking, but they must not
+                            // disappear because this list came from the host instead of from the phone
+                            if (kind == KIND_VIP) mergeLocalVip()
                             probeAndReconcile(kind)
                         } else {
                             Log.w(TAG, "$kind payload rejected")
@@ -279,6 +282,35 @@ class ServerFeedRepository(
         if (sources == 0 && blob.toString().isBlank()) notes += "لینکِ اشتراک تنظیم نشده"
         notes += "${nodes.count { it.latencyMs != null }} نود از همین شبکه پاسخ داد"
         return DirectFeed.Result(nodes, sources, maxOf(1, sources), parsed.size, head.size, notes)
+    }
+
+    /**
+     * The user's own pasted configs, appended to a host-built list. Without this, switching the feed
+     * source would look like deleting their nodes - and a VIP entry you pasted yourself is the one piece
+     * of data in this app you own outright. They get probed here too, because that is the only
+     * measurement that matters for a node you are about to dial from this exact network.
+     */
+    private suspend fun mergeLocalVip() {
+        val text = runCatching { File(filesDir, VIP_LOCAL_FILE).readText() }.getOrDefault("")
+        if (text.isBlank()) return
+        val known = _vip.value.map { it.id }.toSet()
+        val fresh = NodeUri.parseBlob(text, tier = KIND_VIP, brand = VIP_BRAND).filter { it.id !in known }
+        if (fresh.isEmpty()) return
+        val probed = NodeUri.dedupe(fresh, max = 48)
+        val rtt = probeBatch(probed)
+        val graded = probed.map { n ->
+            val ms = rtt[n.id]
+            n.copy(
+                latencyMs = if (ms != null && ms >= 0) ms else null,
+                grade = if (ms == null || ms < 0) "D" else NodeUri.grade(ms),
+                reliability = if (ms != null && ms >= 0) 1f else 0f,
+                samples = 1,
+            )
+        }.sortedWith(
+            compareBy({ if (it.latencyMs == null) 1 else 0 }, { it.latencyMs ?: Long.MAX_VALUE })
+        ).mapIndexed { i, n -> n.copy(slot = _vip.value.size + i + 1) }
+        val stamp = lastBuildAt[KIND_VIP] ?: (System.currentTimeMillis() / 1000L)
+        apply(FeedPayload(KIND_VIP, stamp, DIRECT_TTL_SEC, _vip.value + graded), KIND_VIP)
     }
 
     /**

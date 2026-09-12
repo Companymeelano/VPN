@@ -64,8 +64,11 @@ class DiagnosticsTest {
         // caused). What is observable, and what the whitelist actually guarantees: a value that the
         // builder never asked for cannot appear in the output - whatever the JSON parser does.
         if (out != null) {
-            assertFalse(out.contains("example.net"))
-            assertFalse(out.contains("SECRET"))
+            // The message has to carry the string itself: a bare AssertionError in a CI log is how a real
+            // leak stays unexplained for a whole session, and this is the one assertion that could prove
+            // probe() stopped filtering.
+            assertFalse("probe() echoed its input: <<$out>>", out.contains("example.net"))
+            assertFalse("probe() echoed its input: <<$out>>", out.contains("SECRET"))
         }
     }
 
