@@ -64,6 +64,15 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
         private val _traffic = MutableStateFlow(Traffic(0, 0, 0, startedAt = 0))
         val traffic: StateFlow<Traffic> = _traffic
 
+        /**
+         * One-second throughput history, for the sparkline on Home (and for the "the ring said
+         * connected at 12:31" question in a support chat). It lives here rather than in the ViewModel
+         * for the same reason `traffic` does: the tunnel outlives the Activity, and a chart that restarts
+         * when you rotate the phone is a chart that lies about your session.
+         */
+        private val _trace = MutableStateFlow(TrafficTrace())
+        val trace: StateFlow<TrafficTrace> = _trace
+
         /** set while a service instance is alive, so commands issued during a restart are not lost */
         @Volatile private var alive: MeelanoVpnService? = null
 
@@ -95,6 +104,7 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
     private var lastNotifiedAt = 0L
     private var lastNotifiedRx = -1L
     private var lastNotifiedTx = -1L
+    private var lastTraceStart = -1L
 
     override fun onCreate() {
         super.onCreate()
@@ -179,6 +189,13 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
         val rxD = ((rx - _traffic.value.rx) / dt).toLong().coerceAtLeast(0)
         val txD = ((tx - _traffic.value.tx) / dt).toLong().coerceAtLeast(0)
         _traffic.value = Traffic(rx, tx, rxD, txD, startedAt = engineStartedAt, seconds = dt.toInt())
+
+        // one sample per tick, and a marker where the session flipped: the first flip is the connect,
+        // a later one is a reconnect. Nobody presses a button for that, so the chart is the only place a
+        // user can see it happened at all.
+        val flipped = engineStartedAt != lastTraceStart
+        lastTraceStart = engineStartedAt
+        _trace.value = _trace.value.push(rxD.toFloat(), txD.toFloat(), mark = flipped && _trace.value.totalSamples > 0)
 
         // coalescing rules: >=1s since last push AND the numbers moved by >8% (or state flipped)
         val now = System.currentTimeMillis()
@@ -342,6 +359,55 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
                 serviceScope.launch { orchestrator.disconnect(); stopSelfSafely() }
             }
         }
+    }
+}
+
+/**
+ * A rolling window of per-second rates for [SpeedChart]. Value type with copy-on-write arrays on purpose:
+ * at 1 Hz and 120 samples that is ~1 KB per frame of garbage at most, and `remember(trace)` can then diff
+ * by identity instead of threading a snapshot-mutable list through Compose (which is how chart code
+ * usually ends up not recomposing at all).
+ *
+ * `marks` are indices *into the current window*, so trimming shifts them; a mark that scrolls out is
+ * dropped, never clamped to zero - a marker pinned to the left edge would claim "the session started now"
+ * forever, which is the kind of detail that makes people distrust the whole chart.
+ */
+data class TrafficTrace(
+    val down: FloatArray = FloatArray(0),
+    val up: FloatArray = FloatArray(0),
+    val marks: IntArray = IntArray(0),
+    /** Samples since the service started, so trimming can shift marks without losing the real index. */
+    val totalSamples: Int = 0,
+) {
+    fun push(d: Float, u: Float, mark: Boolean): TrafficTrace {
+        val nd = down + d
+        val nu = up + u
+        val nm = if (mark) marks + (totalSamples) else marks
+        val drop = nd.size - CAPACITY
+        if (drop <= 0) {
+            return TrafficTrace(nd, nu, nm, totalSamples + 1)
+        }
+        val shifted = nm.filter { it - drop >= 0 }.map { it - drop }.toIntArray()
+        return TrafficTrace(
+            nd.copyOfRange(drop, nd.size),
+            nu.copyOfRange(drop, nu.size),
+            shifted,
+            totalSamples + 1,
+        )
+    }
+
+    /** The scale. Floored, because dividing by ~0 is how an idle link draws a spike storm. */
+    fun peak(): Float {
+        var m = 0f
+        var i = 0
+        while (i < down.size) { if (down[i] > m) m = down[i]; if (up[i] > m) m = up[i]; i++ }
+        return if (m < MIN_PEAK) MIN_PEAK else m
+    }
+
+    companion object {
+        const val CAPACITY = 120
+        /** An idle link still gets a sane axis; 24 KB/s. */
+        const val MIN_PEAK = 24_576f
     }
 }
 

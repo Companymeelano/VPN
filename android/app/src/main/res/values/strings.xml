@@ -156,4 +156,10 @@
     <string name="set_mtu_body">۱۲۸۰ روی شبکه‌ی موبایل ایران کمترین تکه‌تکه‌شدن و کمترین ریسِط را دارد؛ ۱۵۰ فقط روی فیبر تمیز.</string>
     <string name="probe_title">آخرین سنجشِ مسیر</string>
     <string name="probe_none">هنوز سنجشی انجام نشده؛ بعد از اولین همگام‌سازیِ فهرست خودکار اجرا می‌شود.</string>
+    <string name="chart_title">دقیقه‌های اخیر</string>
+    <string name="chart_peak">اوج</string>
+    <string name="chart_down">دانلود</string>
+    <string name="chart_up">آپلود</string>
+    <string name="chart_events">بازنشانیِ اتصال</string>
+    <string name="chart_empty">هنوز نمونه‌ای جمع نشده؛ بعد از اتصال پر می‌شود</string>
 </resources>

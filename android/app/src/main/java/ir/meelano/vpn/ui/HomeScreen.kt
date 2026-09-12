@@ -78,6 +78,7 @@ fun HomeScreen(vm: VpnViewModel) {
     val p = LocalPalette.current
     val phase by vm.phase.collectAsState()
     val traffic by vm.traffic.collectAsState()
+    val trace by vm.trace.collectAsState()
     val vip by vm.vip.collectAsState()
     val free by vm.free.collectAsState()
     val activeId by vm.activeId.collectAsState()
@@ -142,6 +143,19 @@ fun HomeScreen(vm: VpnViewModel) {
                     onToggle = { vm.toggle() },
                     onOpenSheet = { servers = true },
                 )
+
+                /*
+                 * Throughput, drawn. Under the ring on purpose: the ring answers "am I connected", this
+                 * answers "and how is it going", and the second question is the one that makes people
+                 * uninstall. Only when there is something to say, so the first run stays a clean circle.
+                 */
+                if (connected || trace.totalSamples > 0) {
+                    SpeedChart(
+                        trace = trace,
+                        live = connected,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    )
+                }
 
                 /*
                  * The moment of truth. A failed connect is the one screen where a user decides whether

@@ -40,6 +40,7 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope, SharingStarted.Eagerly, false)
     val phase: StateFlow<ConnectPhase> = MeelanoVpnService.phase
     val traffic: StateFlow<Traffic> = MeelanoVpnService.traffic
+    val trace: StateFlow<ir.meelano.vpn.vpn.TrafficTrace> = MeelanoVpnService.trace
     val updateState: StateFlow<UpdateManager.State> = updates.state
 
     private val _activeId = MutableStateFlow(Prefs.activeId(app))

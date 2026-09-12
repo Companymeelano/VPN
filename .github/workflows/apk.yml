@@ -183,6 +183,9 @@ jobs:
       # لاگ کامل از این سندباکس قابل دانلود نیست (میزبان blob)، پس خلاصه‌ی خطاها را به‌شکل
       # کامنت روی PR برمی‌گردانیم: خواندنی‌ترین راه برای دیدن «چرا build نشد» بدون دسترسی به Actions.
       - name: report to PR
+        # continue-on-error on purpose: a *reporting* failure (no comment permissions on a push event, an
+        # empty log, a gh hiccup) must never be the reason a good build is red - and before this, it was.
+        continue-on-error: true
         if: ${{ always() && github.event_name == 'pull_request' }}
         working-directory: ${{ github.workspace }}
         env:
