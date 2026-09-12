@@ -152,9 +152,12 @@ jobs:
         working-directory: android
         run: |
           set -uo pipefail
+          # `|| true` عمدی است: شلِ پیش‌فرضِ اکشنز با `-e` اجرا می‌شود، پس بدون آن
+          # همین‌جا step می‌مرد و هیچ‌وقت به `rc` و `::error::` و بلوکِ گزارش نمی‌رسیدیم —
+          # یعنی دقیقاً همان چیزی که «build قرمز ولی بی‌شرح» تولید می‌کرد.
           gradle :app:testDebugUnitTest --no-daemon --console=plain --stacktrace \
             -PMEELANO_FEED_BASE="${{ inputs.feed_base || 'https://ainetmee.ir/v' }}" \
-            2>&1 | tee "$GITHUB_WORKSPACE/test.log"
+            2>&1 | tee "$GITHUB_WORKSPACE/test.log" || true
           rc="${PIPESTATUS[0]}"
           if [ "$rc" != 0 ]; then
             echo "::error::unit tests failed (rc=$rc) - see the PR comment"
@@ -222,13 +225,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BR: ${{ github.head_ref || github.ref_name }}
         run: |
-          set -uo pipefail
+          set +e; set -uo pipefail
           {
             echo "# گزارش خطای بیلد (خودکار؛ دفعهٔ بعد بازنویسی می‌شود)"
             echo
             echo '```'
-            grep -E "FAILED|^e: |error:|expected:|AssertionError" "$GITHUB_WORKSPACE/test.log" 2>/dev/null | head -30
-            grep -E "^e: |error:" "$GITHUB_WORKSPACE/build.log" 2>/dev/null | head -20
+            grep -E "FAILED|^e: |error:|expected:|AssertionError" "$GITHUB_WORKSPACE/test.log" 2>/dev/null | head -30 || true
+            # build.log وقتی وجود ندارد که تست زودتر ترکیده — و `[ -f ]` نه‌به‌نه یعنی این step
+            # با grepِ بی‌فایل بمیرد و هیچ گزارشی نوشته نشود (همین اتفاق افتاد)
+            [ -f "$GITHUB_WORKSPACE/build.log" ] && grep -E "^e: |error:" "$GITHUB_WORKSPACE/build.log" | head -20 || true
             for f in android/app/build/test-results/testDebugUnitTest/*.xml; do
               [ -f "$f" ] || continue
               sed -n 's/.*\(<failure[^>]*message="[^"]*"/\1/p' "$f" | cut -c1-400 | head -12
