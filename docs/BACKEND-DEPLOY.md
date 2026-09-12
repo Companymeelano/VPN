@@ -246,10 +246,10 @@ Score (A ≤ 400ms، B ≤ 1000، C ≤ 2200، D) با `reliability = (ok+1)/(ok
 | `free.allowPorts` | ۲۶ پورت | هر پورتی که در این لیست نباشد اصلاً پروب نمی‌شود؛ برای نودهای خانگی اضافه‌اش کن |
 | `free.probe.deepGate` | false | تستِ TLS از تونل؛ روی هاستِ قوی `true` + `deepTopN=12` کیفیتِ رتبه‌بندی را واقعاً بالا می‌برد |
 | `free.gate.requireOf` / `probeAll` | 1 / false | «در لیست سیاهِ گوگل/کلادفلر نباشد» — بالا بردن‌شان هزینه را چند برابر می‌کند |
-| `free.bans.failLimit` / `banSeconds` | 3 / 21600 | سه شکست → شش ساعتcool-off، بعد می‌تواند برگردد |
+| `free.bans.failLimit` / `banSeconds` | 3 / 21600 | سه شکست → شش ساعت cool-off، بعد می‌تواند برگردد |
 | `free.feedback.weight` | 0.55 | وزنِ نظرِ کاربرانِ داخل کشور نسبت به پروبِ سرور |
 | `free.sourcesOverride` | — | لیست را کامل عوض کن (کلِ `sources.php` نادیده گرفته می‌شود) |
-| `sources.local.php` | — | کنار `sources.php` بسازش؛ فقط **چند منبع اضافه** می‌کند: |
+| `sources.local.php` | — | کنار `sources.php` بسازش؛ فقط **چند منبع اضافه** می‌کند (نمونهٔ پایین همین بند) |
 
 ```php
 <?php return ['sources' => [
