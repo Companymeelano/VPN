@@ -150,6 +150,11 @@ jobs:
               echo "## unit tests — $rc"
               echo '```'
               grep -E "FAILED|expected:|AssertionError|^e: " "$GITHUB_WORKSPACE/test.log" | head -40
+              # پیامِ واقعیِ assertion فقط در XML هست؛ gradle در کنسول آن را کوتاه می‌کند
+              for f in app/build/test-results/testDebugUnitTest/*.xml; do
+                [ -f "$f" ] || continue
+                grep -o 'testcase name="[^"]*"\|failure message="[^"]*"' "$f" | cut -c1-260 | head -60
+              done
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -197,8 +202,14 @@ jobs:
           log=build.log
           if [ ! -f "$log" ] && [ -f test.log ]; then log=test.log; fi
           [ -f "$log" ] || { echo "no build log"; exit 0; }
-          if [ -f test.log ] && [ "$log" != "test.log" ]; then
-            extra=$(grep -E "FAILED|expected:|AssertionError" test.log | head -25)
+          # جزئیاتِ تست همیشه می‌چسبد، حتی وقتی build.log اصلاً ساخته نشده (تست زودتر ترکیده):
+          # بیِ پیامِ assertion، «testDebugUnitTest FAILED» هیچ چیزی برای رفع کردن دست نمی‌دهد
+          extra=$(grep -E "FAILED|expected:|AssertionError" test.log 2>/dev/null | head -25)
+          xml=$(ls app/../android/app/build/test-results/testDebugUnitTest/*.xml 2>/dev/null | head -6)
+          if [ -n "$xml" ]; then
+            det=$(grep -ho 'failure message="[^"]*"' $xml 2>/dev/null | cut -c1-300 | head -20)
+            [ -n "$det" ] && extra="$extra
+$det"
           fi
           # بلوک «چه اشتباهی شد» + ۱۲۰ خط آخر لاگ: در مرحله‌ی configuration هیچ خطای
           # کامپایلوری وجود ندارد و بدون این، لاگ بی‌فایده است
