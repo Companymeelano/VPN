@@ -293,11 +293,26 @@ object NodeUri {
     /** Flag emoji, a `DE`-style code, or a country word in the remark -> a 2-letter code. Nothing else survives. */
     fun ccFrom(remark: String): String? {
         if (remark.isBlank()) return null
-        val flags = remark.filter { it.code in 0x1F1E6..0x1F1FF }
-        if (flags.length >= 2) {
-            val a = flags[0].code - 0x1F1E6
-            val b = flags[1].code - 0x1F1E6
-            if (a in 0..25 && b in 0..25) return "" + ('A' + a) + ('A' + b)
+        // Regional indicators are surrogate *pairs* on the JVM: the `code` of one is 0xD83C.., never
+        // 0x1F1E6..0x1F1FF - so a `filter { it.code in ... }` over chars silently matches nothing and
+        // every flag in every free list is invisible. Assemble the code points, and demand the two
+        // indicators be adjacent, exactly like Country.php's `[\x{1F1E6}-\x{1F1FF}]{2}`.
+        var i = 0
+        while (i + 3 < remark.length) {
+            val hi = remark[i]
+            val lo = remark[i + 1]
+            if (hi.isHighSurrogate() && lo.isLowSurrogate()) {
+                val first = Character.toCodePoint(hi, lo)
+                val hi2 = remark[i + 2]
+                val lo2 = remark[i + 3]
+                if (hi2.isHighSurrogate() && lo2.isLowSurrogate()) {
+                    val second = Character.toCodePoint(hi2, lo2)
+                    if (first in 0x1F1E6..0x1F1FF && second in 0x1F1E6..0x1F1FF) {
+                        return "" + ('A' + (first - 0x1F1E6)) + ('A' + (second - 0x1F1E6))
+                    }
+                }
+            }
+            i++
         }
         val upper = remark.uppercase(Locale.ROOT)
         Regex("""(?<![A-Z])([A-Z]{2})(?![A-Z])""").findAll(upper).firstOrNull { it.groupValues[1] in CC_SET }
