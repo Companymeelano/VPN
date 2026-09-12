@@ -114,7 +114,9 @@ final class Version
         }
         if ($best === null) {
             return ['schema' => 1, 'error' => 'no_apk_published', 'versionCode' => 0,
-                    'versionName' => '', 'apkUrl' => '', 'hint' => 'put meelano-<name>-<code>.apk into data/apk/ or upload from the admin panel',
+                    // NOT data/apk/: data/ is denied over http on purpose, so an APK put there is findable by
+                    // the scanner and undownloadable by the app. The web-readable folder is /v/apk/.
+                    'versionName' => '', 'apkUrl' => '', 'hint' => 'put meelano-<versionName>-<versionCode>.apk into the public /v/apk/ folder (not data/) or upload from the admin panel',
                     'note' => self::note(), 'generatedAt' => time()];
         }
         $payload = [

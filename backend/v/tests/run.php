@@ -1106,6 +1106,19 @@ t('the files that hold secrets are denied over http', function () use ($root) {
     return true;
 });
 
+t('the apk hint does not send the APK into the denied folder', function () use ($root) {
+    // Version.php once said "put it into data/apk/" - a path that is 404/403 by design, so every
+    // follower of that hint ends up with a feed that scans the file and an app that cannot download it.
+    $src = (string) @file_get_contents($root . '/lib/Version.php');
+    if (preg_match('~data/apk~', $src)) {
+        return 'the hint still points inside data/';
+    }
+    if (!preg_match('~public /v/apk~', $src)) {
+        return 'the hint no longer names the web-readable folder';
+    }
+    return true;
+});
+
 t('hash.php still prints a paste-ready config.local.php', function () use ($root) {
     $src = (string) @file_get_contents($root . '/admin/hash.php');
     foreach (["'secret' =>", 'feedKey', 'toolKey', 'adminPassHash', 'publicBase'] as $key) {
