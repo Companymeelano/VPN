@@ -99,16 +99,20 @@ SDK لازم: `platform-tools`, `platforms;android-35`, `build-tools;35.0.0`.
 ## ۷) لینک‌های نسخه‌ی فعلی
 | مورد | مقدار |
 |---|---|
-| Release | `https://github.com/Companymeelano/VPN/releases/tag/v2.3.1-beta.1` |
-| APK (asset) | `https://github.com/Companymeelano/VPN/releases/download/v2.3.1-beta.1/meelano-2.3.1-203001.apk` |
-| حجم / sha256 | ۱۲٬۹۶۷٬۹۷۴ بایت · `47530774d7ab1315cbfc3ca5975f6bdc9ae2ca46e233e6ef24a9d6c875683d6b` |
-| کنارش | `…meelano-2.3.1-203001.apk.sha256` (۶۵ بایت = ۶۴ هگز خام + newline — همان چیزی که `Version.php::checksum()` می‌خواند) |
-| نام روی هاست | همان فایل، بدون تغییرنام: `public_html/v/apk/meelano-2.3.1-203001.apk` |
-| چه چیزی نسبت به ۲٫۳٫۰ فرق کرد | syncِ اولِ فید حالا ۳۰ ثانیه صبر می‌کند (باگ «۰ گره» روی هاستِ سالم)؛ نودِ `ss` با cipher نامعتبر منتشر نمی‌شود؛ verdictِ regime دیگر از مرگِ آینه‌های عمومی نتیجه نمی‌گیرد. **اپدیت سمت سرور هم لازم دارد**: `lib/Parser.php`، `lib/Score.php`، `lib/Builder.php`، `config.php` |
-| در این نسخه | نمودارِ سرعت با نشانگرِ رویداد، گزارشِ عیب‌یابیِ قابل‌ارسال، کانفیگ‌سازِ موتور-آگاه با ۲۴ تست JVM، صفحهٔ وضعیتِ عمومی، آیکون `M•A` و تمِ روشن، پیش‌فرض‌های ضدفیلترِ ایران |
+| Release | `https://github.com/Companymeelano/VPN/releases/tag/v2.3.2-beta.2` |
+| APK (asset) | `https://github.com/Companymeelano/VPN/releases/download/v2.3.2-beta.2/meelano-2.3.2-203002.apk` |
+| حجم / sha256 | ۱۲٬۹۸۴٬۳۵۸ بایت · `8bc9bd9bb4e1b102b248f38880fe6ee1b0bc44fe731cbb734c8eca6cef07f949` |
+| کنارش | `…meelano-2.3.2-203002.apk.sha256` (۶۵ بایت = ۶۴ هگز + newline — همان چیزی که `Version.php::checksum()` می‌خواند) |
+| نام روی هاست | همان فایل، بدون تغییرنام: `public_html/v/apk/meelano-2.3.2-203002.apk` |
+| چه چیزی نسبت به ۲٫۳٫۱ فرق کرد | سرعتِ زندهٔ داخل اپ واقعاً کار می‌کند (تیکِر ۱Hz از `onCreate`، نه فقط بعد از swipe-kill؛ و نرخ روی بازهٔ نمونه‌بندی تقسیم می‌شود نه عمرِ سشن)، نوتیفیکیشن با آستانهٔ «۸٪ یا ۸ مگ یا تغییر سشن» تازه می‌شود، پنج حلقهٔ انیمیشن با «حذف انیمیشن‌ها»ی سیستم **ساخته نمی‌شوند**، جاروبِ «در حال اتصال» دیگر حلقهٔ داغ نیست، و `Ai::safeSubstr` روی هاستِ بدون mbstring نمی‌میرد. سمت سرور: `lib/Ai.php` |
 | وضعیت هسته | `CORE_LINKED=false` — تونل وصل نیست؛ برای ریلیز کاربران `core_linked=true` لازم است (`docs/CORE-INTEGRATION.md` §۵) |
 
-نسخه‌های قبلی (برای QA مقایسه‌ای): `v2.3.0-beta.2` → `meelano-2.3.0-203000.apk`
+نسخه‌های قبلی (برای QA مقایسه‌ای): `v2.3.1-beta.1` → `meelano-2.3.1-203001.apk`
+(۱۲٬۹۶۷٬۹۷۴ بایت · `47530774d7ab1315cbfc3ca5975f6bdc9ae2ca46e233e6ef24a9d6c875683d6b`) —
+**دربارهٔ `v2.3.2-beta.1`:** همان `versionCode` و همان نامِ فایل را با محتوایِ دیگر داشت (قبل از دو
+اصلاحِ آخر بیلد شده بود)، پس حذف شد تا هیچ‌کس «همان فایل، چیزِ دیگر» را نصب نکند. نسخه‌ها را با
+تگِ تازه منتشر کن، نه با بازنویسیِ فایلِ یک تگِ موجود.
+`v2.3.0-beta.2` → `meelano-2.3.0-203000.apk`
 (۱۲٬۹۶۷٬۹۷۴ بایت · `e2082837ee3dfe00b101f93d2210e09c76114ee6dc77d1991ceb50e94f6df7eb`)،
 `v2.2.0-beta.1` → `meelano-2.2.0-202000-debug.apk`
 (۱۲٬۹۳۳٬۸۶۶ بایت · `2345c00c47df926fcfcc75e268887757886caf5485b87f7b243a1c1dafc840df`) و
