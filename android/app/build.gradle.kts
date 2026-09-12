@@ -38,6 +38,25 @@ val feedSecret = providers.gradleProperty("MEELANO_FEED_SECRET").orNull
 val selfUpdate = providers.gradleProperty("MEELANO_SELF_UPDATE").orNull ?: "true"
 // true ONLY when a real engine (tProxy / sing-box) is a dependency and CoreApi calls it.
 val coreLinked = providers.gradleProperty("MEELANO_CORE_LINKED").orNull ?: "false"
+
+// Which config dialect CoreProfiles renders. Two facts decide this, not taste:
+//   xray     -> XTLS/Xray-core is MPL-2.0, so a closed-source app may ship libXray; Reality+Vision is
+//               the combination that still works under Iranian DPI, and it is what the vip feed carries.
+//   sing-box -> GPLv3+ (linking it makes the whole app GPLv3), but it fragments at transport level
+//               natively, which is what BLACKOUT needs. Kept as a supported dialect, not a default.
+// The fully-qualified class inside the engine AAR that exposes startLocal/stopLocal. Empty means "this
+// build carries no engine", which is exactly the state MEELANO_CORE_LINKED=false describes; CoreApi then
+// refuses to start and the UI says so. Discovered with: unzip -p app/libs/<core>.aar classes.jar > /tmp/c.jar && javap -classpath /tmp/c.jar -public
+val coreBridgeClass = providers.gradleProperty("MEELANO_CORE_BRIDGE_CLASS").orNull
+    ?: (rootProject.file("local.properties").let { if (it.isFile) Properties().apply { load(it.inputStream()) }.getProperty("MEELANO_CORE_BRIDGE_CLASS") else null })
+    ?: ""
+
+val coreEngine = providers.gradleProperty("MEELANO_CORE_ENGINE").orNull
+    ?: (rootProject.file("local.properties").let { if (it.isFile) Properties().apply { load(it.inputStream()) }.getProperty("MEELANO_CORE_ENGINE") else null })
+    ?: "xray"
+require(coreEngine.trim().lowercase() in setOf("xray", "sing-box", "singbox", "sfa", "hiddify")) {
+    "MEELANO_CORE_ENGINE باید یکی از xray|sing-box باشد، نه «$coreEngine»"
+}
 if (coreLinked != "true" && gradle.startParameter.taskNames.any { it.contains("Release", true) }) {
     throw GradleException(
         "MEELANO_CORE_LINKED=false: این بیلد تونل نمی‌زند، پس ریلیز نساز. " +
@@ -76,6 +95,8 @@ android {
         buildConfigField("String", "MEELANO_FEED_SECRET", "\"$feedSecret\"")
         buildConfigField("boolean", "SELF_UPDATE", selfUpdate)
         buildConfigField("boolean", "CORE_LINKED", coreLinked)
+        buildConfigField("String", "CORE_ENGINE", "\"${coreEngine.trim()}\"")
+        buildConfigField("String", "CORE_BRIDGE_CLASS", "\"${coreBridgeClass.trim()}\"")
         buildConfigField("String", "CHANNEL", "\"stable\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -125,6 +146,15 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        // The anti-block brain (net/Regime.kt) and the profile builder (vpn/CoreApi.kt) are deliberately
+        // free of Android types so they run here, in seconds, on any machine. If a test needs a Context
+        // it belongs in androidTest/ - do not "fix" it by turning Robolectric on.
+        unitTests {
+            isReturnDefaultValues = true
+        }
+    }
+
     packaging {
         resources.excludes += setOf(
             "/META-INF/{AL2.0,LGPL2.1}",
@@ -169,8 +199,13 @@ dependencies {
 
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 
-    // THE TUNNEL. Pick exactly one and keep the version pinned; see docs/ANDROID-INTEGRATION.md §2
-    // for the API the rest of the code expects from it (TunnelEngine in vpn/CoreApi.kt).
+    // THE TUNNEL. Pick exactly one and keep the version pinned; docs/CORE-INTEGRATION.md is the
+    // checklist that turns MEELANO_CORE_LINKED into "true" (API surface: TunnelEngine in
+    // vpn/CoreApi.kt, config dialect in vpn/CoreProfiles).
+    //   preferred (MPL-2.0, ships in a closed app): the libXray AAR built with
+    //     `python3 build/main.py android` from github.com/XTLS/libXray -> app/libs/XrayCore.aar
+    //   or the GPL route:  implementation("io.github.nekohasemangroup:sing-box:1.10.0")
     // implementation("io.github.tahowang:tproxy:5.3.0")
-    // implementation("io.github.nekohasemangroup:sing-box:1.10.0")
+
+    testImplementation("junit:junit:4.13.2")
 }

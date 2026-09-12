@@ -133,6 +133,28 @@ jobs:
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "### نسخه: $name ($code)" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: unit tests (the core contract)
+        # تنها جایی در این پروژه که می‌شود «درست کار می‌کند» را بدون گوشی اثبات کرد: CoreProfiles و
+        # net/Regime عمداً بدون Android نوشته شده‌اند. پیش از بسته‌بندی اجرا می‌شود، چون یک پروفایلِ
+        # غیرقابل‌پارس از بیرون دقیقاً مثل «سرور مرده» به‌نظر می‌رسد و هیچ لاگی ندارد.
+        working-directory: android
+        run: |
+          set -uo pipefail
+          gradle :app:testDebugUnitTest --no-daemon --console=plain --stacktrace \
+            -PMEELANO_FEED_BASE="${{ inputs.feed_base || 'https://ainetmee.ir/v' }}" \
+            2>&1 | tee "$GITHUB_WORKSPACE/test.log"
+          rc="${PIPESTATUS[0]}"
+          if [ "$rc" != 0 ]; then
+            echo "::error::unit tests failed (rc=$rc) - see the PR comment"
+            {
+              echo "## unit tests — $rc"
+              echo '```'
+              grep -E "FAILED|expected:|AssertionError|^e: " "$GITHUB_WORKSPACE/test.log" | head -40
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$rc"
+
       - name: build
         id: build
         continue-on-error: true
@@ -168,8 +190,13 @@ jobs:
           PR: ${{ github.event.number }}
         run: |
           set -uo pipefail
+          # هر دو لاگ: اگر unit tests بترکند، build.log اصلاً وجود ندارد و گزارش بی‌محتوا می‌شد
           log=build.log
+          if [ ! -f "$log" ] && [ -f test.log ]; then log=test.log; fi
           [ -f "$log" ] || { echo "no build log"; exit 0; }
+          if [ -f test.log ] && [ "$log" != "test.log" ]; then
+            extra=$(grep -E "FAILED|expected:|AssertionError" test.log | head -25)
+          fi
           # بلوک «چه اشتباهی شد» + ۱۲۰ خط آخر لاگ: در مرحله‌ی configuration هیچ خطای
           # کامپایلوری وجود ندارد و بدون این، لاگ بی‌فایده است
           {
@@ -181,6 +208,7 @@ jobs:
             # خودِ خطا + ۷ خط بعدش: «None of the following candidates is applicable» بی لیستِ
             # نامزدها هیچی بهت نمی‌گوید؛ کامپایلور اورلودهای درست را همان‌جا ردیف می‌کند
             awk '/^e: file:\/\//{p=8} p&&p--' "$log" | head -160 || true
+            if [ -n "${extra:-}" ]; then echo; echo "### unit tests"; echo; echo '```'; echo "$extra"; echo '```'; fi
             echo '```'
             echo
             echo "<details><summary>۱۲۰ خط آخر لاگ gradle</summary>"

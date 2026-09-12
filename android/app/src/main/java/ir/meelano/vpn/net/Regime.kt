@@ -84,6 +84,19 @@ data class Tune(
         .put("mux", mux).put("muxConcurrency", muxConcurrency).put("allowLan", allowLan)
         .put("mtu", mtu).put("mss", mss).put("grpcMode", grpcMode).put("connectionReuse", connectionReuse)
 
+    /**
+     * Same content as [toJson] without org.json, so `vpn/CoreProfiles` can keep its config builder
+     * free of Android (and therefore unit-testable on a laptop). One source of truth: the map feeds the
+     * echo in the profile, the JSON feeds the settings file.
+     */
+    fun toMap(): Map<String, Any?> = linkedMapOf(
+        "fragSize" to fragSize, "fragCount" to fragCount, "fragStrategy" to fragStrategy,
+        "fragDelayMs" to fragDelayMs, "alpn" to alpn, "fingerprint" to fingerprint,
+        "sni" to sni, "ech" to ech, "keepAliveSec" to keepAliveSec,
+        "mux" to mux, "muxConcurrency" to muxConcurrency, "allowLan" to allowLan,
+        "mtu" to mtu, "mss" to mss, "grpcMode" to grpcMode, "connectionReuse" to connectionReuse,
+    )
+
     companion object {
         val Default = Tune()
 

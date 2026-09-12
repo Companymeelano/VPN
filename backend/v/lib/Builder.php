@@ -492,6 +492,32 @@ final class Builder
         return $fleet;
     }
 
+    /**
+     * The flow a node must carry, derived rather than trusted.
+     *
+     * `xtls-rprx-vision` is what makes VLESS+Reality over plain TCP both fast and hard to fingerprint
+     * (it breaks the TLS record into a shape that still looks like TLS), and almost every public config -
+     * and plenty of private ones - omit it. Deriving it server-side means even a client that predates
+     * the rule gets it, which is the whole point of putting the decision in the feed.
+     *
+     * The `network` check is not decoration: Vision on ws/grpc/xhttp breaks the handshake outright, so a
+     * node that says `network=ws` must come back empty even if its URI carried a flow.
+     */
+    public static function flowFor(array $n)
+    {
+        $given = isset($n['flow']) ? trim((string) $n['flow']) : '';
+        $net = isset($n['network']) ? strtolower(trim((string) $n['network'])) : 'tcp';
+        $isTcp = $net === '' || $net === 'tcp' || $net === 'raw' || $net === 'stream';
+        $isReality = isset($n['tls']) && strtolower(trim((string) $n['tls'])) === 'reality';
+        if ($given !== '') {
+            return $isTcp || $given !== 'xtls-rprx-vision' ? $given : '';
+        }
+        if (!$isTcp || !$isReality) {
+            return '';
+        }
+        return (isset($n['proto']) && $n['proto'] === 'vless' && !empty($n['pbk'])) ? 'xtls-rprx-vision' : '';
+    }
+
     private static function toPublic(array $n, $tier, $slot, $brand, array $tune = null)
     {
         $cc = isset($n['cc']) && preg_match('~^[A-Z]{2}$~', (string) $n['cc']) ? $n['cc'] : null;
@@ -515,7 +541,7 @@ final class Builder
             'path'    => isset($n['path']) ? $n['path'] : '',
             'hostHeader' => isset($n['hostHeader']) ? $n['hostHeader'] : '',
             'alpn'    => isset($n['alpn']) ? $n['alpn'] : '',
-            'flow'    => isset($n['flow']) ? $n['flow'] : '',
+            'flow'    => self::flowFor($n),
             'pbk'     => isset($n['pbk']) ? $n['pbk'] : '',
             'sid'     => isset($n['sid']) ? $n['sid'] : '',
             'fingerprint' => isset($n['fingerprint']) ? $n['fingerprint'] : '',

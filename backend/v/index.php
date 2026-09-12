@@ -6,6 +6,7 @@
  *   GET  /v/?action=free       tested free pool, identical shape
  *   GET  /v/?action=version    update index (?vc=<currentVersionCode> -> verdict)
  *   GET  /v/?action=health     tiny liveness reply
+ *   GET  /v/?action=status     public service page (?html=1 renders the shareable page; redacted by design)
  *   POST /v/?action=feedback   app reports "this node worked / didn't" -> feeds the ranking
  *   GET  /v/?action=stats      admin only
  *   GET  /v/?action=selftest   admin only, deployment diagnostics (?html=1 for a page)
@@ -27,6 +28,7 @@ require_once __DIR__ . '/lib/Builder.php';
 require_once __DIR__ . '/lib/Version.php';
 require_once __DIR__ . '/lib/Ai.php';
 require_once __DIR__ . '/lib/AiTune.php';
+require_once __DIR__ . '/lib/Status.php';
 require_once __DIR__ . '/lib/SelfTest.php';
 
 date_default_timezone_set((string) Util::cfg('timezone', 'UTC'));
@@ -189,6 +191,24 @@ switch ($action) {
             advice();
             break;
 
+    case 'status':
+        // public and redacted (lib/Status.php); the admin stats live in ?action=stats
+        if (!Util::rateLimit('status', 90, 60)) {
+            Util::respond(['error' => 'rate_limited', 'retryAfter' => 60], ['status' => 429]);
+            break;
+        }
+        $p = Status::summary(isset($_GET['r']) && $_GET['r'] === '1');
+        if (isset($_GET['html'])) {
+            // same numbers as the JSON, laid out for a human to screenshot - which is how this page
+            // actually gets used (Telegram channel, support reply), and why it is public
+            header('Content-Type: text/html; charset=utf-8');
+            header('Cache-Control: public, max-age=' . (int) Status::TTL);
+            echo Status::renderHtml($p);
+            break;
+        }
+        Util::respond($p, ['maxAge' => (int) Status::TTL]);
+        break;
+
     case 'health':
         header('Content-Type: application/json; charset=utf-8');
         echo Util::jsonEncode([
@@ -250,6 +270,7 @@ switch ($action) {
                 'version'  => 'index.php?action=version&vc=<versionCode>',
                 'feedback' => 'POST index.php?action=feedback  {"reports":[{"sid":"..","ok":true,"latencyMs":380}]}',
                 'health'   => 'index.php?action=health',
+                'status'   => 'index.php?action=status  (public, redacted; status.php is the human page)',
                 'advice'   => 'index.php?action=advice&err=tls_timeout&regime=tight',
             ],
             'hint' => 'stats|selftest|refresh need ?key=<access.toolKey>; run ?action=selftest once after deploy',

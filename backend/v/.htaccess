@@ -9,7 +9,7 @@ Options -Indexes -MultiViews
 
   # pretty URLs for the app and for testing in a browser
   RewriteRule ^$ index.php [L]
-  RewriteRule ^(vip|free|version|health|stats|selftest|refresh|feedback)(\.json|\.txt)?/?$ index.php?action=$1 [QSA,L,NC]
+  RewriteRule ^(vip|free|version|health|status|stats|selftest|refresh|feedback)(\.json|\.txt)?/?$ index.php?action=$1 [QSA,L,NC]
 
   # never serve the internals directly
   RewriteRule ^(lib|admin)/ - [F,L]

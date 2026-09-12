@@ -153,8 +153,14 @@ class VpnOrchestrator(
             ?: error("VpnOrchestrator must be constructed with the VpnService instance")
         val b = service.Builder()
         // the name Android shows in Settings > VPN and in the connect prompt
+        // MTU comes from the resolved tune, not from a constant: 1420 is a fine number until a node on
+        // a 1280-byte MTU link (Reality + fragment) needs something else, and the settings screen's
+        // MTU row has to actually change the tunnel. Clamp, because VpnService rejects absurd values
+        // and the resulting exception surfaces as "connect failed" with no hint of why.
+        val tune = runCatching { ir.meelano.vpn.data.AppSettings.tuneFor(spec.node) }.getOrNull()
+        val mtu = (tune?.mtu ?: 0).takeIf { it in 576..9000 } ?: MTU
         b.setSession(context.getString(ir.meelano.vpn.R.string.app_name))
-            .setMtu(MTU)
+            .setMtu(mtu)
             .addAddress(VPN_IP, 32)
             .addDnsServer(DNS_PRIMARY)
             .addRoute("0.0.0.0", 0)

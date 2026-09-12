@@ -395,6 +395,38 @@ t('etag -> 304 on a second poll', function () use ($vip) {
     return $out === '' ? true : 'expected empty body for 304, got ' . strlen($out) . ' bytes';
 });
 
+t('reality+vless+tcp gets Vision even when the source forgot it', function () use ($vip) {
+    $seen = 0;
+    foreach ($vip['servers'] as $s) {
+        if ($s['proto'] === 'vless' && $s['tls'] === 'reality'
+            && in_array($s['network'], ['tcp', 'raw', '', null], true)) {
+            $seen++;
+            if ($s['flow'] !== 'xtls-rprx-vision') {
+                return 'node ' . $s['id'] . ' flow=' . var_export($s['flow'], true);
+            }
+            if (!isset($s['config']['flow']) || $s['config']['flow'] !== 'xtls-rprx-vision') {
+                return 'config block missing the flow for ' . $s['id'];
+            }
+        }
+    }
+    return $seen > 0 ? true : 'fixture has no reality/vless/tcp node';
+});
+t('a ws node never gets Vision, even if its URI claimed it', function () {
+    $bad = Builder::flowFor(['proto' => 'vless', 'tls' => 'reality', 'network' => 'ws', 'flow' => 'xtls-rprx-vision', 'pbk' => 'x']);
+    if ($bad !== '') {
+        return 'ws node kept flow=' . var_export($bad, true);
+    }
+    $kept = Builder::flowFor(['proto' => 'vless', 'tls' => 'reality', 'network' => 'ws', 'flow' => 'something-else', 'pbk' => 'x']);
+    if ($kept !== 'something-else') {
+        return 'an explicit non-Vision flow must survive, got ' . var_export($kept, true);
+    }
+    $noKey = Builder::flowFor(['proto' => 'vless', 'tls' => 'reality', 'network' => 'tcp']);
+    if ($noKey !== '') {
+        return 'reality without pbk must not claim Vision, got ' . var_export($noKey, true);
+    }
+    return true;
+});
+
 echo "\n== Builder: free pool ==\n";
 $_GET = [];
 $free = Builder::doBuild('free', 60);
@@ -434,6 +466,90 @@ t('degrades gracefully when outbound tcp is blocked', function () use ($free) {
 t('stats endpoint data available', function () use ($free) {
     $s = Builder::stats();
     return isset($s['ledger']['tracked']) && $s['ledger']['tracked'] > 0 ? true : json_encode($s);
+});
+
+echo "\n== Status: the public page must be shareable *and* empty of secrets ==\n";
+require_once $root . '/lib/Status.php';
+Util::cacheWrite('vip', $vip);
+Util::cacheWrite('free', $free);
+$st = Status::summary(true);
+$stJson = Util::jsonEncode($st);
+t('summary reports both feeds', function () use ($st) {
+    $v = $st['feeds']['vip'];
+    $f = $st['feeds']['free'];
+    if (empty($v['published']) || empty($f['published'])) {
+        return 'published=' . json_encode([isset($v['published']) ? $v['published'] : null, isset($f['published']) ? $f['published'] : null]);
+    }
+    return (int) $v['nodes'] >= 1 ? true : 'vip nodes=' . $v['nodes'];
+});
+t('no address, port, raw uri or node id anywhere', function () use ($stJson) {
+    foreach (['"host"', '"address"', '"raw"', '"port"', '"userId"', '"password"', '"pbk"', '185.', 'vless://'] as $needle) {
+        if (stripos($stJson, $needle) !== false) {
+            return 'found "' . $needle . '" in the public status payload';
+        }
+    }
+    return preg_match('~\b(?:\d{1,3}\.){3}\d{1,3}\b~', $stJson) === 0 ? true : 'an IPv4 literal reached the page';
+});
+t('no php version on a public page (that one is for ?action=stats)', function () use ($stJson) {
+    if (strpos($stJson, PHP_VERSION) !== false) {
+        return 'PHP_VERSION leaked';
+    }
+    return stripos($stJson, '"php"') === false ? true : 'a php key leaked';
+});
+t('grades are counted from the published payload', function () use ($st) {
+    $v = $st['feeds']['vip'];
+    if (array_sum((array) $v['grades']) !== (int) $v['nodes']) {
+        return 'grades sum ' . array_sum((array) $v['grades']) . ' != nodes ' . $v['nodes'];
+    }
+    // probing is switched off in this suite, so latencyMs is legitimately null: the page must show that
+    // honestly ("—") rather than inventing a 0 ms median
+    if ($v['medianLatencyMs'] !== null) {
+        return 'expected a null median without probe data, got ' . $v['medianLatencyMs'];
+    }
+    return isset($v['candidates']) && is_int($v['candidates'])
+        ? true
+        : 'candidates key missing: ' . json_encode(array_keys($v));
+});
+t('median latency is the real median (synthetic payload, known numbers)', function () use ($vip) {
+    $row = function ($id, $grade, $lat, $alive) {
+        return ['id' => $id, 'proto' => 'vless', 'port' => 443, 'cc' => 'DE', 'tier' => 'vip',
+                'quality' => ['grade' => $grade, 'latencyMs' => $lat, 'alive' => $alive]];
+    };
+    Util::cacheWrite('vip', [
+        'schema' => 2, 'kind' => 'vip', 'count' => 4, 'generatedAt' => time() - 30, 'ttl' => 60,
+        'meta' => ['regime' => 'tight', 'tunedBy' => 'heuristic', 'candidates' => 9, 'probed' => 4, 'gated' => 2],
+        'servers' => [$row('a', 'A', 100, true), $row('b', 'B', 200, true), $row('c', 'C', 300, true), $row('d', 'D', 400, false)],
+    ]);
+    $v = Status::summary(true)['feeds']['vip'];
+    Util::cacheWrite('vip', $vip);          // the other sections still expect the real build
+    Status::summary(true);
+    $bad = [];
+    if ((int) $v['medianLatencyMs'] !== 250) { $bad[] = 'median=' . $v['medianLatencyMs']; }
+    if ((int) $v['nodes'] !== 4) { $bad[] = 'nodes=' . $v['nodes']; }
+    if ((int) $v['alive'] !== 3) { $bad[] = 'alive=' . $v['alive']; }
+    if ((int) $v['grades']['A'] !== 1 || (int) $v['grades']['D'] !== 1) { $bad[] = 'grades=' . json_encode($v['grades']); }
+    if ((int) $v['gated'] !== 2) { $bad[] = 'gated=' . $v['gated']; }
+    return $bad === [] ? true : implode(', ', $bad);
+});
+t('the html page renders and stays redacted too', function () use ($st) {
+    $html = Status::renderHtml($st);
+    if (strpos($html, '<html') === false || strpos($html, 'dir="rtl"') === false) {
+        return 'not a full rtl document';
+    }
+    if (preg_match('~\b(?:\d{1,3}\.){3}\d{1,3}\b~', $html)) {
+        return 'an IP is on the page';
+    }
+    return strpos($html, 'status.php?r=1') !== false ? true : 'no refresh link';
+});
+t('status is cached, and the payload carries its own ttl', function () {
+    $a = Status::summary();
+    if (!isset($a['now'], $a['ttl'])) {
+        return 'missing now/ttl: ' . json_encode(array_keys($a));
+    }
+    if ((int) $a['ttl'] !== (int) Status::TTL) {
+        return 'ttl=' . $a['ttl'];
+    }
+    return true;
 });
 
 echo "\n== Feedback ingest ==\n";
