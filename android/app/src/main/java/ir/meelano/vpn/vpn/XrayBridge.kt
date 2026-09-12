@@ -7,9 +7,10 @@ import java.lang.reflect.Modifier
 /**
  * The only place in the app that knows the *names* inside the linked core.
  *
- * Why reflection instead of a compile-time dependency: the whole project must stay buildable without
- * `app/libs/*.aar` (that is what `MEELANO_CORE_LINKED=false` buys us - CI compiles the UI, the feed
- * client and the anti-block brain on every push, on a repo that carries no binary blobs). A `compileOnly`
+ * Why reflection instead of a compile-time dependency: the whole project must stay buildable without an
+ * AAR under app/libs - that is what `MEELANO_CORE_LINKED=false` buys us: CI compiles the UI, the feed
+ * client and the anti-block brain on every push, on a repo that carries no binary blobs. (And no glob
+ * stars in a KDoc: Kotlin nests block comments, so a glob there silently opens a second one.) A `compileOnly`
  * + reflection pair keeps that property while making the real integration about ten lines long, and it
  * fails as a *named* error rather than a NoClassDefFoundError at the worst moment.
  *

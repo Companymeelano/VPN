@@ -337,7 +337,7 @@ object CoreProfiles {
         stream["network"] = s.network
         when (s.network) {
             "ws" -> {
-                val ws = LinkedHashMap<String, Any?>("path" to s.path.ifEmpty { "/" })
+                val ws = linkedMapOf<String, Any?>("path" to s.path.ifEmpty { "/" })
                 if (s.hostHeader.isNotEmpty()) ws["host"] = s.hostHeader
                 stream["wsSettings"] = ws
             }
@@ -355,12 +355,12 @@ object CoreProfiles {
                 stream["grpcSettings"] = g
             }
             "xhttp" -> {
-                val x = LinkedHashMap<String, Any?>("path" to s.path.ifEmpty { "/" }, "mode" to "auto")
+                val x = linkedMapOf<String, Any?>("path" to s.path.ifEmpty { "/" }, "mode" to "auto")
                 if (s.hostHeader.isNotEmpty()) x["host"] = s.hostHeader
                 stream["xhttpSettings"] = x
             }
             "h2" -> {
-                val h = LinkedHashMap<String, Any?>("path" to s.path.ifEmpty { "/" })
+                val h = linkedMapOf<String, Any?>("path" to s.path.ifEmpty { "/" })
                 if (s.hostHeader.isNotEmpty()) h["host"] = s.hostHeader
                 stream["httpSettings"] = h
             }
@@ -611,7 +611,7 @@ object CoreProfiles {
         for (c in s) {
             when (c) {
                 '\\' -> sb.append("\\\\")
-                '"' -> sb.append("\\"")
+                '"' -> sb.append("\\\"")
                 '\n' -> sb.append("\\n")
                 '\r' -> sb.append("\\r")
                 '\t' -> sb.append("\\t")
