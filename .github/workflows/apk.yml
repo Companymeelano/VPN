@@ -152,13 +152,14 @@ jobs:
         # غیرقابل‌پارس از بیرون دقیقاً مثل «سرور مرده» به‌نظر می‌رسد و هیچ لاگی ندارد.
         working-directory: android
         run: |
-          set -uo pipefail
-          # `|| true` عمدی است: شلِ پیش‌فرضِ اکشنز با `-e` اجرا می‌شود، پس بدون آن
-          # همین‌جا step می‌مرد و هیچ‌وقت به `rc` و `::error::` و بلوکِ گزارش نمی‌رسیدیم —
-          # یعنی دقیقاً همان چیزی که «build قرمز ولی بی‌شرح» تولید می‌کرد.
+          # `set +e` و نه `|| true`: شلِ پیش‌فرضِ اکشنز با -e اجرا می‌شود، پس بی این خط
+          # gradle که می‌سوخت step همان‌جا می‌مرد - بدون rc، بدون ::error::، بدون گزارش.
+          # اما `|| true` هم دروغ می‌گفت: خودش PIPESTATUS را صفر می‌کند و «تست‌ها سبز»
+          # را به‌جای قرمز نشان می‌داد. خاموش‌کردنِ -e هر دو مشکل را حل می‌کند.
+          set +e; set -uo pipefail
           gradle :app:testDebugUnitTest --no-daemon --console=plain --stacktrace \
             -PMEELANO_FEED_BASE="${{ inputs.feed_base || 'https://ainetmee.ir/v' }}" \
-            2>&1 | tee "$GITHUB_WORKSPACE/test.log" || true
+            2>&1 | tee "$GITHUB_WORKSPACE/test.log"
           rc="${PIPESTATUS[0]}"
           if [ "$rc" != 0 ]; then
             echo "::error::unit tests failed (rc=$rc) - see the PR comment"
@@ -295,6 +296,12 @@ jobs:
             [ -f "$f" ] || continue
             {
               grep -hE "^(e: |i: |Caused by:|> Task .* FAILED|\* What went wrong)" -A3 "$f"
+              # کنسولِ gradle نامِ تستِ شکست‌خورده را می‌گوید؛ expected/actual فقط در XML است
+              grep -hE "FAILED$" "$f" | head -12
+              for x in android/app/build/test-results/testDebugUnitTest/*.xml; do
+                [ -f "$x" ] || continue
+                sed -n 's/.*<\(failure\|error\)[^>]*message="\([^"]*\)".*/\2/p' "$x" | cut -c1-240 | head -10
+              done
               grep -hA10 "What went wrong" "$f"
             } | head -46 | tr -d '\r\001-\010' | sed -e 's/%/%25/g' -e '/^--$/d' -e 's/[<>&]/ /g' -e 's/^/::error::/'
           done

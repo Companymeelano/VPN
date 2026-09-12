@@ -1,6 +1,7 @@
 package ir.meelano.vpn.data
 
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
 /**
@@ -75,14 +76,15 @@ object DirectFeed {
         probe: suspend (List<FeedNode>) -> Map<String, Long>,
     ): Result = coroutineScope {
         val wanted = if (extra == null) sources else sources + extra
-        val bodies = wanted.map { u -> async { u to runCatching { fetch(u) }.getOrNull() } }
-            .awaitAll()
+        val bodies = wanted.map { u -> async { u to runCatching { fetch(u) }.getOrNull() } }.awaitAll()
 
         val notes = ArrayList<String>(4)
         val all = ArrayList<FeedNode>(parseCap)
         var ok = 0
         var skippedProxies = 0
-        for ((u, body) in bodies) {
+        for (entry in bodies) {
+            val u = entry.first
+            val body = entry.second
             if (body.isNullOrBlank()) {
                 continue
             }
