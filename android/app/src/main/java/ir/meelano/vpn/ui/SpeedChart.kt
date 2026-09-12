@@ -61,6 +61,9 @@ fun SpeedChart(
     val dim = if (live) 1f else 0.45f
     val peak = trace.peak()
     val events = trace.marks.size
+    // hoisted: the legend needs it as much as the canvas does, and a size that disagrees between the two
+    // is exactly the kind of off-by-one that shows up as "empty chart with a legend"
+    val n = trace.down.size
 
     Column(
         modifier
@@ -84,7 +87,6 @@ fun SpeedChart(
         }
 
         Canvas(Modifier.fillMaxWidth().height(60.dp).alpha(dim)) {
-            val n = trace.down.size
             val h = size.height
             val w = size.width
             val pad = 5.dp.toPx()
