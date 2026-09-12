@@ -619,6 +619,34 @@ t('serve() exposes the exact signed message', function () {
     return isset($s2['sigInput']) && $s2['sigInput'] === Version::canonical($s2) && strlen($s2['sig']) === 64
         ? true : json_encode([isset($s2['sigInput']) ? $s2['sigInput'] : null]);
 });
+t('a fresh sidecar hash is trusted (no re-hash of the apk)', function () {
+    $dir = Util::cfg('update.apkDir');
+    $p = $dir . '/meelano-side-1.apk';
+    Util::writeAtomic($p, 'X');
+    $h = hash('sha256', 'X');
+    Util::writeAtomic($p . '.sha256', $h . "\n");
+    touch($p, time() - 60);
+    touch($p . '.sha256', time());
+    return Version::checksum($p) === $h ? true : 'sidecar ignored';
+});
+t('sha256sum-style sidecars parse; a stale one is ignored', function () {
+    $dir = Util::cfg('update.apkDir');
+    $p = $dir . '/meelano-side-2.apk';
+    Util::writeAtomic($p, 'Y');
+    $h = hash('sha256', 'Y');
+    Util::writeAtomic($p . '.sha256', $h . '  meelano-side-2.apk' . "\n");
+    touch($p, time() - 60);
+    touch($p . '.sha256', time());
+    if (Version::checksum($p) !== $h) {
+        return 'sha256sum format rejected';
+    }
+    // older than the apk => worthless, must re-hash (and a wrong hash is never trusted either)
+    Util::writeAtomic($p . '.sha256', str_repeat('0', 64) . "\n");
+    touch($p, time());
+    touch($p . '.sha256', time() - 120);
+    return Version::checksum($p) === $h ? true : 'stale sidecar used';
+});
+
 t('hmac signs the payload deterministically', function () use ($pub) {
     $again = Version::sign($pub);
     return $again === $pub['sig'] && strlen($again) === 64 ? true : 'sig mismatch';

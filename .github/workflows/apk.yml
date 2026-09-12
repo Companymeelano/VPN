@@ -241,8 +241,12 @@ jobs:
           variant="${{ inputs.variant || 'debug' }}"
           src=$(find android/app/build/outputs/apk/$variant -name '*.apk' | head -1)
           [ -n "$src" ] || { echo "::error::APK تولید نشد"; exit 1; }
-          cp "$src" "./meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}-${variant}.apk"
-          out="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}-${variant}.apk"
+          # نامِ فایلِ asset عمداً بدون پسوندِ variant است: Version.php::scan() با
+          # `^(.+)-(\d+\.\d+(\.\d+)?)-(\d+)\.apk$` ایندکس می‌کند، پس «…-debug.apk» روی هاست
+          # یعنی no_apk_published. variant در عنوانِ Release و در note می‌ماند (جایی که خوانده می‌شود،
+          # نه جایی که پارس می‌شود)؛ بنابراین همین فایل را می‌توان مستقیم در public_html/v/apk/ گذاشت.
+          out="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}.apk"
+          cp "$src" "./$out"
           sha=$(sha256sum "$out" | cut -d' ' -f1)
           size=$(stat -c%s "$out")
           {
@@ -253,7 +257,7 @@ jobs:
             echo "| sha256 | \`$sha\` |"
             echo "| حجم | $size بایت |"
             echo "| نصب | \`adb install -r $out\` |"
-            echo "| مسیر هاست | \`public_html/v/apk/meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}.apk\` |"
+            echo "| مسیر هاست | \`public_html/v/apk/$out\` (همین فایل، بدون تغییرنام) |"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "file=$out" >> "$GITHUB_OUTPUT"
           echo "sha256=$sha" >> "$GITHUB_OUTPUT"
@@ -276,7 +280,9 @@ jobs:
             refs/tags/*) tag="${GITHUB_REF_NAME}" ;;
             *) tag="apk-$(date -u +%Y%m%d-%H%M)-${VARIANT}" ;;
           esac
-          printf '%s  %s\n' "$SHA" "$FILE" > "$FILE.sha256"
+          # فقط ۶۴ هگز، نه قالبِ sha256sum: Version.php::checksum() همین را می‌خواهد (هرچند از
+          # نسخه‌ی تازه، قالبِ sha256sum را هم می‌خواند)
+          printf '%s\n' "$SHA" > "$FILE.sha256"
           pre=""
           case "$tag" in *alpha*|*beta*|*rc*) pre="--prerelease" ;; esac
           {
@@ -284,7 +290,7 @@ jobs:
             echo
             echo "- حجم: \`$SIZE\` بایت · sha256: \`$SHA\`"
             echo "- نصب روی گوشی: \`adb install -r $FILE\`"
-            echo "- برای آپدیت خودکار: فایل را در \`public_html/v/apk/\` بگذار؛ بک‌اند نسخه را از نام فایل می‌خواند (backend/v/lib/Version.php)"
+            echo "- برای آپدیت خودکار: \`$FILE\` و \`$FILE.sha256\` را در \`public_html/v/apk/\` بگذار — نام فایل از قبل با قاعده‌ی \`Version.php::scan()\` می‌خواند، پس تغییرنام لازم نیست"
             echo "- این بیلد debug است (کلید debug). ریلیز کاربران را با keystore خودت بساز: docs/ANDROID-BUILD.md"
           } > notes.md
           assets="$FILE $FILE.sha256"

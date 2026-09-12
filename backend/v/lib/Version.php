@@ -158,10 +158,17 @@ final class Version
     public static function checksum($path, $file = null)
     {
         $side = $path . '.sha256';
-        if (is_file($side)) {
+        if (is_file($side) && is_file($path)) {
             $v = trim((string) Util::readText($side, ''));
-            if (preg_match('~^[a-f0-9]{64}$~', $v) && is_file($path) && (int) filesize($side) >= (int) filemtime($path)) {
-                return $v;
+            // Two shapes people actually produce: the bare hash, and `sha256sum > x.apk.sha256`
+            // (hash + two spaces + filename). Both are caches, never sources of truth: whatever fails
+            // the pattern below simply re-hashes the file below.
+            // Freshness is filemtime vs filemtime - it used to compare the sidecar's *size* against the
+            // apk's mtime, which is false forever (97 >= 1.7e9), so every poll re-hashed a 13 MB file
+            // on the shared host and the sidecar feature silently did nothing.
+            if (preg_match('~^([a-f0-9]{64})(?:\s|$)~', $v, $m)
+                && (int) filemtime($side) >= (int) filemtime($path)) {
+                return $m[1];
             }
         }
         if (!is_file($path)) {
