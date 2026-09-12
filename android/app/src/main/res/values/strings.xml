@@ -169,5 +169,22 @@
     <string name="diag_copied">همین حالا در حافظه کپی شد</string>
     <string name="diag_no_share">برنامه‌ای برای ارسال پیدا نشد؛ متن را خودت کپی کن</string>
     <string name="diag_lines">%1$d خط</string>
+    <!-- ساخت فهرست سرور روی خود گوشی (بدون وابستگی به هاست) -->
+    <string name="group_feed">فهرست سرورها</string>
+    <string name="feed_source">از کجا ساخته شود</string>
+    <string name="feed_source_host">هاست</string>
+    <string name="feed_source_auto">خودکار</string>
+    <string name="feed_source_direct">بدون هاست</string>
+    <string name="feed_source_body">«هاست» یعنی سرور نودها را از بیرون و از درون تست، و بر پایهٔ سابقهٔ چندروزه رتبه بدهد. «بدون هاست» برنامه خودش فهرست‌های عمومی را می‌خواند و فقط از همین گوشی تست می‌کند — برای روزهایی که هاست در دسترس نیست یا می‌خواهی بدون آن کار کنی. «خودکار» اول هاست را می‌آزماید و اگر نرسید، روی گوشی می‌سازد.</string>
+    <string name="feed_now">فهرستِ امروز: %1$s</string>
+    <string name="feed_vip_title">پیکربندیِ دستی (وی‌آی‌پی)</string>
+    <string name="feed_vip_body">هر خط یک vless:// یا vmess:// یا trojan:// یا ss:// یا لینکِ اشتراک. این‌ها فقط در همین گوشی می‌مانند و به هیچ سروری فرستاده نمی‌شوند؛ حتی در حالت «هاست» هم به‌عنوان نودِ محلی افزوده می‌شوند.</string>
+    <string name="feed_vip_placeholder">اینجا بچسبان…</string>
+    <string name="feed_vip_save">ذخیره و ساخت فهرست</string>
+    <string name="feed_vip_clear">پاک کردن</string>
+    <string name="feed_vip_saved">%1$d خط ذخیره شد</string>
+    <string name="feed_vip_none">هنوز چیزی وارد نکرده‌ای</string>
+    <string name="feed_sub_url">لینکِ اشتراک (اختیاری)</string>
+    <string name="feed_sub_url_body">در حالت «بدون هاست» همین لینک هم خوانده می‌شود؛ اگر لینکِ خودت را داری، فهرستِ وی‌آی‌پی کاملاً مستقل از سرور ساخته می‌شود.</string>
     <string name="diag_note">این گزارش آدرسِ سرور، IP، یا کانفیگ ندارد؛ برای پشتیبانی همین را بفرست. متن را می‌توانی با انگشت انتخاب هم بکنی.</string>
 </resources>

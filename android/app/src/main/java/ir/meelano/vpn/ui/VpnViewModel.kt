@@ -138,6 +138,40 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
 
     fun consumeMessage() { _message.value = null }
 
+    /** Why an on-device list looks the way it does (one Persian line per source that answered). */
+    val feedNotes: StateFlow<List<String>> = repo.directNotes
+
+    /** The sheet's footer: which builder produced today's list. */
+    fun feedSourceLabel(): String = repo.sourceLabel()
+
+    fun setFeedSource(mode: Int) {
+        AppSettings.setFeedMode(getApplication(), mode)
+        refreshBoth()          // changing the source must change the list now, not on the next cold start
+    }
+
+    fun setFeedSubscriptionUrl(url: String) {
+        AppSettings.setFeedExtraUrl(getApplication(), url)
+        refreshBoth()
+    }
+
+    fun localVipText(): String = runCatching { repo.localVipText() }.getOrDefault("")
+
+    /** "you haven't pasted anything yet" - read once when the sheet composes, which is all the hint needs. */
+    fun hasLocalVip(): Boolean = runCatching { repo.hasLocalVip() }.getOrDefault(false)
+
+    /**
+     * Save the user's own configs and rebuild the list immediately. A pasted config that only shows up
+     * after a restart is a support ticket; and the rebuild is where the phone's own probe runs, so the
+     * latency the user sees is measured from the network they are actually standing on.
+     */
+    fun saveVipConfigs(text: String, onDone: (Int) -> Unit = {}) {
+        viewModelScope.launch {
+            val lines = runCatching { repo.saveLocalVip(text) }.getOrDefault(0)
+            runCatching { repo.refresh("vip") }
+            onDone(lines)
+        }
+    }
+
     /** the sheet's footer: "آخرین به‌روزرسانی فهرست: ۴ دقیقه پیش" */
     fun generatedAt(kind: String): Long = if (FeedHolder.isReady()) repo.generatedAt(kind) else 0L
 
@@ -159,4 +193,24 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
     /** imported links are added as a local node and never connected automatically */
     fun requestImport(uri: String) { _importUri.value = uri }
     fun consumeImport() { _importUri.value = null }
+
+    init {
+        /*
+         * `requestImport` used to be a dead end: MainActivity turned a shared `vless://…` into this flow
+         * and nothing in the app ever read it, so "open in M•A VPN" from another app did nothing at all.
+         * The honest home for an imported line is the on-device vault - the same place the user's pasted
+         * configs live - and never an automatic connect: importing a config and having the tunnel start
+         * by itself is how people lose traffic when the config turns out to be somebody else's.
+         */
+        viewModelScope.launch {
+            _importUri.collect { uri ->
+                if (!uri.isNullOrBlank()) {
+                    val joined = (localVipText() + "\n" + uri).trim()
+                    runCatching { repo.saveLocalVip(joined) }
+                    runCatching { repo.refresh("vip") }
+                }
+                consumeImport()
+            }
+        }
+    }
 }

@@ -30,6 +30,7 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -83,6 +84,9 @@ fun ServerListSheet(
     var seg by remember { mutableStateOf(if (vip.isEmpty() && free.isNotEmpty()) SEG_FREE else SEG_VIP) }
     var filter by remember { mutableStateOf(FILTER_ALL) }
     var pinned by remember { mutableStateOf(Prefs.pinnedIds(ctx)) }
+    // Which builder made this list, and what it had to throw away. Only interesting when the list looks
+    // thin - which is precisely when a silent difference turns into a bug report.
+    val feedNotes by vm.feedNotes.collectAsState()
 
     val source = if (seg == SEG_FREE) free else vip
     val rows = remember(source, filter, pinned) {
@@ -213,10 +217,20 @@ fun ServerListSheet(
                     .padding(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    stringResource(R.string.last_update, relTime(vm.generatedAt(if (seg == SEG_FREE) "free" else "vip"))),
-                    fontSize = 11.sp, color = p.faint, modifier = Modifier.weight(1f),
-                )
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.last_update, relTime(vm.generatedAt(if (seg == SEG_FREE) "free" else "vip"))),
+                        fontSize = 11.sp, color = p.faint,
+                    )
+                    Text(vm.feedSourceLabel(), fontSize = 10.sp, color = p.faint.copy(alpha = 0.78f))
+                    feedNotes.firstOrNull()?.let { note ->
+                        Text(
+                            "· $note",
+                            fontSize = 10.sp, color = p.faint.copy(alpha = 0.85f),
+                            maxLines = 2, lineHeight = 14.sp,
+                        )
+                    }
+                }
                 MeelanoButton(
                     label = stringResource(R.string.row_retest),
                     onClick = { vm.refreshBoth() },

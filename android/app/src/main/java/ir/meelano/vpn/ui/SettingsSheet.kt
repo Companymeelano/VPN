@@ -3,6 +3,7 @@ package ir.meelano.vpn.ui
 import ir.meelano.vpn.ui.theme.LocalPalette
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -16,7 +17,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.core.animateFloatAsState
@@ -25,7 +30,9 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -36,6 +43,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -46,6 +54,7 @@ import ir.meelano.vpn.BuildConfig
 import ir.meelano.vpn.R
 import ir.meelano.vpn.data.AppSettings
 import ir.meelano.vpn.keepalive.KeepAlive
+import kotlinx.coroutines.launch
 
 /**
  * Settings as a sheet, one decision per row, and the two switches that actually matter are at the top.
@@ -65,6 +74,14 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var confirmReset by remember { mutableStateOf(false) }
     var diagnostics by remember { mutableStateOf(false) }
+    // The on-device list has no host to ask "what happened", so the sheet carries the answer: which
+    // sources answered, and what was thrown away. Local state only - nothing here survives the sheet.
+    val feedNotes by vm.feedNotes.collectAsState()
+    val savedVip = remember { runCatching { vm.localVipText() }.getOrDefault("") }
+    var vipDraft by remember { mutableStateOf<String?>(null) }
+    var subDraft by remember { mutableStateOf<String?>(null) }
+    var savedLines by remember { mutableStateOf(-1) }
+    val scope = rememberCoroutineScope()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -260,6 +277,135 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                 )
             }
 
+            /*
+             * Where the two lists come from, in the user's words. HOST stays the default - the server's
+             * gate, ban ledger and multi-day ranking are things a phone cannot copy - but DIRECT makes the
+             * product work with no host at all, and both paths end in the same cache and the same sheet.
+             */
+            MeelanoPanel(title = stringResource(R.string.group_feed)) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    Text(
+                        stringResource(R.string.feed_source),
+                        fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    MeelanoSegmented(
+                        items = listOf(
+                            stringResource(R.string.feed_source_host),
+                            stringResource(R.string.feed_source_auto),
+                            stringResource(R.string.feed_source_direct),
+                        ),
+                        index = AppSettings.feedMode,
+                        onIndex = { vm.setFeedSource(it) },
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        stringResource(R.string.feed_source_body),
+                        fontSize = 11.sp, color = p.faint, lineHeight = 16.sp,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        stringResource(R.string.feed_now, vm.feedSourceLabel()),
+                        fontSize = 11.sp, color = p.muted,
+                    )
+                    if (feedNotes.isNotEmpty()) {
+                        Spacer(Modifier.height(4.dp))
+                        feedNotes.take(3).forEach { note ->
+                            Text(
+                                "· $note",
+                                fontSize = 10.sp, color = p.faint, lineHeight = 15.sp,
+                            )
+                        }
+                    }
+                }
+                PanelDivider()
+                Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    Text(
+                        stringResource(R.string.feed_vip_title),
+                        fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        stringResource(R.string.feed_vip_body),
+                        fontSize = 11.sp, color = p.faint, lineHeight = 16.sp,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    val draft = vipDraft ?: savedVip
+                    FeedWell(
+                        value = draft,
+                        onValue = { vipDraft = it; savedLines = -1 },
+                        placeholder = if (draft.isBlank()) {
+                            stringResource(R.string.feed_vip_placeholder)
+                        } else ""
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        MeelanoButton(
+                            label = stringResource(R.string.feed_vip_save),
+                            onClick = {
+                                val text = vipDraft ?: savedVip
+                                vm.saveVipConfigs(text) { n -> savedLines = n; vipDraft = text }
+                            },
+                            tone = BtnTone.Tonal,
+                            size = BtnSize.Small,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        MeelanoButton(
+                            label = stringResource(R.string.feed_vip_clear),
+                            onClick = {
+                                vipDraft = ""
+                                savedLines = 0
+                                vm.saveVipConfigs("")
+                            },
+                            tone = BtnTone.Ghost,
+                            size = BtnSize.Small,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        if (savedLines >= 0) {
+                            Text(
+                                stringResource(R.string.feed_vip_saved, savedLines),
+                                fontSize = 11.sp, color = p.accent,
+                            )
+                        } else if (!vm.hasLocalVip()) {
+                            Text(
+                                stringResource(R.string.feed_vip_none),
+                                fontSize = 11.sp, color = p.faint,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        stringResource(R.string.feed_sub_url),
+                        fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        stringResource(R.string.feed_sub_url_body),
+                        fontSize = 11.sp, color = p.faint, lineHeight = 16.sp,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    val url = subDraft ?: AppSettings.feedExtraUrl
+                    FeedWell(
+                        value = url,
+                        onValue = { subDraft = it },
+                        placeholder = "https://…",
+                        singleLine = true,
+                        uri = true,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    MeelanoButton(
+                        label = if (url.isBlank()) "ذخیرهٔ لینک" else "به‌روزرسانی لینک",
+                        onClick = {
+                            val v = (subDraft ?: "").trim()
+                            vm.setFeedSubscriptionUrl(v)
+                            subDraft = v
+                        },
+                        tone = BtnTone.Tonal,
+                        size = BtnSize.Small,
+                    )
+                }
+            }
+
             MeelanoPanel(title = stringResource(R.string.group_general)) {
                 SwitchRow(
                     title = stringResource(R.string.set_reduced),
@@ -361,6 +507,49 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
  * something twice and turn a feature off by accident.
  */
 @Composable
+/**
+ * Text entry in the kit's own language: a carved well, an inner top shadow, and the caret in accent.
+ * BasicTextField rather than a Material field, because M3 would import its own opinion about padding,
+ * focus rings and label floats - all four of which fight the surfaces this app is built from.
+ */
+@Composable
+private fun FeedWell(
+    value: String,
+    onValue: (String) -> Unit,
+    placeholder: String,
+    singleLine: Boolean = false,
+    uri: Boolean = false,
+) {
+    val p = LocalPalette.current
+    val shape = RoundedCornerShape(12.dp)
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = if (singleLine) 40.dp else 92.dp)
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(p.shade(0.34f), p.well)), shape)
+            .border(1.dp, p.tint(0.10f), shape)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValue,
+            singleLine = singleLine,
+            textStyle = TextStyle(
+                fontSize = if (singleLine) 13.sp else 12.sp,
+                color = p.text,
+                lineHeight = if (singleLine) 18.sp else 17.sp,
+            ),
+            cursorBrush = SolidColor(p.accent),
+            keyboardOptions = KeyboardOptions(keyboardType = if (uri) KeyboardType.Uri else KeyboardType.Text),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (value.isEmpty() && placeholder.isNotEmpty()) {
+            Text(placeholder, fontSize = 12.sp, color = p.faint)
+        }
+    }
+}
+
 private fun SwitchRow(title: String, body: String, on: Boolean, onChange: (Boolean) -> Unit) {
     val p = LocalPalette.current
     val src = remember { MutableInteractionSource() }
