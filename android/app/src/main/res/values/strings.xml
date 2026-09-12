@@ -185,6 +185,8 @@
     <string name="feed_vip_saved">%1$d خط ذخیره شد</string>
     <string name="feed_vip_none">هنوز چیزی وارد نکرده‌ای</string>
     <string name="feed_sub_url">لینکِ اشتراک (اختیاری)</string>
+    <string name="feed_sub_save">ذخیرهٔ لینک</string>
+    <string name="feed_sub_update">به‌روزرسانی لینک</string>
     <string name="feed_sub_url_body">در حالت «بدون هاست» همین لینک هم خوانده می‌شود؛ اگر لینکِ خودت را داری، فهرستِ وی‌آی‌پی کاملاً مستقل از سرور ساخته می‌شود.</string>
     <string name="diag_note">این گزارش آدرسِ سرور، IP، یا کانفیگ ندارد؛ برای پشتیبانی همین را بفرست. متن را می‌توانی با انگشت انتخاب هم بکنی.</string>
 </resources>

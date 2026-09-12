@@ -231,7 +231,9 @@ fun MeelanoButton(
                 scaleX = shrink
                 scaleY = shrink
                 alpha = if (enabled) 1f else 0.55f
-                translationY = if (pressed) 1.5f else 0f
+                // 1.5px used to be the whole story. With a wall underneath, the face has to travel into
+                // it - less than the wall's height, so a sliver of side always stays visible.
+                translationY = if (pressed) 2.6f else 0f
             }
             // drawBehind runs on the *unpadded* node, so the halo is allowed to bleed past the face
             .then(
@@ -274,6 +276,19 @@ fun MeelanoButton(
                     ambientColor = haloColor,
                     spotColor = haloColor,
                 )
+                .meeExtruded(
+                    corner = if (size == BtnSize.Large) 18.dp else 14.dp,
+                    depth = when {
+                        tone == BtnTone.Primary -> 6.dp
+                        tone == BtnTone.Ghost -> 0.dp      // a ghost has no face to stand on until it is pressed
+                        else -> 3.5.dp
+                    },
+                    pressed = pressed,
+                    enabled = enabled,
+                    wallTop = if (tone == BtnTone.Primary) p.accentDeep else null,
+                    wallBottom = if (tone == BtnTone.Primary) p.shade(0.85f) else null,
+                )
+                .meeTiltOnPress(pressed && enabled, tilt = if (tone == BtnTone.Primary) 1.7f else 1.0f)
                 .clip(shape)
                 .background(baseBrush, shape)
                 .background(faceOverlay(p, pressed), shape)
@@ -342,6 +357,7 @@ fun MeelanoActionCard(
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 5.dp)
             .shadow(10.dp, shape, clip = false, ambientColor = p.shade(0.55f), spotColor = if (p.isDark) accent else p.shade(0.45f))
+            .meeExtruded(corner = 18.dp, depth = 5.5.dp, shadowAlpha = 0.9f)
             .clip(shape)
             .background(
                 Brush.verticalGradient(
@@ -424,6 +440,7 @@ fun MeelanoIconButton(
         modifier
             .scale(shrink)
             .size(sizeDp)
+            .meeExtruded(corner = corner, depth = if (prominent) 4.5.dp else 3.dp)
             .clip(shape)
             .background(
                 if (prominent) {
@@ -511,6 +528,10 @@ fun MeelanoChip(
     ) {
         Row(
             Modifier
+                // A chip that is ON stands taller than one that is off: selection should have geometry,
+                // not only colour, or the difference disappears in bright sunlight and for colour-blind
+                // users - the two conditions under which this app is actually used.
+                .meeExtruded(corner = 15.dp, depth = if (on) 2.6.dp else 1.4.dp, pressed = pressed, enabled = enabled)
                 .clip(shape)
                 .background(
                     if (on) {
@@ -603,6 +624,12 @@ fun MeelanoSegmented(
                     RoundedCornerShape(999.dp),
                     ambientColor = p.accent,
                     spotColor = p.accent,
+                )
+                .meeExtruded(
+                    corner = heightDp / 2f,
+                    depth = 3.dp,
+                    wallTop = p.accentDeep,
+                    wallBottom = p.shade(0.8f),
                 )
                 .clip(RoundedCornerShape(999.dp))
                 .background(
@@ -698,6 +725,7 @@ fun MeelanoSwitch(
                     ambientColor = if (checked) p.accent else Color.Black,
                     spotColor = if (checked) p.accent else Color.Black,
                 )
+                .meeExtruded(corner = thumb / 2f, depth = 3.5.dp, pressed = pressed)
                 .clip(CircleShape)
                 .background(
                     if (checked) {
@@ -737,6 +765,7 @@ fun MeelanoPanel(
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 5.dp)
             .shadow(10.dp, shape, clip = false, ambientColor = p.shade(0.55f), spotColor = p.shade(0.55f))
+            .meeExtruded(corner = 18.dp, depth = 3.dp, shadowAlpha = 0.7f)
             .clip(shape)
             .background(
                 Brush.verticalGradient(

@@ -25,6 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -118,8 +120,15 @@ fun AdviceCard(
             modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 6.dp)
+                .meeExtruded(corner = 16.dp, depth = 4.dp, shadowAlpha = 0.8f)
                 .clip(shape)
                 .background(p.surfaceHigh)
+                // lit from above like every other face in the kit: `surfaceHigh` alone is a flat rectangle,
+                // and a flat rectangle inside a card that has a side looks like a sticker put on afterwards
+                .background(
+                    Brush.verticalGradient(listOf(p.tint(0.05f), Color.Transparent, p.shade(0.14f))),
+                    shape,
+                )
                 .border1(p)
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),

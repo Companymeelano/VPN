@@ -364,6 +364,13 @@ private fun UpdateBanner(version: String, size: String, onOpen: () -> Unit, onSk
         Modifier
             .fillMaxWidth()
             .padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 2.dp)
+            .meeExtruded(
+                corner = 14.dp,
+                depth = 3.5.dp,
+                wallTop = p.on(p.accent, 0.55f),
+                wallBottom = p.shade(0.5f),
+                shadowAlpha = 0.7f,
+            )
             .clip(RoundedCornerShape(14.dp))
             .background(p.accent.copy(alpha = 0.10f))
             .padding(horizontal = 14.dp, vertical = 12.dp),

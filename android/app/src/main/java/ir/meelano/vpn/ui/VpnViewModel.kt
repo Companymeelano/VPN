@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import ir.meelano.vpn.MeelanoApp
 
@@ -154,6 +155,11 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
         refreshBoth()
     }
 
+    /** Called from a composable, so the read hops: a 2 KB file on the main thread is still a disk seek. */
+    suspend fun readLocalVip(): String = withContext(Dispatchers.IO) {
+        runCatching { repo.localVipText() }.getOrDefault("")
+    }
+
     fun localVipText(): String = runCatching { repo.localVipText() }.getOrDefault("")
 
     /** "you haven't pasted anything yet" - read once when the sheet composes, which is all the hint needs. */
@@ -205,7 +211,9 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _importUri.collect { uri ->
                 if (!uri.isNullOrBlank()) {
-                    val joined = (localVipText() + "\n" + uri).trim()
+                    val joined = withContext(Dispatchers.IO) {
+                        (runCatching { repo.localVipText() }.getOrDefault("") + "\n" + uri).trim()
+                    }
                     runCatching { repo.saveLocalVip(joined) }
                     runCatching { repo.refresh("vip") }
                 }

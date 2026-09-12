@@ -30,9 +30,9 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -77,11 +77,13 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
     // The on-device list has no host to ask "what happened", so the sheet carries the answer: which
     // sources answered, and what was thrown away. Local state only - nothing here survives the sheet.
     val feedNotes by vm.feedNotes.collectAsState()
-    val savedVip = remember { runCatching { vm.localVipText() }.getOrDefault("") }
+    // Read once, off the composition: `remember` + a suspend read means the sheet opens without waiting
+    // on a disk seek, and the draft is what the user sees from then on.
+    var savedVip by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) { savedVip = vm.readLocalVip() }
     var vipDraft by remember { mutableStateOf<String?>(null) }
     var subDraft by remember { mutableStateOf<String?>(null) }
     var savedLines by remember { mutableStateOf(-1) }
-    val scope = rememberCoroutineScope()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -394,7 +396,9 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                     )
                     Spacer(Modifier.height(8.dp))
                     MeelanoButton(
-                        label = if (url.isBlank()) "ذخیرهٔ لینک" else "به‌روزرسانی لینک",
+                        label = stringResource(
+                            if (url.isBlank()) R.string.feed_sub_save else R.string.feed_sub_update,
+                        ),
                         onClick = {
                             val v = (subDraft ?: "").trim()
                             vm.setFeedSubscriptionUrl(v)

@@ -232,6 +232,18 @@ private fun ConnectRing(
                 ambientColor = ringColor.copy(alpha = 0.35f * glowAlpha),
                 spotColor = ringColor.copy(alpha = 0.55f * glowAlpha),
             )
+            // The dial is the biggest object in the product, so it gets the deepest side: at 172dp a 4dp
+            // wall is invisible, and 9dp is what makes the ring read as a knob you are pushing into the
+            // phone instead of a circle drawn on it.
+            .meeExtruded(
+                corner = (size / 2).dp,
+                depth = 9.dp,
+                pressed = pressed,
+                wallTop = p.bezelTop,
+                wallBottom = p.shade(0.92f),
+                shadowAlpha = 0.85f,
+            )
+            .meeTiltOnPress(pressed, tilt = 1.1f)
             .clip(CircleShape)
             .background(
                 Brush.linearGradient(
@@ -570,8 +582,26 @@ fun ServerRow(
         Modifier
             .fillMaxWidth()
             .height(64.dp)
+            // No wall here on purpose: eighty raised slabs in a scroll list is noise, and each one costs a
+            // gradient. Depth is given to the two things that carry meaning - the selected row (it is the
+            // one you are standing on) and the quality bar (it is the one you are reading).
             .clip(RoundedCornerShape(14.dp))
-            .background(if (selected) p.accent.copy(alpha = 0.08f) else Color.Transparent)
+            .background(
+                if (selected) {
+                    Brush.verticalGradient(
+                        listOf(p.accent.copy(alpha = 0.13f), p.accent.copy(alpha = 0.05f)),
+                    )
+                } else {
+                    Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent))
+                },
+                RoundedCornerShape(14.dp),
+            )
+            .background(
+                // the leading tab: which row is *in use* has to survive a grey-scale screenshot
+                if (selected) Brush.horizontalGradient(listOf(p.accent, Color.Transparent))
+                else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent)),
+                RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp),
+            )
             .combinedClickable(onClick = onClick, onLongClick = onTogglePin)
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -591,14 +621,22 @@ fun ServerRow(
                 .width(56.dp)
                 .height(4.dp)
                 .clip(RoundedCornerShape(2.dp))
-                .background(p.tint(0.08f))
+                .background(
+                    Brush.verticalGradient(listOf(p.shade(0.45f), p.tint(0.08f))),
+                    RoundedCornerShape(2.dp),
+                )
         ) {
             Box(
                 Modifier
                     .fillMaxHeight()
                     .fillMaxWidth(qualityFraction(node))
                     .clip(RoundedCornerShape(2.dp))
-                    .background(accent)
+                    // lit at its own top edge: a filled bar reads as paint, a bar with a highlight reads
+                    // as liquid standing in a groove - and at 4dp that is the only difference visible
+                    .background(
+                        Brush.verticalGradient(listOf(accent.copy(alpha = 1f), accent.copy(alpha = 0.62f))),
+                        RoundedCornerShape(2.dp),
+                    )
             )
         }
         Spacer(Modifier.width(10.dp))
