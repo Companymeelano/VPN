@@ -2,7 +2,8 @@
 /**
  * Version / self-update index for the whole app.
  *
- * You publish by dropping an APK in data/apk/ (or uploading it from the admin panel) and
+ * You publish by dropping an APK into the web-readable apk/ folder next to index.php
+ * (NOT data/ - that one is denied over http on purpose), or uploading it from the admin panel, and
  * writing data/version.json. The app polls this, compares versionCode, downloads, verifies
  * sha256 (+ HMAC below), and hands the file to the installer.
  */
@@ -84,7 +85,7 @@ final class Version
     }
 
     /**
-     * Derive the index from whatever APKs are sitting in data/apk/.
+     * Derive the index from whatever APKs are sitting in the configured update.apkDir (/v/apk/).
      * Naming convention:  meelano-<versionName>-<versionCode>.apk   (e.g. meelano-1.7.0-12.apk)
      */
     public static function scan($persist = false)

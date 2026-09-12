@@ -1110,11 +1110,15 @@ t('the apk hint does not send the APK into the denied folder', function () use (
     // Version.php once said "put it into data/apk/" - a path that is 404/403 by design, so every
     // follower of that hint ends up with a feed that scans the file and an app that cannot download it.
     $src = (string) @file_get_contents($root . '/lib/Version.php');
-    if (preg_match('~data/apk~', $src)) {
-        return 'the hint still points inside data/';
+    if (!preg_match("~'hint'\s*=>\s*'([^']*)'~", $src, $m)) {
+        return "no_apk_published lost its hint - the owner is left guessing where the APK goes";
     }
-    if (!preg_match('~public /v/apk~', $src)) {
-        return 'the hint no longer names the web-readable folder';
+    $hint = $m[1];
+    if (strpos($hint, 'data/apk') !== false) {
+        return 'the hint points inside data/, which is denied over http: ' . $hint;
+    }
+    if (strpos($hint, '/v/apk/') === false) {
+        return 'the hint no longer names the web-readable folder: ' . $hint;
     }
     return true;
 });
