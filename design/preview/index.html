@@ -406,6 +406,39 @@ html[dir=ltr] .sw2 input:checked + i::after{transform:translateX(22px)}
 .strip{margin:14px auto 0;padding:9px 14px;border-radius:14px;max-width:330px;
   background:linear-gradient(180deg,rgba(0,0,0,.34),var(--well));
   box-shadow:inset 0 2px 4px rgba(0,0,0,.5),inset 0 0 0 1px rgba(var(--film),.07)}
+
+/* ---------- auto-tune + speed chart: the two screens whose whole job is to make the anti-block brain visible */
+.tune{margin:14px 0 0;display:flex;gap:10px;align-items:stretch;flex-wrap:wrap}
+.tsteps{display:grid;gap:7px;flex:1 1 220px;min-width:0}
+.tstep{display:flex;gap:9px;align-items:center;padding:9px 11px;border-radius:13px;border:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(var(--film),.06),transparent);font-size:calc(13px*var(--fs));
+  color:var(--muted);transition:color 200ms,border-color 200ms,background 200ms}
+.tstep b{font-weight:600;color:var(--text);display:block}
+.tstep i{font-style:normal;display:block;font-size:11px;color:var(--muted-2)}
+.tstep[data-on]{border-color:rgba(74,222,155,.34);color:var(--text);
+  background:linear-gradient(180deg,rgba(74,222,155,.10),rgba(var(--film),.04))}
+.tstep[data-done]{border-color:rgba(74,222,155,.18)}
+.tstep[data-done]::after{content:"\2713";margin-inline-start:auto;color:var(--accent);font-size:13px}
+.tstep .n{width:19px;height:19px;flex:0 0 auto;border-radius:50%;display:grid;place-items:center;font-size:11px;
+  border:1px solid var(--line);color:var(--muted-2)}
+.tstep[data-on] .n,.tstep[data-done] .n{border-color:var(--accent);color:var(--accent)}
+.verdict{flex:0 0 auto;min-width:136px;padding:11px 13px;border-radius:15px;border:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(var(--film),.08),var(--well));display:grid;gap:3px;align-content:center}
+.verdict .k{font-size:11px;color:var(--muted)}
+.verdict .v{font-size:20px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.verdict .v.tight{color:var(--accent)}
+.verdict .v.blackout{color:var(--warn)}
+.verdict .rows{margin-top:6px;display:grid;gap:2px;font-size:11.5px;color:var(--muted-2)}
+.verdict .rows span{display:flex;justify-content:space-between;gap:8px}
+.verdict .rows b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+.chart{margin-top:14px;border-radius:16px;border:1px solid var(--line);background:var(--well);padding:12px 13px 9px}
+.chart svg{display:block;width:100%;height:78px}
+.chart .ln{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.chart .mk{stroke-width:1.5;stroke-linecap:round}
+.chart .grid{stroke:var(--line);stroke-width:1}
+.chart .lab{font-size:9.5px;fill:var(--muted-2)}
+.clegend{display:flex;gap:13px;flex-wrap:wrap;margin-top:7px;font-size:calc(12px*var(--fs));color:var(--muted)}
+.clegend em{font-style:normal;display:inline-block;width:9px;height:9px;border-radius:3px;margin-inline-end:5px;vertical-align:-1px}
 </style>
 </head>
 <body>
@@ -599,6 +632,50 @@ html[dir=ltr] .sw2 input:checked + i::after{transform:translateX(22px)}
         حالتِ «در حال دریافت» با هشت نقطه‌ی چرخان رسم می‌شود (کمان در ۱۴dp لکه می‌شود) و «caret» یعنی
         «این چیزی را باز می‌کند»؛ آیکون یعنی «این کاری انجام می‌دهد» — قاطی‌کردن این دو، چیزی است که
         صفحه‌ی تنظیمات را دروغ‌گو می‌کند.</p>
+    </div>
+  </div>
+
+  <!-- ================= auto-tune + speed history ================= -->
+  <div>
+    <div class="card">
+      <h2>تنظیمِ هوشمند — <span class=ltr>net/NetGuard.measure()</span> به‌عنوان یک لحظه‌ی دیده‌شدنی</h2>
+      <p class=note>مغزِ ضدفیلتر تا نسخه‌ی ۲٫۲ نامرئی بود: رژیم در پس‌زمینه انتخاب می‌شد و کاربر فقط
+        «کند شد» را حس می‌کرد. این کارت همان اندازه‌گیری را <b>به کاربر نشان می‌دهد</b> — سه مرحله‌ای که
+        گوشی واقعاً اجرا می‌کند، با همان اعدادی که <span class="ltr">net/Regime.kt</span> تصمیم می‌گیرد.
+        در اپ، عددِ این‌ها از <span class="ltr">NetGuard</span> می‌آید (DoH سه‌resolوری، DiE روی ۱۲ گره،
+        رأیِ جمعی)؛ در پروتوتایپ فقط <b>سریع‌تر شدنِ زمان</b> ساختگی است. دکمه را بزن.</p>
+      <div class=tune>
+        <div class=tsteps id=tsteps></div>
+        <div class=verdict id=tverdict></div>
+      </div>
+      <div class=mk style="margin-top:12px">
+        <button class="btn sm" type=button id=tunego>اجرای تنظیم</button>
+        <button class="btn ghost sm" type=button id=tunemanual>خودم می‌چینم</button>
+      </div>
+      <p class=note style="margin-top:10px">قاعده‌ی کپی: هیچ عددِ «درصدِ بهبود» و «میانگینِ ملی» این‌جا
+        نمی‌آید؛ آمارِ ساختگی، اعتماد را می‌شکند. چیزی که نشان می‌دهیم همان چیزی است که اندازه گرفته‌ایم:
+        نتیجه‌ی handshake، توافقِ resolverها، و پارامتری که روشن شده. اگر اندازه‌گیری ناموفق بود، همین‌جا
+        می‌نویسیم «اندازه‌گیری کامل نشد» و همان رژیمِ پیش‌فرض (TIGHT) را نگه می‌داریم.</p>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>تاریخِ سرعت با نشانگرِ رویداد — <span class=ltr>ui/SpeedChart.kt</span></h2>
+      <p class=note>نمودار برای «زیبا بودن» نیست: تنها راهی است که کاربر می‌فهمد افتِ سرعت <b>قیمتِ
+        زنده‌ماندنِ اتصال</b> بوده یا خرابی. هر خطِ عمودی یک رویدادِ واقعی است (تغییرِ رژیم / تعویضِ گره /
+        گزارشِ بلاک) و از همان داده‌ای ساخته می‌شود که <span class="ltr">CoreApi.rxBytes()</span> و
+        <span class="ltr">BlockReport</span> تولید می‌کنند. قانون‌ها: خط ۲dp، نشانگر ۱٫۵dp، بدون
+        زیرسایه‌ی گرادیانی در تم روشن (روی کاغذ گِلی می‌شود)، ارقام tabular، و برچسبِ رویداد فقط با
+        لمسِ نشانگر — شلوغیِ همیشه‌دیده، همان اشتباهِ داشبوردهای ترافیک است.</p>
+      <div class=chart>
+        <svg viewBox="0 0 320 78" preserveAspectRatio=none role=img aria-label="نمودار سرعت پنجاه دقیقه اخیر با نشانگرِ رویدادها" id=chartsvg></svg>
+        <div class=clegend id=chartlegend></div>
+      </div>
+      <p class=note style="margin-top:10px">در Compose با <span class="ltr">Canvas</span> و یک
+        <span class="ltr">FloatArray</span> ۱۲۰ نمونه‌ای (هر ۵۰۰ms) رسم می‌شود؛ نگه‌داشتنِ «لایه‌ی
+        گرادیانی» یا <span class="ltr">PathEffect</span> روی هر فریم عمداً انجام نشده — روی گوشیِ ضعیف،
+        دقیقاً همان‌جا است که انیمیشنِ اتصال لنگ می‌زند.</p>
     </div>
   </div>
 
@@ -916,6 +993,57 @@ $$('.tabs [role=tab]').forEach(b=>b.onclick=()=>{
   S.node=i>=0?i:0;
   renderList();render();
 });
+
+
+/* ── auto-tune demo: the three steps are the contract; the speed of the animation is the only fake part */
+const TSTEPS=[
+  ['مقایسه‌ی DNS از راه DoH','google · 1.1.1.1 · alidns — اگر اختلاف باشد: آلودگی'],
+  ['سنجشِ ۱۲ گره','TCP باز، handshake تایل، ALPNِ پشتیبانی‌شده'],
+  ['انتخابِ نردبان و پارامتر','رژیم ← fragment / mux / keepalive / mtu']];
+const TVERDICT={
+  idle:{k:'هنوز اندازه‌گیری نشده',v:'—',cls:'',rows:[['پیش‌فرضِ کارخانه','TIGHT']]},
+  tight:{k:'وضعیتِ تشخیص‌داده‌شده',v:'TIGHT',cls:'tight',rows:[['تکه‌تکه','۲۰۰B · ۲'],['keepalive','15s'],['MTU','1280']]},
+  blackout:{k:'وضعیتِ تشخیص‌داده‌شده',v:'BLACKOUT',cls:'blackout',rows:[['تکه‌تکه','۱۲۰B · ۳'],['mux','16-stream'],['گرادیان','grpc multi']]}};
+let tuneT=[];
+function tuneRender(state,done){
+  $('#tsteps').innerHTML=TSTEPS.map((t,i)=>{
+    const on=state===i, dn=state==='done'||i<state;
+    const at=dn?' data-done=1':(on?' data-on=1':'');
+    return `<div class=tstep${at}><span class=n>${dn?'':i+1}</span><span><b>${t[0]}</b><i>${t[1]}</i></span></div>`;
+  }).join('');
+  const v=TVERDICT[done||'tight'];
+  $('#tverdict').innerHTML=`<div class=k>${v.k}</div><div class="v ${v.cls}">${v.v}</div>`+
+    `<div class=rows>${v.rows.map(r=>`<span>${r[0]}<b>${r[1]}</b></span>`).join('')}</div>`;
+}
+$('#tunego').onclick=()=>{
+  tuneT.forEach(clearTimeout); tuneT=[];
+  [0,1,2].forEach(i=>tuneT.push(setTimeout(()=>tuneRender(i),i*620)));
+  tuneT.push(setTimeout(()=>tuneRender('done','tight'),3*620));
+};
+$('#tunemanual').onclick=()=>{tuneT.forEach(clearTimeout);tuneRender(-1,'idle');};
+tuneRender(-1,'idle');
+
+/* ── speed history: real events, drawn from the same shape the Compose version consumes */
+function chart(){
+  const W=320,H=78,n=120,seed=[0,1,2,3,4];
+  const ys=[];
+  for(let i=0;i<n;i++){
+    const base=52-18*Math.sin(i/9)-8*Math.sin(i/3.3);
+    let v=base-(i>78?16:0)+(i>96?9:0)+((i%7)-3)*1.8;
+    ys.push(Math.max(6,Math.min(H-8,v)));
+  }
+  const X=i=>(i/(n-1))*W, Y=v=>H-6-(v/H)*(H-12);
+  const d=ys.map((y,i)=>`${i?'L':'M'}${X(i).toFixed(1)} ${Y(y).toFixed(1)}`).join(' ');
+  const ev=[[46,'رژیم: blackout','var(--warn)'],[58,'گره: DE→SE','var(--info)'],[92,'گزارشِ بلاک','var(--danger)']];
+  const grid=[0.25,0.5,0.75].map(f=>`<line class=grid x1=0 x2=${W} y1=${(H*f).toFixed(1)} y2=${(H*f).toFixed(1)} vector-effect=non-scaling-stroke/>`).join('');
+  $('#chartsvg').innerHTML=grid
+    +`<path class=ln d="${d}" vector-effect=non-scaling-stroke/>`
+    +ev.map(([i,l,c])=>`<line class=mk x1=${X(i).toFixed(1)} x2=${X(i).toFixed(1)} y1=6 y2=${H-6} stroke="${c}" vector-effect=non-scaling-stroke/>
+      <circle cx=${X(i).toFixed(1)} cy=${Y(ys[i]).toFixed(1)} r=2.6 fill="${c}"/>`).join('');
+  $('#chartlegend').innerHTML=ev.map(([i,l,c])=>`<span><em style="background:${c}"></em>${l}</span>`).join('')
+    +`<span><em style="background:var(--accent)"></em>میانگینِ ۱۲ دقیقه · Mbps</span>`;
+}
+chart();
 
 /* ---------- boot ---------- */
 render();renderList();
