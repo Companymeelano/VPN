@@ -1,5 +1,6 @@
 package ir.meelano.vpn.data
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -59,17 +60,20 @@ class DiagnosticsTest {
     @Test
     fun probeOnlyEverSpeaksNumbers() {
         val out = Diagnostics.probe("""{"dnsPoisoned":true,"tcpFail":0.5,"rtt":180,"host":"edge.example.net","pbk":"SECRET"}""")
-        // `unitTests.isReturnDefaultValues = true` means every org.json call here answers with a default,
-        // so the *content* is not observable in a JVM test (and asserting on it was the one red this file
-        // caused). What is observable, and what the whitelist actually guarantees: a value that the
-        // builder never asked for cannot appear in the output - whatever the JSON parser does.
-        if (out != null) {
-            // The message has to carry the string itself: a bare AssertionError in a CI log is how a real
-            // leak stays unexplained for a whole session, and this is the one assertion that could prove
-            // probe() stopped filtering.
-            assertFalse("probe() echoed its input: <<$out>>", out.contains("example.net"))
-            assertFalse("probe() echoed its input: <<$out>>", out.contains("SECRET"))
-        }
+        // probe() pulls five numbers out with regexes instead of parsing JSON, so this assertion is
+        // about the code and not about how the JVM org.json stub answers - that stub returns 0 for every
+        // call, which is what made the content unobservable here, and a contract you cannot observe is a
+        // contract you are not enforcing.
+        assertEquals("DNS آلوده · شکست TCP 50٪ · شکست TLS — · RTT میانه 180ms", out)
+
+        // The security property, stated on its own so a future "just parse it with org.json" refactor
+        // fails here instead of in a support chat: a hostname sitting in a numeric slot is dropped
+        // because it is not a number - not because a filter remembered to strip it.
+        val hostile = Diagnostics.probe("""{"tcpFail":"edge.example.net","tlsFail":"SECRET","rtt":"x"}""")
+        assertEquals("شکست TCP — · شکست TLS —", hostile)
+        val note = Diagnostics.probe("""{"dnsPoisoned":false,"probes":2,"note":"a.example.net:443"}""")
+        assertFalse(note.orEmpty().contains("example.net"))
+        assertTrue(note.orEmpty().contains("2 پروب"))
     }
 
     @Test

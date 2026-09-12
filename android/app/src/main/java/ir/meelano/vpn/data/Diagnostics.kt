@@ -1,6 +1,5 @@
 package ir.meelano.vpn.data
 
-import org.json.JSONObject
 
 /**
  * The one-tap self-test report a user pastes into a support chat (Telegram, an SMS, a screenshot of this).
@@ -86,20 +85,30 @@ object Diagnostics {
      * The local probe verdict, rebuilt from numbers only. `block_report` is written straight from
      * `BlockReport.toJson()` (net/Regime.kt), so the key set is known - and if a future field arrives that
      * this whitelist doesn't mention, it is simply not shared. That is the failure mode we want.
+     *
+     * Picked out with regexes instead of a JSON parser, and that is not laziness: this function's entire
+     * contract is "a string that may contain a hostname goes in, and nothing but five numbers comes out".
+     * Parse-then-format leaves that to the parser's good behaviour; extract-the-number-does-not-exist
+     * makes it a property of the code - and one a unit test can actually check, since org.json is a
+     * zero-returning stub in JVM tests (see DiagnosticsTest).
      */
     internal fun probe(json: String): String? = runCatching {
         if (json.isBlank()) return@runCatching null
-        val o = JSONObject(json)
         val parts = mutableListOf<String>()
-        if (o.optBoolean("dnsPoisoned", false)) parts.add("DNS آلوده")
-        parts.add("شکست TCP ${pct(o.optDouble("tcpFail", -1.0))}")
-        parts.add("شکست TLS ${pct(o.optDouble("tlsFail", -1.0))}")
-        val rtt = o.optLong("rtt", -1L)
-        if (rtt >= 0) parts.add("RTT میانه ${rtt}ms")
-        val n = o.optInt("probes", 0)
-        if (n > 0) parts.add("$n پروب")
+        if (Regex(""dnsPoisoned"\s*:\s*true").containsMatchIn(json)) parts.add("DNS آلوده")
+        parts.add("شکست TCP ${pct(num(json, "tcpFail"))}")
+        parts.add("شکست TLS ${pct(num(json, "tlsFail"))}")
+        val rtt = num(json, "rtt")
+        if (rtt >= 0) parts.add("RTT میانه ${rtt.toLong()}ms")
+        val n = num(json, "probes")
+        if (n > 0) parts.add("${n.toLong()} پروب")
         parts.joinToString(" · ")
     }.getOrNull()
+
+    /** A whitelisted key's numeric value, or -1. A string in that slot is not a number, so it is -1 too. */
+    private fun num(json: String, key: String): Double =
+        Regex(""$key"\s*:\s*(-?[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)").find(json)
+            ?.groupValues?.get(1)?.toDoubleOrNull() ?: -1.0
 
     private fun pct(v: Double) = if (v < 0) "—" else "${(v * 100).toInt()}٪"
 
