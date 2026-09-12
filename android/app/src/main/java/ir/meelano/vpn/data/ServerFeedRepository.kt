@@ -250,8 +250,8 @@ class ServerFeedRepository(
      */
     private suspend fun localVip(extra: DirectFeed.Upstream?): DirectFeed.Result {
         val blob = StringBuilder()
-        runCatching { File(filesDir, VIP_LOCAL_FILE).readText() }.getOrNull()?.let { blob.append(it).append('
-') }
+        runCatching { File(filesDir, VIP_LOCAL_FILE).readText() }.getOrNull()
+            ?.let { blob.append(it).append('\n') }
         var sources = 0
         if (extra != null) {
             fetchText(extra.url, extra.maxBytes)?.let {
@@ -306,8 +306,7 @@ class ServerFeedRepository(
             }
             // Truncating mid-line can cut a UTF-8 sequence in half; drop the partial tail before parsing.
             val text = out.toString("UTF-8")
-            if (read >= maxBytes) text.substringBeforeLast('
-') else text
+            if (read >= maxBytes) text.substringBeforeLast('\n') else text
         }
     }
 

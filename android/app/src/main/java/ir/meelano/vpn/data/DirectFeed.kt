@@ -56,7 +56,7 @@ object DirectFeed {
         val notes: List<String>,
     ) {
         /** One line for the sheet footer; Persian because a person reads it. */
-        fun label(): String = "$sourcesOk/$sourcesTotal منبع · $nodes.size نود"
+        fun label(): String = "$sourcesOk/$sourcesTotal منبع · ${nodes.size} نود"
     }
 
     /**
