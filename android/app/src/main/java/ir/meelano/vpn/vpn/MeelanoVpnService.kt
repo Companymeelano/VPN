@@ -251,7 +251,6 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
         // keeps the pace at a few seconds per notify(). notify() is a binder call into system_server and
         // one per second *while streaming* is exactly what made the whole phone stutter before, so the
         // 1 Hz clock belongs to the in-app UI, which reads _traffic with no binder at all.
-        val now = System.currentTimeMillis()
         val lastRx = lastNotifiedRx.coerceAtLeast(0L)
         val lastTx = lastNotifiedTx.coerceAtLeast(0L)
         val delta = (rx - lastRx).coerceAtLeast(0L) + (tx - lastTx).coerceAtLeast(0L)
