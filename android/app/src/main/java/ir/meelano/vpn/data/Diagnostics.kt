@@ -95,7 +95,7 @@ object Diagnostics {
     internal fun probe(json: String): String? = runCatching {
         if (json.isBlank()) return@runCatching null
         val parts = mutableListOf<String>()
-        if (Regex("\"dnsPoisoned\"\s*:\s*true").containsMatchIn(json)) parts.add("DNS آلوده")
+        if (Regex("\"dnsPoisoned\"\\s*:\\s*true").containsMatchIn(json)) parts.add("DNS آلوده")
         parts.add("شکست TCP ${pct(num(json, "tcpFail"))}")
         parts.add("شکست TLS ${pct(num(json, "tlsFail"))}")
         val rtt = num(json, "rtt")
@@ -107,7 +107,7 @@ object Diagnostics {
 
     /** A whitelisted key's numeric value, or -1. A string in that slot is not a number, so it is -1 too. */
     private fun num(json: String, key: String): Double =
-        Regex("\"$key\"\s*:\s*(-?[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)").find(json)
+        Regex("\"$key\"\\s*:\\s*(-?[0-9]+(?:\\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)").find(json)
             ?.groupValues?.get(1)?.toDoubleOrNull() ?: -1.0
 
     private fun pct(v: Double) = if (v < 0) "—" else "${(v * 100).toInt()}٪"
