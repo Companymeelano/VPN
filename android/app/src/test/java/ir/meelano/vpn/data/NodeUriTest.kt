@@ -23,7 +23,7 @@ class NodeUriTest {
     fun vlessRealityKeepsEveryFieldTheCoreNeeds() {
         val n = NodeUri.parseUri(
             "vless://11111111-2222-3333-4444-555555555555@185.1.2.3:443" +
-                "?security=reality&type=tcp&sni=www speed&pbk=SHORTID&sfp=chrome&flow=xtls-rprx-vision#%F0%9F%87%A9%F0%9F%87%AA%20frankfurt"
+                "?security=reality&type=tcp&sni=www%20speed&pbk=SHORTID&sfp=chrome&flow=xtls-rprx-vision#%F0%9F%87%A9%F0%9F%87%AA%20frankfurt"
         )
         checkNotNull(n)
         assertEquals("vless", n.proto)
