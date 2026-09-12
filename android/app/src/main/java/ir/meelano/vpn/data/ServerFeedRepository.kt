@@ -54,15 +54,28 @@ class ServerFeedRepository(
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private val http by lazy {
+    private val http by lazy { client(6) }
+
+    /**
+     * A cold `?action=free` is not a file read: the host fetches every upstream, parses, probes and
+     * gates them inside the request (that budget alone is ~18s - see free.probe.budgetMs). With a 6s
+     * read timeout the app's very first poll *always* lost that race and showed "0 گره" while the
+     * server was actually working; the second poll only succeeded once the hour-old cache existed.
+     * So: short timeout when we have something cached, long one when we have nothing.
+     */
+    private val httpCold by lazy { client(30) }
+
+    private fun clientFor(kind: String): OkHttpClient =
+        if (File(filesDir, "$kind.json").isFile) http else httpCold
+
+    private fun client(readSec: Long): OkHttpClient =
         OkHttpClient.Builder()
             .connectTimeout(4, TimeUnit.SECONDS)
-            .readTimeout(6, TimeUnit.SECONDS)
+            .readTimeout(readSec, TimeUnit.SECONDS)
             .writeTimeout(6, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .cache(Cache(File(context.cacheDir, "http-feed").apply { mkdirs() }, 6L * 1024 * 1024))
             .build()
-    }
 
     private val filesDir = context.getDir("feed", Context.MODE_PRIVATE)
     private val etags = mutableMapOf<String, String>()
@@ -104,7 +117,7 @@ class ServerFeedRepository(
                 .header("X-Feed-Key", FEED_KEY)                 // optional; server ignores when unset
                 .apply { etags[kind]?.let { header("If-None-Match", it) } }
                 .build()
-            open(req)?.use { resp ->
+            open(req, clientFor(kind))?.use { resp ->
                 when {
                     resp.code == 304 -> {
                         Log.d(TAG, "$kind not modified (0 bytes)")
@@ -145,8 +158,9 @@ class ServerFeedRepository(
      */
     @Volatile private var lastDnsPoisoned = false
 
-    private suspend fun open(req: okhttp3.Request): okhttp3.Response? {
-        val normal = runCatching { http.newCall(req).execute() }
+    /** `client` is the *warm* one by default; a cold sync passes [httpCold] so the timeout matches the work. */
+    private suspend fun open(req: okhttp3.Request, client: okhttp3.OkHttpClient = http): okhttp3.Response? {
+        val normal = runCatching { client.newCall(req).execute() }
         normal.getOrNull()?.let { return it }
         val host0 = runCatching { req.url.host }.getOrDefault("")
         if (host0.isBlank()) return null

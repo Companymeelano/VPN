@@ -535,6 +535,19 @@ final class Parser
     }
 
     /** Sanity gate used before probing anything (saves sockets on a shared box). */
+    /**
+     * SIP002 ciphers a dialer can actually use. Anything else (notably the garbage you get when a
+     * `ss://<uuid>@host` line is decoded as if it were base64 `method:password`) can never connect, and
+     * a node that cannot connect is not "a slow node" - it is a broken promise in the list, scored B by
+     * a TCP probe that only proves the port is open. Seen live on the free pool on 2026-09-12.
+     */
+    private static $ssMethods = [
+        'aes-128-gcm', 'aes-192-gcm', 'aes-256-gcm', 'aes-128-cfb', 'aes-192-cfb', 'aes-256-cfb',
+        'aes-128-ctr', 'aes-192-ctr', 'aes-256-ctr', 'chacha20-ietf', 'chacha20-ietf-poly1305',
+        'xchacha20-ietf-poly1305', 'sodium:chacha20-ietf-poly1305', 'sodium:aes-256-gcm',
+        'rc4-md5', 'bf-cfb', 'cast5-cfb', 'idea-cfb', 'rc2-cfb', 'seed-cfb',
+    ];
+
     public static function isSane(array $n)
     {
         if (!isset($n['host'], $n['port']) || $n['port'] < 1 || $n['port'] > 65535) {
@@ -545,6 +558,19 @@ final class Parser
         }
         if (filter_var($n['host'], FILTER_VALIDATE_IP) && !Util::isPublicIp($n['host'])) {
             return false;   // LAN / multicast / reserved
+        }
+        // credential fields must be dialable text, not mojibake: a control byte there means the line was
+        // decoded wrong, and no server on earth will accept it
+        foreach (['password', 'method', 'userId', 'cipher', 'sni', 'path'] as $k) {
+            if (isset($n[$k]) && is_string($n[$k]) && $n[$k] !== '' && preg_match('~[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]~', $n[$k])) {
+                return false;
+            }
+        }
+        if (isset($n['proto']) && $n['proto'] === 'ss') {
+            $m = isset($n['method']) ? strtolower(trim((string) $n['method'])) : '';
+            if ($m === '' || !in_array($m, self::$ssMethods, true)) {
+                return false;
+            }
         }
         return true;
     }

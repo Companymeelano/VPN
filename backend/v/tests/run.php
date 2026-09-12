@@ -131,6 +131,23 @@ t('emoji flag -> cc FI', function () use ($configs) {
     }
     return 'node missing';
 });
+t('an ss line whose userinfo is not method:password is dropped, not published', function () {
+    // exactly what the live free pool produced: a UUID-style userinfo decoded as if it were SIP002,
+    // which yields a cipher nobody can dial - a TCP probe still calls it "alive, 4ms, grade B"
+    $garbage = "ss://1596e7f0-2106-468f-e2b0-93f19e83bd0c@116.203.149.241:443#dead-node";
+    $nodes = Parser::parseBlob($garbage);
+    foreach ($nodes as $n) {
+        if ($n['proto'] === 'ss' && Parser::isSane($n) === false) {
+            return true;
+        }
+    }
+    return 'insane ss node survived the filter: ' . json_encode($nodes);
+});
+t('a valid SIP002 ss node is still sane', function () {
+    $nodes = Parser::parseBlob("ss://YWVzLTI1Ni1nY206U3VwM3JTZWNyZXQ=@51.15.2.2:8388#ok-node");
+    return count($nodes) === 1 && Parser::isSane($nodes[0]) === true ? true : json_encode($nodes);
+});
+
 t('ss SIP002 method+password', function () use ($configs) {
     foreach ($configs as $n) {
         if ($n['proto'] === 'ss' && $n['port'] === 8388) {
