@@ -1054,6 +1054,23 @@ t('fleet evidence reads block.json into the tuner', function () {
 
 /* ---------------------------------------------------------------- deploy contract */
 
+t('the AI clamp truncates by characters, not bytes - without mbstring too', function () {
+    // Ai::clamp once called mb_substr unguarded: on a shared host without mbstring that is a fatal
+    // "Call to undefined function", not a degraded answer. Persian is 2 bytes/char, so a byte cut also
+    // lands mid-codepoint and json_encode rejects the whole payload on the way out.
+    $s = str_repeat('پرتقال ', 60);                 // 420 chars, 540 bytes
+    $cut = Ai::safeSubstr($s, 180);
+    if (!preg_match('~^.*$~u', $cut)) {
+        return 'the cut produced invalid UTF-8 (split a codepoint): ' . bin2hex(substr($cut, -6));
+    }
+    $chars = preg_match_all('~.~u', $cut);
+    if ($chars > 180) return 'kept ' . $chars . ' characters, the clamp is 180';
+    if ($chars < 150) return 'cut far too short: ' . $chars;
+    $clamped = Ai::clamp(['note' => $s], ['note' => 'string']);
+    if (!isset($clamped['note'])) return 'clamp dropped the string entirely: ' . json_encode($clamped);
+    return preg_match_all('~.~u', $clamped['note']) <= 180 ? true : 'clamp ignored its own limit';
+});
+
 t('the rewrite rules do not brick the admin panel', function () use ($root) {
     // A host without SSH has exactly one way to paste the VIP list, rebuild the cache and mint its
     // keys: /v/admin/. `RewriteRule ^(lib|admin)/ - [F,L]` shipped like that once and returned 403 on

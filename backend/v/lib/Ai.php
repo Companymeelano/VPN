@@ -150,6 +150,30 @@ final class Ai
      * Anything the schema does not name is dropped — that is what "we do not run what the model
      * invented" means in practice.
      */
+    /**
+     * Prefix a string by *characters*, not bytes - these are Persian strings and a byte cut in the middle
+     * of a codepoint would poison json_encode on the way out.
+     *
+     * mbstring is not guaranteed on the kind of shared host this backend targets (same reason Util::utf8
+     * and Country:: carry fallbacks), and one unguarded call here turns the AI path into a fatal
+     * "Call to undefined function mb_substr()" instead of a slightly cruder summary.
+     */
+    public static function safeSubstr($s, $limit)
+    {
+        if (function_exists('mb_substr')) {
+            return mb_substr($s, 0, $limit, 'UTF-8');
+        }
+        if (function_exists('iconv_substr')) {
+            $cut = @iconv_substr($s, 0, $limit, 'UTF-8');
+            if (is_string($cut)) {
+                return $cut;
+            }
+        }
+        // last resort: cut on bytes, then drop a trailing partial codepoint so the result stays valid UTF-8
+        $cut = substr($s, 0, $limit);
+        return preg_replace('~[\xC0-\xFF]$~', '', $cut);
+    }
+
     public static function clamp($decoded, array $schema)
     {
         if (!is_array($decoded) || !$schema) {
@@ -171,7 +195,7 @@ final class Ai
                 $s = trim((string) $v);
                 $s = preg_replace('~[\x00-\x08\x0B\x0C\x0E-\x1F]~u', '', $s);
                 if ($s !== '') {
-                    $out[$key] = mb_substr($s, 0, 180, 'UTF-8');
+                    $out[$key] = self::safeSubstr($s, 180);
                 }
                 continue;
             }
