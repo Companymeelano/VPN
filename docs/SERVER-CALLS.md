@@ -43,7 +43,7 @@ curl -s "https://دامنه‌ت/v/?action=selftest&key=<toolKey>" | head -c 600
 | `update/UpdateManager.kt:72` `checkNow()` | `GET ?action=version` | `vc=<versionCode>`، و در صورت ست‌بودن `key=<feedKey>` | `Accept-Encoding: gzip` | ۶s | `State.Idle`؛ هیچ اخطاری به کاربر داده نمی‌شود |
 | `UpdateManager` دانلود APK | `GET <apkUrl>` | — | — | ۶۰s read | `Failed("checksum")` یا `Failed("download")`، نصب صدا نمی‌کند |
 
-**هیچ تماس دیگری از اپ بیرون نمی‌رود.** پروبِ نود (`ServerFeedRepository.kt:305`) یک `Socket.connect()`
+**هیچ تماس دیگری از اپ بیرون نمی‌رود.** پروبِ نود (`ServerFeedRepository.kt:319`) یک `Socket.connect()`
 مستقیم به `host:port` نود است، نه HTTP؛ و صفحهٔ وضعیت (`status.php`) برای آدم‌هاست، اپ آن را صدا نمی‌زند.
 
 ### ترتیبِ واقعیتِ شروعِ سرد (چیزی که بیشتر باگ‌های «لیست خالی» اینجاست)
@@ -82,7 +82,7 @@ curl -s "https://دامنه‌ت/v/?action=selftest&key=<toolKey>" | head -c 600
 - **هر بایتِ ورودی از upstream اول `Util::utf8()` رد می‌شود** (`Parser.php:45`): یک remarkِ CP1251 یا یک
   کاراکتر نصف‌شده، هم متن را خراب می‌کند و هم `json_decode` را (که با یک بایتِ بد، کل JSON منبع را رد
   می‌کند). این باگ روی هاستِ واقعی دیده شد، نه در تست.
-- **نودِ غیرقابل‌دیال منتشر نمی‌شود** (`Parser.php:544-566`): برای `ss`، cipher باید در لیستِ SIP002 باشد و
+- **نودِ غیرقابل‌دیال منتشر نمی‌شود** (`Parser.php:544-576`): برای `ss`، cipher باید در لیستِ SIP002 باشد و
   فیلدهای اعتبارنامه بایتِ کنترلی نداشته باشند. پروبِ TCP چنین نودی «زنده، ۴ms، رتبه B» می‌کند (فقط
   بازبودنِ پورت را سنجیده)، ولی هیچ کلاینتی نمی‌تواند با cipherِ `ןz{mt` وصل شود — پس حذف، شفقت است.
 - **اپ تنبل است** (`data/FeedJson.kt`): فیلدِ ناشناس نادیده گرفته می‌شود، پس سرور می‌تواند رشد کند بی‌آنکه
