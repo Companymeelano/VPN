@@ -678,13 +678,25 @@ t('a source line with a broken remark still parses into a node', function () {
     $nodes = Parser::parseBlob($line);
     return count($nodes) === 1 && $nodes[0]["host"] === "127.0.0.1" ? true : json_encode($nodes);
 });
-t("a json source with one invalid byte still yields every node", function () use ($root) {
-    $clean = file_get_contents($root . "/data/fixtures/monosans.json");
+t('a json source with one invalid byte still yields every node', function () use ($root) {
+    $clean = (string) file_get_contents($root . '/data/fixtures/monosans.json');
     $good = count(Parser::parseBlob($clean));
-    // put the bad byte inside a string value: json_decode() used to reject the whole document for this
-    $dirty = preg_replace("~\"name\"\s*:\s*\"~", "\"name\":\"\xC3\"", $clean, 1);
+    // The bad byte goes inside a string *value*: without the normaliser, json_decode() rejects the
+    // whole document and the source contributes zero nodes - which is how the live host lost the free
+    // pool. It is injected into the ASN org name on purpose: a field the pipeline carries but never
+    // parses, so the only thing that can break here is the decode itself.
+    $needle = '"autonomous_system_organization": "';
+    $pos = strpos($clean, $needle);
+    if ($pos === false) {
+        return 'fixture changed: needle missing';
+    }
+    $at = $pos + strlen($needle);
+    $dirty = substr($clean, 0, $at) . chr(0xC3) . chr(0x28) . substr($clean, $at);
+    if ($dirty === $clean) {
+        return 'injection did nothing';
+    }
     $nodes = count(Parser::parseBlob($dirty));
-    return $good > 0 && $nodes === $good ? true : "clean=$good dirty=$nodes";
+    return ($good > 0 && $nodes === $good) ? true : ("clean=$good dirty=$nodes");
 });
 
 echo "\n== SelfTest + entry point ==\n";
