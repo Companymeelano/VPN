@@ -148,12 +148,18 @@ t('the free pool cannot move the fleet regime on its own', function () {
     // for that while still being far from the ~0.5 a free-inclusive share would give.
     $orig = Util::cfg();
     Util::setConfig(array_replace_recursive($orig, ['tune' => ['minLedgerNodesForFailShare' => 1]]));
+    // block.json *overrides* the ledger share (client evidence wins by design), and a leftover from
+    // another test would be read as if it were our verdict - so start from an explicit "no evidence"
+    $block = Util::dataDir() . '/block.json';
+    $hadBlock = is_file($block);
+    $blockRaw = $hadBlock ? file_get_contents($block) : null;
+    Util::writeAtomic($block, '{}');
     try {
         for ($i = 0; $i < 40; $i++) {
             Ledger::recordServer('fleet-free-' . $i, false, 0);
         }
         for ($i = 0; $i < 40; $i++) {
-            Ledger::recordServer('fleet-vip-' . $i, true, 40);
+            Ledger::recordServer('fleet-vip-' . $i, true, 40, 'vip');   // the tier arg is the whole point
         }
         $ev = Builder::fleetEvidence('vip');
         if (!is_array($ev)) return 'fleetEvidence returned ' . gettype($ev);
@@ -161,27 +167,38 @@ t('the free pool cannot move the fleet regime on its own', function () {
         if ($freeShare > 0.05) return 'free-pool failures leaked into the regime evidence: tcpFail=' . $freeShare;
         // and the other direction - private failures must still be heard, or this is just a mute button
         for ($i = 0; $i < 40; $i++) {
-            Ledger::recordServer('fleet-vip-' . $i, false, 0);
+            Ledger::recordServer('fleet-vip-' . $i, false, 0, 'vip');
         }
         $ev2 = Builder::fleetEvidence('vip');
         if ($ev2['tcpFail'] < 0.4) return 'vip failures were ignored too: tcpFail=' . $ev2['tcpFail'];
         return true;
     } finally {
+        if ($hadBlock) {
+            Util::writeAtomic($block, $blockRaw);
+        } else {
+            @unlink($block);
+        }
         Util::setConfig($orig);
     }
 });
 
-t('an ss line whose userinfo is not method:password is dropped, not published', function () {
-    // exactly what the live free pool produced: a UUID-style userinfo decoded as if it were SIP002,
-    // which yields a cipher nobody can dial - a TCP probe still calls it "alive, 4ms, grade B"
+t('an ss line whose userinfo is not method:password never reaches the feed', function () {
+    // Exactly what the live free pool published: a UUID-style userinfo decoded as if it were SIP002,
+    // yielding a cipher nobody can dial (`method: "ןz{mt"`) while a TCP probe still called it
+    // "alive, 4ms, grade B". Either rejection point is fine - parseUri dropping the line or isSane
+    // vetoing the node - because prefilter() runs isSane on everything that survives parsing. What is
+    // not acceptable is a node that *both* parses and is called sane.
     $garbage = "ss://1596e7f0-2106-468f-e2b0-93f19e83bd0c@116.203.149.241:443#dead-node";
     $nodes = Parser::parseBlob($garbage);
+    if (!$nodes) {
+        return true;    // rejected at parse time
+    }
     foreach ($nodes as $n) {
-        if ($n['proto'] === 'ss' && Parser::isSane($n) === false) {
-            return true;
+        if ($n['proto'] === 'ss' && Parser::isSane($n) !== false) {
+            return 'insane ss node passed as sane: ' . json_encode($n);
         }
     }
-    return 'insane ss node survived the filter: ' . json_encode($nodes);
+    return true;
 });
 t('a valid SIP002 ss node is still sane', function () {
     $nodes = Parser::parseBlob("ss://YWVzLTI1Ni1nY206U3VwM3JTZWNyZXQ=@51.15.2.2:8388#ok-node");
