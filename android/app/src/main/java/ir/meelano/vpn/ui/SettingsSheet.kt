@@ -400,7 +400,9 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                             if (url.isBlank()) R.string.feed_sub_save else R.string.feed_sub_update,
                         ),
                         onClick = {
-                            val v = (subDraft ?: "").trim()
+                            // never "?: empty": a user who opens the sheet and taps save without
+                            // touching the field must not have the URL they already set wiped
+                            val v = (subDraft ?: AppSettings.feedExtraUrl).trim()
                             vm.setFeedSubscriptionUrl(v)
                             subDraft = v
                         },
