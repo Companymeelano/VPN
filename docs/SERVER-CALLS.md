@@ -37,8 +37,8 @@ curl -s "https://دامنه‌ت/v/?action=selftest&key=<toolKey>" | head -c 600
 
 | کجا در اپ | درخواست | پارامترها / بدنه | هدرها | مهلت | اگر بخورد |
 |---|---|---|---|---|---|
-| `data/ServerFeedRepository.kt:98` `refresh()` | `GET ?action=vip` و `?action=free` | — | `Accept-Encoding: gzip`، `X-Feed-Key`، `If-None-Match` | ۴s connect / ۶s read | لیستِ کش‌شده روی دیسک می‌ماند؛ هیچ دیالوگی باز نمی‌شود |
-| `ServerFeedRepository.kt:266` `flush()` | `POST ?action=feedback` | JSON: `reports[]`, `block`, `regime`, `app` | `X-Feed-Key` | همان کلاینت | بی‌صدا رها می‌شود (`feedback dropped (offline)`) |
+| `data/ServerFeedRepository.kt:111` `refresh()` | `GET ?action=vip` و `?action=free` | — | `Accept-Encoding: gzip`، `X-Feed-Key`، `If-None-Match` | ۴s connect / ۶s read — و ۳۰s read تا وقتی `files/feed/<kind>.json` نساخته باشد (`:66`) | لیستِ کش‌شده روی دیسک می‌ماند؛ هیچ دیالوگی باز نمی‌شود |
+| `ServerFeedRepository.kt:280` `flush()` | `POST ?action=feedback` | JSON: `reports[]`, `block`, `regime`, `app` | `X-Feed-Key` | همان کلاینت | بی‌صدا رها می‌شود (`feedback dropped (offline)`) |
 | `ui/AdviceCard.kt:70` `fetchAdvice()` | `GET ?action=advice` | `err`, `proto`, `tier`, `regime` (urlencode) | `X-Feed-Key` | ۲٫۵s | کارت نمایش داده نمی‌شود — وینِ «اتصال برقرار نشد» سرِ جایش است |
 | `update/UpdateManager.kt:72` `checkNow()` | `GET ?action=version` | `vc=<versionCode>`، و در صورت ست‌بودن `key=<feedKey>` | `Accept-Encoding: gzip` | ۶s | `State.Idle`؛ هیچ اخطاری به کاربر داده نمی‌شود |
 | `UpdateManager` دانلود APK | `GET <apkUrl>` | — | — | ۶۰s read | `Failed("checksum")` یا `Failed("download")`، نصب صدا نمی‌کند |
@@ -47,11 +47,11 @@ curl -s "https://دامنه‌ت/v/?action=selftest&key=<toolKey>" | head -c 600
 مستقیم به `host:port` نود است، نه HTTP؛ و صفحهٔ وضعیت (`status.php`) برای آدم‌هاست، اپ آن را صدا نمی‌زند.
 
 ### ترتیبِ واقعیتِ شروعِ سرد (چیزی که بیشتر باگ‌های «لیست خالی» اینجاست)
-`ServerFeedRepository.kt:80-85` — اول `loadCached()` از `files/feed/{vip,free}.json`، **بعد** `refresh()`.
+`ServerFeedRepository.kt:93-99` — اول `loadCached()` از `files/feed/{vip,free}.json`، **بعد** `refresh()`.
 یعنی: یک بار که فید سالم گرفته باشد، اپ حتی آفلاین هم لیست را نشان می‌دهد؛ اگر ترتیب برعکس شود،
 هر cold start یک درخواستِ شبکه‌ای است و کاربرِ با اینترنتِ بد، صفحهٔ خالی می‌بیند.
 
-`awaitNode(id)` (`:89`) هم همین منطق را دارد: از حافظه، بعد دیسک، بعد شبکه (۶ تلاش با ۴۰۰ms فاصله) —
+`awaitNode(id)` (`:102`) هم همین منطق را دارد: از حافظه، بعد دیسک، بعد شبکه (۶ تلاش با ۴۰۰ms فاصله) —
 چون سرویس VPN ممکن است از نوتیفیکیشن قبل از پرشدنِ ریپو بیدار شود.
 
 ---
@@ -79,9 +79,12 @@ curl -s "https://دامنه‌ت/v/?action=selftest&key=<toolKey>" | head -c 600
 
 قاعده‌های که این قرارداد را زنده نگه می‌دارد:
 
-- **هر بایتِ ورودی از upstream اول `Util::utf8()` رد می‌شود** (`Parser.php:44`): remarkهای CP1251 و
-  کاراکترهای نصف‌شده یک بایل را هم *انکود* می‌کشند و هم *ديکودِ* JSON منبع (`json_decode` به یک بایت
-  بد کل feed را رد می‌کند) — این باگ روی هاستِ واقعی دیده شد، نه در تست.
+- **هر بایتِ ورودی از upstream اول `Util::utf8()` رد می‌شود** (`Parser.php:45`): یک remarkِ CP1251 یا یک
+  کاراکتر نصف‌شده، هم متن را خراب می‌کند و هم `json_decode` را (که با یک بایتِ بد، کل JSON منبع را رد
+  می‌کند). این باگ روی هاستِ واقعی دیده شد، نه در تست.
+- **نودِ غیرقابل‌دیال منتشر نمی‌شود** (`Parser.php:544-566`): برای `ss`، cipher باید در لیستِ SIP002 باشد و
+  فیلدهای اعتبارنامه بایتِ کنترلی نداشته باشند. پروبِ TCP چنین نودی «زنده، ۴ms، رتبه B» می‌کند (فقط
+  بازبودنِ پورت را سنجیده)، ولی هیچ کلاینتی نمی‌تواند با cipherِ `ןz{mt` وصل شود — پس حذف، شفقت است.
 - **اپ تنبل است** (`data/FeedJson.kt`): فیلدِ ناشناس نادیده گرفته می‌شود، پس سرور می‌تواند رشد کند بی‌آنکه
   نسخه‌ی اپ بالا برود. برعکسش ممنوع: حذفِ یک فیلدِ موجود = شکستنِ همهٔ نسخه‌های نصب‌شده.
 - `quality.reliability = (ok+1)/(ok+fail+2)` — Laplace، پس یک نمونهٔ موفق، نود را «مطمئن» نمی‌کند.
@@ -92,7 +95,7 @@ curl -s "https://دامنه‌ت/v/?action=selftest&key=<toolKey>" | head -c 600
 
 ### ETag و کش — چرا بعضی Pollها صفر بایت‌اند
 `Util::respond` یک `ETag` از sha1ِ بدنه می‌دهد و `Cache-Control: public, max-age=<cache.httpMaxAge=300>`؛
-اپ در `If-None-Match` همان را برمی‌گرداند و سرور `304` می‌دهد (`ServerFeedRepository.kt:109`) که یعنی
+اپ در `If-None-Match` همان را برمی‌گرداند و سرور `304` می‌دهد (`ServerFeedRepository.kt:122`) که یعنی
 «نه بایت، نه پارس». `OkHttp` هم خودش یک کشِ ۶ مگابایتی در `cacheDir/http-feed` دارد (`:63`). اگر لاگکت
 پر از ۲۰۰های بزرگ است: یا `httpMaxAge` را به ۰ برده‌ای، یا `generatedAt` با هر request عوض می‌شود
 (باید با هر *build* عوض شود، نه با هر پاسخ).
@@ -101,7 +104,7 @@ curl -s "https://دامنه‌ت/v/?action=selftest&key=<toolKey>" | head -c 600
 
 ## ۳) بازخورد (`?action=feedback`) — تنها چیزی که اپ «می‌سازد» و سرور یاد می‌گیرد
 
-`ServerFeedRepository.kt:266-283`:
+`ServerFeedRepository.kt:280-297`:
 
 ```jsonc
 {
@@ -112,7 +115,7 @@ curl -s "https://دامنه‌ت/v/?action=selftest&key=<toolKey>" | head -c 600
 }
 ```
 
-- دسته‌ای کار می‌کند: صفِ داخلی، تا ۱۰ گزارش، ۴ ثانیه صبر، یک POST (`:255-262`).
+- دسته‌ای کار می‌کند: صفِ داخلی، تا ۱۰ گزارش، ۴ ثانیه صبر، یک POST (`:269-276`).
 - `sid` شناسهٔ **نود در فید** است، آدرس نیست؛ `block` همان `BlockReport` است که در
   `net/Regime.kt::toJson()` تعریف شده و تنها راهِ سرور برای دیدنِ «از داخلِ کشور» است.
 - محدودیتِ سمتِ سرور: `free.feedback.maxPerIpPerMin = 12` (`index.php:100`)؛ خطا نمی‌دهد که اپ گیر کند،
@@ -122,6 +125,12 @@ curl -s "https://دامنه‌ت/v/?action=selftest&key=<toolKey>" | head -c 600
 سرور با این‌ها چه می‌کند: `Score.php` (ledger + گیت + بن ۶ ساعته پس از ۳ شکست)، `Score` با وزن
 `feedback.weight = 0.55` نسبت به پروبِ فرانکفورت، و `regime` رأیِ ناوگان می‌شود (حداقل
 `tune.minVotesForRegime = 3` رأی، و بعد از `tune.evidenceMaxAge = 3600s` سکوت فراموش می‌شود).
+
+**سهمِ شکستِ پروب فقط از نودهای VIP خوانده می‌شود** (`Builder.php:449` + `Score.php:150`، آستانه در
+`tune.minLedgerNodesForFailShare = 5`، `config.php:146`). دلیلش یک اشتباهِ واقعی است: ledger همه‌ی
+پروب‌ها را با هم جمع می‌کرد، یعنی عمدتاً آینه‌های عمومیِ استخر free که ۹۹٪ مرده‌اند؛ روی هاستِ واقعی
+`meta.fleet.tcpFail` به `0.991` رسید و `regimeFrom` کل ناوگان — شش نود VIPِ سالم هم — را blackout کرد.
+نودِ عمومیِ مرده، شاهدِ فیلترینگ نیست. رأیِ کلاینت دست‌نخورده است؛ این فقط جلویِ دکمه‌ی خودکشی را می‌گیرد.
 
 ---
 
@@ -216,8 +225,15 @@ GET /v/?action=advice&err=tls_timeout&proto=vless&tier=free&regime=tight
    باید بماند (کش، ledger، و لیستِ VIP خام را از وب می‌بندد).
 4. لیستِ VIP: `data/vip_raw.txt` یا پیست از پنل (الگو: `data/vip_raw.example.txt`)؛ هر فرمتی که
    `Parser.php` تحمل می‌کند: sublink، `ss://`، `vless://`، JSON، HTML، base64.
-5. APK در `public_html/v/apk/meelano-<versionName>-<versionCode>.apk` + `….sha256` کنارش.
-6. دو پاسخ را ببین:
+   **الگو را نگه ندار**: اگر کپی‌اش کنی، فید شش نودِ جعلی با `alive:false` می‌دهد که در اپ «VIP» به‌نظر
+   می‌رسند و فقط ناامید می‌کنند. اگر نودِ خودت را هنوز نداری، فایل را خالی بگذار؛ `meta.notes`
+   («vip list is empty») به اپ می‌گوید چرا لیست خالی است، و این صادقانه‌تر از شش نودِ مُرده است.
+5. **قبل از اینکه کانفیگِ واقعی VIP را بریزی، `access.feedKey` را ست‌کن** و `-PMEELANO_FEED_KEY=<همان`
+   با بیلد بده. `?action=vip` بدون کلید، از بیرون مثلِ یک فایلِ عمومی است: `pbk`، `sid`، `userId`،
+   پسوردِ trojan و PSK هدر — یعنی کلیدهای ورود به سرورهای تو. خالی‌بودنِ `feedKey` تنها چیزی است که
+   این فید را از «فهرستِ عمومی» جدا می‌کند (CORS هم روی endpoint باز است).
+6. APK در `public_html/v/apk/meelano-<versionName>-<versionCode>.apk` + `….sha256` کنارش.
+7. دو پاسخ را ببین:
 
    ```bash
    curl -s "https://دامنه‌ت/v/?action=health"
@@ -225,7 +241,7 @@ GET /v/?action=advice&err=tls_timeout&proto=vless&tier=free&regime=tight
    curl -s "https://دامنه‌ت/v/?action=selftest&key=<toolKey>&html"  # ۲۲ بررسی؛ ردکردنش یعنی هنوز آماده نیست
    ```
 
-7. اپ را به همین هاست وصل کن (این مرحله **بیلد** است، نه هاست):
+8. اپ را به همین هاست وصل کن (این مرحله **بیلد** است، نه هاست):
 
    ```bash
    ./gradlew assembleDebug \
@@ -263,12 +279,14 @@ GET /v/?action=advice&err=tls_timeout&proto=vless&tier=free&regime=tight
 | `?action=version` → `no_apk_published` | نامِ فایل APK با رگکس نمی‌خواند | نام را به `meelano-<name>-<code>.apk` برگردان |
 | لیست پر است اما همه `D` | پروبِ سرور از خارج ایران می‌کند و بازخوردِ کاربر هنوز نیست | طبیعی است؛ `feedback.weight = 0.55` به‌مرتبته نظرِ کاربران داخل کشور را غالب می‌کند |
 | سرعتِ اولِ بازکردن اپ پایین | `refresh` در cold start روی شبکه رفته | طبیعی است وقتی کشِ دیسک خالی است؛ از بار دوم `loadCached()` اول می‌آید |
+| گزارشِ عیب‌یابی می‌گوید «فید: ۰ گره» ولی `?action=free` روی هاست `count` دارد | syncِ اولِ اپ با سرورِ در حالِ build مسابقه می‌داد: `free` همان لحظه fetch/probe/gate می‌کند (بودجه ~۱۸s) و مهلتِ خواندن ۶s بود ⇒ timeout و فهرست خالی، و کشِ دیسکی هم که نبود | از ۲٫۳٫۱ مهلتِ syncِ اول ۳۰s است؛ روی نسخه‌های قدیمی‌تر یک بار «کشیدن به پایین» برای همگام‌سازی کافی است (دومین درخواست از `free.json`ِ هاست سریع پاسخ می‌گیرد) |
+| `meta.regime` روی همه‌ی نصب‌ها `blackout` است درحالی‌که شبکه سالم | سابقاً سهمِ شکستِ پروبِ استخر free (آینه‌های عمومیِ مرده) به‌عنوان شاهدِ فیلترینگ خوانده می‌شد | آپدیتِ سرور کافی است؛ حالا فقط پروبِ نودهای VIP در این عدد می‌آید (`tune.minLedgerNodesForFailShare`) |
 
 ---
 
 ## ۱۰) چه چیزی این قرارداد را *آزمون* می‌کند
 
-- `php backend/v/tests/run.php` — **۸۹ تست**، بدون شبکه (fixture + stub)، روی PHP 7.4 و 8.3 در CI
+- `php backend/v/tests/run.php` — **۹۹ تست**، بدون شبکه (fixture + stub)، روی PHP 7.4 و 8.3 در CI
   (`.github/workflows/checks.yml`؛ همان‌جا `lint` هم می‌خورد). بلوک‌ها: Parser، Score/ledger، Builder
   (ماسک‌کردن نام‌ها، degrade)، Version (نام‌گذاری APK، canonical، sig)، Status (نبودِ نشتی)، AiTune
   (clamp‌ها، حذفِ idهای ناشناس)، selftest.
