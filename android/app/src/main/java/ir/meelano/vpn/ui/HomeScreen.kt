@@ -89,6 +89,7 @@ fun HomeScreen(vm: VpnViewModel) {
     val ctx = LocalContext.current
     var servers by remember { mutableStateOf(false) }
     var settings by remember { mutableStateOf(false) }
+    var diagnostics by remember { mutableStateOf(false) }
     var showUpdate by remember { mutableStateOf(false) }
     var onboard by remember { mutableStateOf(!AppSettings.onboardingDone) }
 
@@ -163,6 +164,21 @@ fun HomeScreen(vm: VpnViewModel) {
                  * diagnosis + one button that changes a real setting (AdviceCard.kt) — fetched from the
                  * server, which sees the whole fleet, never invented locally.
                  */
+                /*
+                 * The shareable report, and only under a failure. That is the one moment it is worth
+                 * anything: it turns «اتصال برقرار نشد» into twelve lines someone else can act on, without
+                 * a screenshot of a toast and without the user having to describe what they pressed.
+                 */
+                if (phase is ConnectPhase.Failed) {
+                    MeelanoButton(
+                        label = stringResource(R.string.diag_open),
+                        onClick = { diagnostics = true },
+                        tone = BtnTone.Ghost,
+                        size = BtnSize.Small,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    )
+                }
+
                 (phase as? ConnectPhase.Failed)?.let { f ->
                     AdviceCard(
                         err = f.reason,
@@ -225,7 +241,8 @@ fun HomeScreen(vm: VpnViewModel) {
             onDismiss = { servers = false },
         )
     }
-    if (settings) SettingsSheet(onDismiss = { settings = false })
+    if (settings) SettingsSheet(vm = vm, onDismiss = { settings = false })
+    if (diagnostics) DiagnosticsSheet(vm = vm, onDismiss = { diagnostics = false })
     if (showUpdate) UpdateSheet(vm, onDismiss = { showUpdate = false })
     if (onboard) OnboardingScreen(onDone = { AppSettings.setOnboardingDone(ctx); onboard = false })
 }

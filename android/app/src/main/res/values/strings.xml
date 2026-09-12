@@ -162,4 +162,12 @@
     <string name="chart_up">آپلود</string>
     <string name="chart_events">بازنشانیِ اتصال</string>
     <string name="chart_empty">هنوز نمونه‌ای جمع نشده؛ بعد از اتصال پر می‌شود</string>
+    <string name="diag_open">گزارشِ عیب‌یابی را بفرست</string>
+    <string name="diag_title">گزارشِ عیب‌یابی</string>
+    <string name="diag_copy">کپی</string>
+    <string name="diag_share">ارسال</string>
+    <string name="diag_copied">همین حالا در حافظه کپی شد</string>
+    <string name="diag_no_share">برنامه‌ای برای ارسال پیدا نشد؛ متن را خودت کپی کن</string>
+    <string name="diag_lines">%1$d خط</string>
+    <string name="diag_note">این گزارش آدرسِ سرور، IP، یا کانفیگ ندارد؛ برای پشتیبانی همین را بفرست. متن را می‌توانی با انگشت انتخاب هم بکنی.</string>
 </resources>

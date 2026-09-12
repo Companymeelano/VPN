@@ -59,11 +59,12 @@ import ir.meelano.vpn.keepalive.KeepAlive
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsSheet(onDismiss: () -> Unit) {
+fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
     val p = LocalPalette.current
     val ctx = LocalContext.current
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var confirmReset by remember { mutableStateOf(false) }
+    var diagnostics by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -316,6 +317,21 @@ fun SettingsSheet(onDismiss: () -> Unit) {
                     }
                 }
             }
+
+            /*
+             * Permanent access to the shareable report. The failure card offers it too, but a person who
+             * already fixed the problem and wants to hand over "what did it look like" shouldn't have to
+             * break the app again to find the button.
+             */
+            Spacer(Modifier.height(10.dp))
+            MeelanoButton(
+                label = stringResource(R.string.diag_open),
+                onClick = { diagnostics = true },
+                tone = BtnTone.Tonal,
+                size = BtnSize.Small,
+                fill = true,
+            )
+            if (diagnostics) DiagnosticsSheet(vm = vm, onDismiss = { diagnostics = false })
 
             Row(
                 Modifier
