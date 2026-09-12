@@ -40,7 +40,9 @@ final class Parser
      */
     public static function parseBlob($blob)
     {
-        $blob = (string) $blob;
+        // One normaliser for every input shape (see Util::utf8): the JSON branch below dies on an invalid
+        // byte inside json_decode, and the text branch would happily carry it into the payload.
+        $blob = Util::utf8((string) $blob);
         if (trim($blob) === '') {
             return [];
         }
@@ -134,7 +136,7 @@ final class Parser
 
         $remark = '';
         if (($h = strrpos($rest, '#')) !== false) {
-            $remark = rawurldecode(substr($rest, $h + 1));
+            $remark = Util::utf8(rawurldecode(substr($rest, $h + 1)));
             $rest = substr($rest, 0, $h);
         }
         $query = '';

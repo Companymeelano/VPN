@@ -656,6 +656,33 @@ t('tampered payload fails the signature check', function () use ($pub) {
     return Version::sign($pub) !== $pub['sig'] ? true : 'tamper undetected';
 });
 
+echo "\n== UTF-8 survival (a live-host bug: one bad byte killed ?action=free) ==\n";
+t('Util::utf8 keeps valid text and drops invalid bytes', function () {
+    $good = "پروکسِ رایگان \u{2022} DE";
+    if (Util::utf8($good) !== $good) {
+        return 'valid utf-8 was altered';
+    }
+    $bad = "ok\xC3(\x28tail";                 // 0xC3 needs a continuation byte; here it is garbage
+    $fixed = Util::utf8($bad);
+    return preg_match("~^[\x20-\x7E]*tail$~", $fixed) ? true : bin2hex($fixed);
+});
+t('jsonEncode never returns the error envelope for a malformed string', function () {
+    $s = Util::jsonEncode(["remark" => "bad\xC3\x28", "ok" => 1]);
+    $back = json_decode($s, true);
+    return is_array($back) && isset($back["ok"]) && $back["ok"] === 1 ? true : $s;
+});
+t('a source line with a broken remark still parses into a node', function () {
+    $line = "ss://YWVzLTI1Ni1nY206cGFzcw@127.0.0.1:8388#\xC3\x28ru";
+    $nodes = Parser::parseBlob($line);
+    return count($nodes) === 1 && $nodes[0]["host"] === "127.0.0.1" ? true : json_encode($nodes);
+});
+t("json feed with an invalid byte in one remark still decodes", function () {
+    $json = '[{"server":"127.0.0.1","port":8388,"protocol":"ss","method":"aes-256-gcm",'
+          . '"password":"pass","name":"bad\xC3\x28name","udp":true}]';
+    $nodes = Parser::parseBlob($json);
+    return count($nodes) >= 1 ? true : 'json branch rejected';
+});
+
 echo "\n== SelfTest + entry point ==\n";
 t('selftest produces rows and never throws', function () {
     $r = SelfTest::run();

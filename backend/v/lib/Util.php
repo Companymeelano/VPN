@@ -149,8 +149,29 @@ final class Util
         if (defined('JSON_PRETTY_PRINT') && !empty($_GET['pretty'])) {
             $flags |= JSON_PRETTY_PRINT;
         }
+        if (defined('JSON_INVALID_UTF8_IGNORE')) {
+            $flags |= JSON_INVALID_UTF8_IGNORE;      // PHP 7.2+: drop the bad bytes, keep the payload
+        }
         $s = json_encode($v, $flags);
+        if ($s === false) {
+            // still failing (invalid *keys*, or a flag this PHP lacks): sanitise recursively and retry,
+            // because "the whole feed is 500" is never the right price for one mangled upstream remark
+            $s = json_encode(self::utf8Deep($v), $flags);
+        }
         return $s === false ? json_encode(['error' => 'json_encode_failed', 'detail' => json_last_error_msg()]) : $s;
+    }
+
+    /** utf8() over every string key and value, recursively. Only reached when the cheap path failed. */
+    public static function utf8Deep($v)
+    {
+        if (is_array($v)) {
+            $out = [];
+            foreach ($v as $k => $item) {
+                $out[is_string($k) ? self::utf8($k) : $k] = self::utf8Deep($item);
+            }
+            return $out;
+        }
+        return is_string($v) ? self::utf8($v) : $v;
     }
 
     public static function fail($code, $msg, array $extra = [])
@@ -164,6 +185,38 @@ final class Util
     }
 
     /* ------------------------------------------------------------------ files */
+
+    /**
+     * Make text safe for json_encode/json_decode. Free lists are scraped from places that
+     * do not care about encoding - CP1251 remarks, mojibake, a multi-byte character cut in half by a
+     * head-truncation - and *one* bad byte used to kill the whole endpoint: json_encode() returns false
+     * ("Malformed UTF-8 characters") and json_decode() rejects the entire upstream JSON feed. Seen live
+     * on ainetmee.ir on the first real fetch of ?action=free, which is precisely when no test could have
+     * caught it.
+     *
+     * Valid bytes are passed through untouched; only invalid subsequences are dropped (mbstring), with
+     * iconv and a byte-strip as fallbacks for hosts that lack mbstring.
+     */
+    public static function utf8($s)
+    {
+        $s = (string) $s;
+        if ($s === '' || !preg_match('~[\x80-\xFF]~', $s)) {
+            return $s;                       // pure ASCII: nothing to do, and this is the hot path
+        }
+        if (function_exists('mb_convert_encoding')) {
+            $fixed = @mb_convert_encoding($s, 'UTF-8', 'UTF-8');
+            if (is_string($fixed) && $fixed !== '') {
+                return $fixed;
+            }
+        }
+        if (function_exists('iconv')) {
+            $fixed = @iconv('UTF-8', 'UTF-8//IGNORE', $s);
+            if (is_string($fixed)) {
+                return $fixed;
+            }
+        }
+        return preg_replace('~[\x80-\xFF]~', '', $s);
+    }
 
     public static function readText($path, $default = null)
     {

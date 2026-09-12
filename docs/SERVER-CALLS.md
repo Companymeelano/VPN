@@ -79,6 +79,9 @@ curl -s "https://دامنه‌ت/v/?action=selftest&key=<toolKey>" | head -c 600
 
 قاعده‌های که این قرارداد را زنده نگه می‌دارد:
 
+- **هر بایتِ ورودی از upstream اول `Util::utf8()` رد می‌شود** (`Parser.php:44`): remarkهای CP1251 و
+  کاراکترهای نصف‌شده یک بایل را هم *انکود* می‌کشند و هم *ديکودِ* JSON منبع (`json_decode` به یک بایت
+  بد کل feed را رد می‌کند) — این باگ روی هاستِ واقعی دیده شد، نه در تست.
 - **اپ تنبل است** (`data/FeedJson.kt`): فیلدِ ناشناس نادیده گرفته می‌شود، پس سرور می‌تواند رشد کند بی‌آنکه
   نسخه‌ی اپ بالا برود. برعکسش ممنوع: حذفِ یک فیلدِ موجود = شکستنِ همهٔ نسخه‌های نصب‌شده.
 - `quality.reliability = (ok+1)/(ok+fail+2)` — Laplace، پس یک نمونهٔ موفق، نود را «مطمئن» نمی‌کند.
@@ -255,6 +258,7 @@ GET /v/?action=advice&err=tls_timeout&proto=vless&tier=free&regime=tight
 | `429 rate_limited` (`:67`) | بیشتر از `limits.reqPerMinPerIp = 60` از یک IP | طبیعی است اگر چند دستگاه پشت یک NAT‌اند؛ اپ کش دارد و دوباره تلاش نمی‌کند |
 | `503 tool_key_not_configured` | `access.toolKey` خالی | برای ابزارها ستش کن |
 | `401 bad_tool_key` | `?key=` غلط | دقیقاً همان رشته، با `hash_equals` |
+| `json_encode_failed: Malformed UTF-8` روی `?action=free` | یک بایت نامعتبرِ UTF-8 در remark یکی از لیست‌های عمومی؛ از نسخهٔ فعلی `Util::utf8()` جلوی `Parser::parseBlob()` همه‌ی ورودی‌ها را نرمال می‌کند (پیش‌تر کل اندپوینت می‌مرد) | `lib/Util.php` + `lib/Parser.php` را دوباره آپلود کن |
 | `payload rejected` (لاگکت: `FeedRepo`) | JSON ناپارس، `schema` پشتیبانی‌نشده، یا `servers` خالی | `?action=vip` را در مرورگر باز کن؛ `count: 0` یعنی لیستِ VIP خام خالی است |
 | `?action=version` → `no_apk_published` | نامِ فایل APK با رگکس نمی‌خواند | نام را به `meelano-<name>-<code>.apk` برگردان |
 | لیست پر است اما همه `D` | پروبِ سرور از خارج ایران می‌کند و بازخوردِ کاربر هنوز نیست | طبیعی است؛ `feedback.weight = 0.55` به‌مرتبته نظرِ کاربران داخل کشور را غالب می‌کند |
