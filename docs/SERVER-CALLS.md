@@ -180,7 +180,7 @@ GET /v/?action=advice&err=tls_timeout&proto=vless&tier=free&regime=tight
 
 - نامِ فایلِ روی هاست **باید** `meelano-<versionName>-<versionCode>.apk` باشد؛ رگکسش:
   `^(.+)-(\d+\.\d+(?:\.\d+)?)-(\d+)\.apk$` (`Version.php:96`). پس `…-debug.apk` ایندکس **نمی‌شود**
-  و `?action=version` می‌گوید `no_apk_published`. از `v2.3.0-beta.2`، assetِ خودِ CI هم با همین نامِ
+  و `?action=version` می‌گوید `no_apk_published`. از `v2.3.1-beta.1` هم، assetِ خودِ CI هم با همین نامِ
   تمیز منتشر می‌شود، پس فایلِ دانلودی را می‌توانی بیِ تغییرنام در `public_html/v/apk/` بگذاری
   (پیش‌تر `-debug` می‌گرفت و همین یک بار کل مسیرِ آپدیت را بی‌صدا خاموش کرده بود).
 - یک `….apk.sha256` کنارش بگذار (یا خروجیِ `sha256sum`، که هر دو قالب خوانده می‌شود) و **تازه‌تر از خودِ APK** باشد —
