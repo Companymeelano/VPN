@@ -104,32 +104,35 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                 .navigationBarsPadding()
                 .padding(bottom = 20.dp),
         ) {
-            // A header + close button.
+            // A header + close button. The extra Column is not decoration: Modifier.align is a
+            // ColumnScope API, and LazyColumn's item scope is not one - without it this does not compile.
             item {
-                Box(
-                    Modifier
-                        .padding(top = 10.dp)
-                        .size(width = 32.dp, height = 3.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(p.tint(0.18f))
-                        .align(Alignment.CenterHorizontally)
-                )
-                Row(
-                    Modifier.fillMaxWidth().padding(start = 18.dp, end = 12.dp, top = 12.dp, bottom = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        stringResource(R.string.settings),
-                        fontSize = 17.sp, fontWeight = FontWeight.Bold, color = p.text,
+                Column(Modifier.fillMaxWidth()) {
+                    Box(
+                        Modifier
+                            .padding(top = 10.dp)
+                            .size(width = 32.dp, height = 3.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(p.tint(0.18f))
+                            .align(Alignment.CenterHorizontally)
                     )
-                    Spacer(Modifier.weight(1f))
-                    MeelanoIconButton(
-                        iconRes = R.drawable.ic_close,
-                        contentDescription = stringResource(R.string.close),
-                        onClick = onDismiss,
-                        sizeDp = 38.dp,
-                        corner = 12.dp,
-                    )
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 18.dp, end = 12.dp, top = 12.dp, bottom = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            stringResource(R.string.settings),
+                            fontSize = 17.sp, fontWeight = FontWeight.Bold, color = p.text,
+                        )
+                        Spacer(Modifier.weight(1f))
+                        MeelanoIconButton(
+                            iconRes = R.drawable.ic_close,
+                            contentDescription = stringResource(R.string.close),
+                            onClick = onDismiss,
+                            sizeDp = 38.dp,
+                            corner = 12.dp,
+                        )
+                    }
                 }
             }
 

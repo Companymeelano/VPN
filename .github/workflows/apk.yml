@@ -311,7 +311,19 @@ jobs:
           args=(gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/CI-FAILURE.md"
                 -f message="ci: گزارش خطای بیلد [skip ci]" -f content="$body" -f branch="$BR")
           [ -n "$sha" ] && args+=(-f sha="$sha")
-          "${args[@]}" >/dev/null || echo "::warning::writing CI-FAILURE.md failed (token lacks contents:write?)"
+          "${args[@]}" >/dev/null || {
+            # روی push تگ، branch= نام تگ است و نوشتن فایل شکست می‌خورد — جای رسیدنِ گزارش،
+            # ایشوی «هضم‌ی خطای بیلد» است که خودکار باز/به‌روز می‌شود (تابعِ هشدار قبلی: || true خاموش).
+            echo "::warning::writing CI-FAILURE.md to '$BR' failed (tag refs are not branches) -> filing an issue instead"
+            title="CI failure digest"
+            num=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number' 2>/dev/null || true)
+            if [ -n "$num" ]; then
+              gh issue edit "$num" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/CI-FAILURE.md" >/dev/null 2>&1 \
+                || gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$RUNNER_TEMP/CI-FAILURE.md" >/dev/null 2>&1 || true
+            else
+              gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$RUNNER_TEMP/CI-FAILURE.md" >/dev/null 2>&1 || true
+            fi
+          }
 
       # لاگ کامل از این سندباکس قابل دانلود نیست (میزبان blob)، پس خلاصه‌ی خطاها را به‌شکل
       # کامنت روی PR برمی‌گردانیم: خواندنی‌ترین راه برای دیدن «چرا build نشد» بدون دسترسی به Actions.
