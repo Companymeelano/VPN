@@ -41,7 +41,7 @@ import ir.meelano.vpn.vpn.MeelanoVpnService
  */
 class ServerFeedRepository(
     private val context: Context,
-    private val baseUrl: String = "https://ainetmee.ir/v",
+    private val baseUrl: String = BuildConfig.FEED_BASE_URL,
 ) {
 
     companion object {
@@ -133,6 +133,14 @@ class ServerFeedRepository(
      * cannot be reached. All three end in the same apply() + the same cache file, so nothing downstream
      * - sorting, pinned nodes, the connect path, the sheet - has to know which one ran.
      */
+    /**
+     * Why the current list is empty, in one line, for the empty-state card. Silent failure is the
+     * default trap of a feed app: an offline phone and a dead host both render as "no servers" and
+     * the user blames the app. Never persisted - an error remembered from yesterday would be a lie.
+     */
+    private val _lastError = MutableStateFlow<String?>(null)
+    val feedError: StateFlow<String?> = _lastError
+
     suspend fun refresh(kind: String) = withContext(Dispatchers.IO) {
         when (AppSettings.feedMode) {
             AppSettings.FEED_DIRECT -> refreshDirect(kind)
@@ -162,8 +170,14 @@ class ServerFeedRepository(
             }
         } catch (t: Throwable) {
             Log.w(TAG, "refresh $kind failed: ${t.message}")   // offline -> keep showing cache
+            _lastError.value = "refresh_$kind: ${t.message ?: t.javaClass.simpleName}"
         } finally {
             _syncing.value = false
+        }
+        // Host path ended with nothing on screen and nothing on disk: say why instead of a silent zero.
+        val have = if (kind == KIND_VIP) _vip.value else _free.value
+        if (have.isEmpty() && !File(filesDir, "$kind.json").isFile && _lastError.value == null) {
+            _lastError.value = "empty_after_host_fetch"
         }
     }
 
@@ -185,6 +199,7 @@ class ServerFeedRepository(
                 }
                 !resp.isSuccessful -> {
                     Log.w(TAG, "$kind http ${resp.code}")
+                    _lastError.value = "http_${resp.code}"   // 403 = wrong feed key, 404 = endpoint moved - visible on the empty card
                     return@use
                 }
                 else -> {
@@ -443,6 +458,7 @@ class ServerFeedRepository(
                 compareBy({ if (it.id in pinned) 0 else 1 }, { localPenalty(it.id) }, { it.slot })
             )
         if (kind == KIND_VIP) _vip.value = list else _free.value = list
+        if (list.isNotEmpty()) _lastError.value = null        // a working fetch clears the banner
         index = (list + _vip.value + _free.value).associateBy { it.id }
         lastBuildAt[kind] = payload.generatedAt
     }

@@ -12,27 +12,27 @@
   missing, not the dark one.
 -->
 <resources>
-    <color name="bg">#FF0B0F14</color>
-    <color name="surface">#FF131A21</color>
-    <color name="surface_high">#FF18212A</color>
-    <color name="well">#FF080C11</color>
-    <color name="line">#FF232F3A</color>
+    <color name="bg">#FF080D15</color>
+    <color name="surface">#FF101821</color>
+    <color name="surface_high">#FF192431</color>
+    <color name="well">#FF050810</color>
+    <color name="line">#FF22303E</color>
     <color name="hairline">#0EFFFFFF</color>
-    <color name="bezel_top">#FF2A3540</color>
-    <color name="bezel_bottom">#FF0E141A</color>
-    <color name="text">#FFE6EDF3</color>
-    <color name="muted">#FF8FA3B8</color>
-    <color name="muted_faint">#FF5D7183</color>
+    <color name="bezel_top">#FF2B3A49</color>
+    <color name="bezel_bottom">#FF0B1118</color>
+    <color name="text">#FFEDF3F7</color>
+    <color name="muted">#FF9FB0C0</color>
+    <color name="muted_faint">#FF687E93</color>
     <color name="accent">#FF4ADE9B</color>
     <color name="accent_deep">#FF128C5A</color>
-    <color name="accent_ink">#FF04231A</color>
+    <color name="accent_ink">#FF03281B</color>
     <color name="info">#FF8BD9F5</color>
-    <color name="warn">#FFF5A524</color>
-    <color name="danger">#FFFF6B6B</color>
+    <color name="warn">#FFF6B14A</color>
+    <color name="danger">#FFFF6B7A</color>
     <color name="accent_12">#1F4ADE9B</color>
     <color name="accent_18">#2E4ADE9B</color>
     <color name="accent_28">#474ADE9B</color>
-    <color name="danger_18">#2EFF6B6B</color>
+    <color name="danger_18">#2EFF6B7A</color>
     <color name="icon_field">#FF13171C</color>
     <color name="tile_icon">#FFE6EDF3</color>
 </resources>

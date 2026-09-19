@@ -79,6 +79,7 @@
     <string name="ob_battery_title">وقتی اپ را می‌بندی، تونل باید بماند</string>
     <string name="ob_battery_body">«بدون بهینه‌سازی باتری» را انتخاب کن تا اتصال در پس‌زمینه زنده بماند.</string>
     <string name="ob_done">شروع</string>
+    <string name="ob_launch_fail">پنجره‌ی سیستم باز نشد (%1$s) — از تنظیمات گوشی، محدودیتِ اجرای پس‌زمینه را خاموش کن و دوباره بزن.</string>
 
     <!-- settings -->
     <string name="settings">تنظیمات</string>

@@ -848,6 +848,10 @@ fun MeelanoEmptyState(
     onAction: () -> Unit,
     modifier: Modifier = Modifier,
     iconRes: Int = R.drawable.ic_bolt,
+    /** Optional machine-readable cause, shown tiny under the body: the difference between "empty"
+     *  and "empty because the host answered 403". Never user-presentable by itself - body carries
+     *  the human sentence; this is the line a screenshot to support needs. */
+    error: String? = null,
 ) {
     val p = LocalPalette.current
     Column(
@@ -873,7 +877,17 @@ fun MeelanoEmptyState(
         Spacer(Modifier.height(12.dp))
         Text(title, color = p.text, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(5.dp))
-        Text(body, color = p.faint, fontSize = 12.sp, modifier = Modifier.padding(bottom = 14.dp))
+        Text(body, color = p.faint, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
+        if (!error.isNullOrBlank()) {
+            Text(
+                error,
+                color = p.warn,
+                fontSize = 10.sp,
+                modifier = Modifier.padding(bottom = 10.dp),
+            )
+        } else {
+            Spacer(Modifier.height(6.dp))
+        }
         MeelanoButton(action, onAction, size = BtnSize.Small, tone = BtnTone.Tonal)
     }
 }

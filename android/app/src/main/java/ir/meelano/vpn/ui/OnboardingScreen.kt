@@ -2,7 +2,6 @@ package ir.meelano.vpn.ui
 
 import ir.meelano.vpn.ui.theme.LocalPalette
 
-import android.content.Intent
 import android.net.VpnService
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -128,38 +127,65 @@ fun OnboardingScreen(onDone: () -> Unit) {
                 )
                 Spacer(Modifier.height(28.dp))
 
-                StepCard(
-                    index = 1,
-                    current = step,
-                    done = vpnGranted,
-                    title = stringResource(R.string.ob_perm_title),
-                    body = stringResource(R.string.ob_perm_body),
-                    action = stringResource(R.string.ob_perm_title),
-                ) {
-                    val i = runCatching { VpnService.prepare(ctx) }.getOrNull()
-                    if (i == null) {
-                        vpnGranted = true
-                        step = 2
-                    } else {
-                        runCatching { ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                        // the ON_RESUME observer above flips vpnGranted when the user returns
-                    }
-                }
+    // Launch through ActivityResult, not raw startActivity: the launcher carries the result back even
+    // when the system hand build pauses/resumes differently, and - the failure class that made this
+    // button look dead on some OEMs - a thrown ActivityNotFoundException is CAUGHT and shown instead
+    // of swallowed. `ctx.startActivity` silently eating the exception left the card looking fine
+    // while nothing had happened.
+    var launchError by remember { mutableStateOf<String?>(null) }
+    val vpnLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+    ) {
+        vpnGranted = runCatching { VpnService.prepare(ctx) == null }.getOrDefault(false)
+        if (vpnGranted && step == 1) step = 2
+    }
+    val batteryLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+    ) {
+        batteryOk = KeepAlive.isIgnoringBatteryOptimizations(ctx)
+    }
 
-                Spacer(Modifier.height(12.dp))
+    StepCard(
+        index = 1,
+        current = step,
+        done = vpnGranted,
+        title = stringResource(R.string.ob_perm_title),
+        body = stringResource(R.string.ob_perm_body),
+        action = stringResource(R.string.ob_perm_title),
+        error = if (step == 1) launchError else null,
+    ) {
+        launchError = null
+        val i = runCatching { VpnService.prepare(ctx) }.getOrNull()
+        if (i == null) {
+            vpnGranted = true
+            step = 2
+        } else {
+            runCatching { vpnLauncher.launch(i) }
+                .onFailure { launchError = it.message ?: it.javaClass.simpleName }
+        }
+    }
 
-                StepCard(
-                    index = 2,
-                    current = step,
-                    done = batteryOk,
-                    title = stringResource(R.string.ob_battery_title),
-                    body = stringResource(R.string.ob_battery_body),
-                    action = stringResource(R.string.ob_battery_title),
-                ) {
-                    val intent = KeepAlive.batteryOptimizationIntent(ctx)
-                    if (intent != null) runCatching { ctx.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                    batteryOk = KeepAlive.isIgnoringBatteryOptimizations(ctx)
-                }
+    Spacer(Modifier.height(12.dp))
+
+    StepCard(
+        index = 2,
+        current = step,
+        done = batteryOk,
+        title = stringResource(R.string.ob_battery_title),
+        body = stringResource(R.string.ob_battery_body),
+        action = stringResource(R.string.ob_battery_title),
+        error = if (step == 2) launchError else null,
+    ) {
+        launchError = null
+        val intent = KeepAlive.batteryOptimizationIntent(ctx)
+        if (intent != null) {
+            runCatching { batteryLauncher.launch(intent) }
+                .onFailure { launchError = it.message ?: it.javaClass.simpleName }
+            batteryOk = KeepAlive.isIgnoringBatteryOptimizations(ctx)
+        } else {
+            batteryOk = true                       // already exempt - nothing to open
+        }
+    }
 
                 Spacer(Modifier.weight(1f))
 
@@ -200,6 +226,7 @@ private fun StepCard(
     title: String,
     body: String,
     action: String,
+    error: String? = null,
     onClick: () -> Unit,
 ) {
     val p = LocalPalette.current
@@ -292,6 +319,13 @@ private fun StepCard(
         if (open) {
             Spacer(Modifier.height(8.dp))
             Text(body, fontSize = 12.5.sp, color = p.muted, lineHeight = 20.sp)
+            if (error != null) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    stringResource(R.string.ob_launch_fail, error),
+                    fontSize = 11.sp, color = p.danger, lineHeight = 16.sp,
+                )
+            }
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 MeelanoButton(

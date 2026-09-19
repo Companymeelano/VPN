@@ -13,27 +13,27 @@
   that repaints itself per theme is how you lose brand recognition on the home screen.
 -->
 <resources>
-    <color name="bg">#FFF5F7F9</color>
-    <color name="surface">#FFFFFFFF</color>
-    <color name="surface_high">#FFEDF1F5</color>
-    <color name="well">#FFE9EEF3</color>
-    <color name="line">#FFDDE4EA</color>
-    <color name="hairline">#0E0D151C</color>
+    <color name="bg">#FFF2F5F0</color>
+    <color name="surface">#FFFBFCFA</color>
+    <color name="surface_high">#FFE8EDE5</color>
+    <color name="well">#FFE3E9DF</color>
+    <color name="line">#FFD9E0D5</color>
+    <color name="hairline">#0E141C16</color>
     <color name="bezel_top">#FFFFFFFF</color>
-    <color name="bezel_bottom">#FFCFD8E0</color>
-    <color name="text">#FF0D151C</color>
-    <color name="muted">#FF4B5C6B</color>
-    <color name="muted_faint">#FF607182</color>
-    <color name="accent">#FF0E8F5B</color>
-    <color name="accent_deep">#FF06693F</color>
+    <color name="bezel_bottom">#FFCBD5C6</color>
+    <color name="text">#FF141C16</color>
+    <color name="muted">#FF4E5C51</color>
+    <color name="muted_faint">#FF71806F</color>
+    <color name="accent">#FF0C7A50</color>
+    <color name="accent_deep">#FF075138</color>
     <color name="accent_ink">#FFFFFFFF</color>
-    <color name="info">#FF0B6C93</color>
-    <color name="warn">#FF8A5200</color>
-    <color name="danger">#FFC0362C</color>
-    <color name="accent_12">#1F0E8F5B</color>
-    <color name="accent_18">#2E0E8F5B</color>
-    <color name="accent_28">#470E8F5B</color>
-    <color name="danger_18">#2EC0362C</color>
+    <color name="info">#FF0B6A90</color>
+    <color name="warn">#FF8A5A00</color>
+    <color name="danger">#FFB3382E</color>
+    <color name="accent_12">#1F0C7A50</color>
+    <color name="accent_18">#2E0C7A50</color>
+    <color name="accent_28">#470C7A50</color>
+    <color name="danger_18">#2EB3382E</color>
     <color name="icon_field">#FF13171C</color>
     <color name="tile_icon">#FF0D151C</color>
 </resources>

@@ -191,7 +191,10 @@ fun ServerListSheet(
                 syncing && source.isEmpty() -> Column(Modifier.padding(vertical = 6.dp)) {
                     repeat(4) { SkeletonRow() }
                 }
-                rows.isEmpty() -> EmptyState(vip = seg == SEG_VIP, onRetry = { vm.refreshBoth() })
+                rows.isEmpty() -> {
+                    val err by vm.feedError.collectAsState()
+                    EmptyState(vip = seg == SEG_VIP, error = err, onRetry = { vm.refreshBoth() })
+                }
                 else -> LazyColumn(Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
                     items(rows, key = { it.id }) { n ->
                         ServerRow(
@@ -300,13 +303,14 @@ private fun SkeletonRow() {
 }
 
 @Composable
-private fun EmptyState(vip: Boolean, onRetry: () -> Unit) {
+private fun EmptyState(vip: Boolean, error: String?, onRetry: () -> Unit) {
     MeelanoEmptyState(
         title = stringResource(if (vip) R.string.empty_vip_title else R.string.empty_free_title),
         body = stringResource(if (vip) R.string.empty_vip_body else R.string.empty_free_body),
         action = stringResource(R.string.retry),
         onAction = onRetry,
         iconRes = if (vip) R.drawable.ic_shield else R.drawable.ic_bolt,
+        error = error,
     )
 }
 

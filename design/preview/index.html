@@ -14,16 +14,16 @@
    یک منبع حقیقت: هر عددی اینجا عوض شود، باید در Compose هم عوض شود.
    ============================================================ */
 :root{
-  --bg:#0B0F14; --surface:#131A21; --surface-2:#18212A; --line:#232F3A;
+  --bg:#080D15; --surface:#101821; --surface-2:#192431; --line:#22303E;
   /* --film is the colour of every 1px highlight and 6% press tint. White in the dark theme, near-black
      in the light one: a 7% white film on graphite and a 7% black film on paper are the *same physical
      object* (a raised face), so one variable carries the whole theme instead of 40 hardcoded rgba(). */
   --film:255,255,255;
   --hairline:rgba(var(--film),.055);
-  --text:#E6EDF3; --muted:#8FA3B8; --muted-2:#5D7183;
-  --accent:#4ADE9B; --accent-deep:#128C5A; --accent-ink:#04231A;
-  --info:#8BD9F5; --warn:#F5A524; --danger:#FF6B6B;
-  --bezel-1:#2A3540; --bezel-2:#0E141A; --well:#080C11;
+  --text:#EDF3F7; --muted:#9FB0C0; --muted-2:#687E93;
+  --accent:#4ADE9B; --accent-deep:#128C5A; --accent-ink:#03281B;
+  --info:#8BD9F5; --warn:#F6B14A; --danger:#FF6B7A;
+  --bezel-1:#2B3A49; --bezel-2:#0B1118; --well:#050810;
   --r-card:16px; --r-sheet:20px; --r-chip:999px;
   --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
   --t-enter:200ms cubic-bezier(.2,0,0,1);
@@ -41,15 +41,17 @@
    Note what is NOT here: the launcher icon (brand rule: the tile never inverts) and the shadow colour
    (#000 in box-shadow stays - a soft black shadow is correct on paper too). */
 body.light{
-  --film:13,21,28;
-  --bg:#F5F7F9; --surface:#FFFFFF; --surface-2:#EDF1F5; --line:#DDE4EA;
-  --text:#0D151C; --muted:#4B5C6B; --muted-2:#607182;
-  --accent:#0E8F5B; --accent-deep:#06693F; --accent-ink:#FFFFFF;
-  --info:#0B6C93; --warn:#8A5200; --danger:#C0362C;
-  --bezel-1:#FFFFFF; --bezel-2:#CFD8E0; --well:#E9EEF3;
+  /* porcelain, not plain white: the light theme the user called "بک‌گراند سفید" lived in exactly these
+     tokens; warm green-tinted paper + deep emerald is the whole daylight identity. */
+  --film:20,28,22;
+  --bg:#F2F5F0; --surface:#FBFCFA; --surface-2:#E8EDE5; --line:#D9E0D5;
+  --text:#141C16; --muted:#4E5C51; --muted-2:#71806F;
+  --accent:#0C7A50; --accent-deep:#075138; --accent-ink:#FFFFFF;
+  --info:#0B6A90; --warn:#8A5A00; --danger:#B3382E;
+  --bezel-1:#FFFFFF; --bezel-2:#CBD5C6; --well:#E3E9DF;
   background:
-    radial-gradient(900px 520px at 78% -12%,#e8f3ec 0%,transparent 62%),
-    radial-gradient(760px 460px at 8% 108%,#e0e9f2 0%,transparent 60%),#EDF1F5;
+    radial-gradient(900px 520px at 78% -12%,#e2eee6 0%,transparent 62%),
+    radial-gradient(760px 460px at 8% 108%,#dfe8e0 0%,transparent 60%),#EAEFE7;
   color:var(--text);
 }
 /* a raised face on paper needs its top edge *lighter than the page*, not lighter than itself: the

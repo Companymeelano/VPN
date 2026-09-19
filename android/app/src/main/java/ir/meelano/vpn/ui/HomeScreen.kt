@@ -33,7 +33,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -109,7 +108,18 @@ fun HomeScreen(vm: VpnViewModel) {
     val bannerVisible = available != null && available.versionCode != AppSettings.skippedVersion
 
     Scaffold(contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0)) { _ ->
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        // The luxury treatment is material depth, not ornament: a vertical fall from the surface tone
+        // into the well tone (lamp-above lighting), then the ambient glow as the only light source.
+        // A flat single colour is what read as "سفید ساده" in the daylight theme the user sent back.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(p.bg, if (p.isDark) p.well else p.surfaceHigh),
+                    ),
+                ),
+        ) {
             AmbientGlow(
                 accent = when {
                     phase is ConnectPhase.Failed -> p.danger
@@ -118,9 +128,9 @@ fun HomeScreen(vm: VpnViewModel) {
                     else -> p.accent
                 },
                 intensity = when {
-                    connected -> 0.17f
-                    busy -> 0.12f
-                    else -> 0.06f
+                    connected -> if (p.isDark) 0.20f else 0.11f
+                    busy -> if (p.isDark) 0.13f else 0.07f
+                    else -> if (p.isDark) 0.07f else 0.045f
                 },
             )
 

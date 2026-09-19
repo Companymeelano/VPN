@@ -151,6 +151,9 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
     /** Why an on-device list looks the way it does (one Persian line per source that answered). */
     val feedNotes: StateFlow<List<String>> = repo.directNotes
 
+    /** When the feed is empty this says why, so the empty card can name the failure instead of 0 نود. */
+    val feedError: StateFlow<String?> = repo.feedError
+
     /** The sheet's footer: which builder produced today's list. */
     fun feedSourceLabel(): String = repo.sourceLabel()
 

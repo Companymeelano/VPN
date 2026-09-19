@@ -83,60 +83,72 @@ data class Palette(
     fun inkOn(c: Color): Color = if (isDark) Color(0xFF04231A) else if (c == accent) Color.White else Color(0xFF0D151C)
 
     companion object {
+        /*
+         * "Luxury" here means material depth, not a new hue: the brand law pins the accent to the
+         * single #4ADE9B (docs/BRAND.md §2), so the upgrade is in the *field* - midnight navy with a
+         * cooler floor and crisper top light in dark, warm porcelain (never plain white) with a deep
+         * emerald in light. Every token crossing below is mirrored into res/values(-night)/colors.xml
+         * and design/preview/index.html; tools/check-theme.py fails the build on any drift.
+         */
         val Dark = Palette(
             isDark = true,
-            bg = Color(0xFF0B0F14),
-            surface = Color(0xFF131A21),
-            surfaceHigh = Color(0xFF18212A),
-            line = Color(0xFF232F3A),
+            bg = Color(0xFF080D15),
+            surface = Color(0xFF101821),
+            surfaceHigh = Color(0xFF192431),
+            line = Color(0xFF22303E),
             hairline = Color(0x0EFFFFFF),
-            well = Color(0xFF080C11),
-            bezelTop = Color(0xFF2A3540),
-            bezelBottom = Color(0xFF0E141A),
-            text = Color(0xFFE6EDF3),
-            muted = Color(0xFF8FA3B8),
-            faint = Color(0xFF5D7183),
+            well = Color(0xFF050810),
+            bezelTop = Color(0xFF2B3A49),
+            bezelBottom = Color(0xFF0B1118),
+            text = Color(0xFFEDF3F7),
+            muted = Color(0xFF9FB0C0),
+            faint = Color(0xFF687E93),
             accent = Color(0xFF4ADE9B),
             accentDeep = Color(0xFF128C5A),
-            accentInk = Color(0xFF04231A),
+            accentInk = Color(0xFF03281B),
             info = Color(0xFF8BD9F5),
-            warn = Color(0xFFF5A524),
-            danger = Color(0xFFFF6B6B),
+            warn = Color(0xFFF6B14A),
+            danger = Color(0xFFFF6B7A),
             raisedTop = Color(0xFFFFFFFF),
             raisedBottom = Color(0xFF000000),
-            dangerTop = Color(0xFFFF7A7A),
-            dangerBottom = Color(0xFFB3261E),
-            dangerInk = Color(0xFFFF6B6B),
+            dangerTop = Color(0xFFFF8595),
+            dangerBottom = Color(0xFFB52939),
+            dangerInk = Color(0xFFFF6B7A),
             gradeA = Color(0xFF4ADE9B),
         )
 
         val Light = Palette(
             isDark = false,
-            bg = Color(0xFFF5F7F9),
-            surface = Color(0xFFFFFFFF),
-            surfaceHigh = Color(0xFFEDF1F5),
-            line = Color(0xFFDDE4EA),
-            // ink-tinted, not pure black: a 5.5% black line on #F5F7F9 goes grey-green and looks like a
-            // printing defect, while the same alpha of the text colour reads as a clean edge.
-            hairline = Color(0x0E0D151C),
-            well = Color(0xFFE9EEF3),
+            // porcelain, not white: a hint of green under everything is what separates "paper" from
+            // "default Android calculator" - the flat white background the user complained about was
+            // exactly this family of tokens staring at #F5F7F9/#FFFFFF in daylight.
+            bg = Color(0xFFF2F5F0),
+            surface = Color(0xFFFBFCFA),
+            surfaceHigh = Color(0xFFE8EDE5),
+            line = Color(0xFFD9E0D5),
+            // ink-tinted, not pure black: a 5.5% black line on porcelain goes grey-green and looks
+            // like a printing defect, while the same alpha of the text colour reads as a clean edge.
+            hairline = Color(0x0E141C16),
+            well = Color(0xFFE3E9DF),
             bezelTop = Color(0xFFFFFFFF),
-            bezelBottom = Color(0xFFCFD8E0),
-            text = Color(0xFF0D151C),
-            muted = Color(0xFF4B5C6B),
-            faint = Color(0xFF607182),
-            accent = Color(0xFF0E8F5B),
-            accentDeep = Color(0xFF06693F),
+            bezelBottom = Color(0xFFCBD5C6),
+            text = Color(0xFF141C16),
+            muted = Color(0xFF4E5C51),
+            faint = Color(0xFF71806F),
+            // deep emerald for daylight: same hue family as the brand mint, dark enough to hold
+            // 4.5:1 on porcelain (the mint itself is only ~1.9:1 - fine as glow, never for buttons).
+            accent = Color(0xFF0C7A50),
+            accentDeep = Color(0xFF075138),
             accentInk = Color(0xFFFFFFFF),
-            info = Color(0xFF0B6C93),
-            warn = Color(0xFF8A5200),
-            danger = Color(0xFFC0362C),
+            info = Color(0xFF0B6A90),
+            warn = Color(0xFF8A5A00),
+            danger = Color(0xFFB3382E),
             raisedTop = Color(0xFFFFFFFF),
-            raisedBottom = Color(0xFFD9E1E8),
-            dangerTop = Color(0xFFE0554A),
-            dangerBottom = Color(0xFFA32B21),
-            dangerInk = Color(0xFFA32B21),
-            gradeA = Color(0xFF0A7349),
+            raisedBottom = Color(0xFFD8E0D3),
+            dangerTop = Color(0xFFDD564B),
+            dangerBottom = Color(0xFFA12C24),
+            dangerInk = Color(0xFFA12C24),
+            gradeA = Color(0xFF0C7A50),
         )
     }
 }
