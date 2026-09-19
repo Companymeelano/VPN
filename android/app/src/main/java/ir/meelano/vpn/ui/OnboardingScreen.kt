@@ -40,6 +40,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import ir.meelano.vpn.R
 import ir.meelano.vpn.keepalive.KeepAlive
+import ir.meelano.vpn.ui.theme.MeelanoType
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.border
@@ -208,8 +209,49 @@ fun OnboardingScreen(onDone: () -> Unit) {
                     iconRes = R.drawable.ic_shield,
                     fill = true,
                 )
-                Spacer(Modifier.height(20.dp))
+
+                Spacer(Modifier.height(18.dp))
+                BrandFooter()
+                Spacer(Modifier.height(14.dp))
             }
+        }
+    }
+}
+
+/**
+ * The studio signature. One mint hairline that fades at both ends, the M•A monogram, and the credit
+ * in brand green - small enough to be a footer, deliberate enough to be read. Kept as its own
+ * composable so Home can reuse the exact same mark (same signature on every door of the building).
+ */
+@Composable
+internal fun BrandFooter() {
+    val p = LocalPalette.current
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            Modifier
+                .fillMaxWidth(0.55f)
+                .height(1.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(Color.Transparent, p.accent.copy(alpha = 0.35f), Color.Transparent),
+                    ),
+                ),
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                painterResource(R.drawable.ic_launcher_monochrome), null,
+                Modifier.size(15.dp), tint = p.accent,
+            )
+            Spacer(Modifier.size(7.dp))
+            Text(
+                "Meelano Studio Design",
+                color = p.accent,
+                fontFamily = MeelanoType.Sans,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                letterSpacing = 1.4.sp,
+            )
         }
     }
 }
@@ -260,10 +302,16 @@ private fun StepCard(
             )
             .border(
                 1.dp,
-                when {
-                    done -> p.accent.copy(alpha = 0.34f)
-                    open -> p.tint(0.16f)
-                    else -> p.tint(0.07f)
+                // the open step wears the brand ring: a mint hairline running across the top edge,
+                // fading before it looks like a banner. Done cards only echo it faintly.
+                if (open && !done) {
+                    Brush.verticalGradient(
+                        listOf(p.accent.copy(alpha = 0.55f), p.tint(0.12f)),
+                    )
+                } else {
+                    Brush.verticalGradient(
+                        listOf(if (done) p.accent.copy(alpha = 0.34f) else p.tint(0.07f), p.tint(0.05f)),
+                    )
                 },
                 RoundedCornerShape(18.dp),
             )
@@ -303,8 +351,9 @@ private fun StepCard(
                     Text(
                         "$index",
                         fontSize = 11.sp,
-                        color = p.muted,
+                        color = if (open) p.accent else p.muted,
                         fontWeight = FontWeight.Bold,
+                        fontFamily = MeelanoType.Sans,
                         style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"),
                     )
                 }
@@ -327,13 +376,19 @@ private fun StepCard(
                 )
             }
             Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 MeelanoButton(
                     label = action,
                     onClick = onClick,
-                    size = BtnSize.Medium,
+                    size = BtnSize.Large,
                     tone = if (index == 1) BtnTone.Primary else BtnTone.Tonal,
                     iconRes = if (index == 1) R.drawable.ic_shield else R.drawable.ic_bolt,
+                    fill = true,
+                    modifier = Modifier.weight(1f),
                 )
                 if (done) {
                     MeelanoButton(

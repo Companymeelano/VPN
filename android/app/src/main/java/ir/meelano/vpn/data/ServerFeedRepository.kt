@@ -164,7 +164,14 @@ class ServerFeedRepository(
             var round = 0
             while (true) {
                 val r = refreshHostRound(kind)
-                if (r != HostRound.BUILDING || round >= MAX_BUILDING_ROUNDS) break
+                if (r != HostRound.BUILDING || round >= MAX_BUILDING_ROUNDS) {
+                    if (r == HostRound.BUILDING) {
+                        // not an outage: the host is mid cold-build; the message ends the mystery on
+                        // day one and the next poll (TTL) will land on a full list
+                        if (_lastError.value == null) _lastError.value = "host_building"
+                    }
+                    break
+                }
                 round++
                 delay(BUILDING_RETRY_MS)
             }
@@ -220,9 +227,14 @@ class ServerFeedRepository(
                         probeAndReconcile(kind)
                     } else {
                         Log.w(TAG, "$kind payload rejected")
+                        _lastError.value = "payload_rejected"   // schema/body mismatch - see the parse note in logcat
                     }
                 }
             }
+        } ?: run {
+            // open() tries DNS-fallback itself; landing here means both paths were unreachable
+            // (offline phone, hijacked resolver with no DoH answer, or a build pointing at a dead host)
+            _lastError.value = "net_unreachable"
         }
         return HostRound.DONE
     }

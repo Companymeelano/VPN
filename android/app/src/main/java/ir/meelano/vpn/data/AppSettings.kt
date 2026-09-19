@@ -109,7 +109,10 @@ object AppSettings {
         lastBlockReport = p.getString("block_report", "") ?: ""
         detectedRegime = p.getString("detected_regime", "tight") ?: "tight"
         autoUpdate = p.getBoolean("auto_update", true)
-        feedMode = p.getInt("feed_mode", FEED_HOST)
+        // AUTO, not HOST: a user whose operator-host is unreachable must still leave the first
+        // launch with a working list (AUTO falls back to the on-device direct build). HOST is for
+        // controlled deployments; the setting itself flips it back in one tap.
+        feedMode = p.getInt("feed_mode", FEED_AUTO)
         feedExtraUrl = p.getString("feed_extra_url", "") ?: ""
         feedback = p.getBoolean("feedback", true)
         themeMode = p.getInt("theme_mode", THEME_SYSTEM)

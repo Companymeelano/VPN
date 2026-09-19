@@ -304,13 +304,25 @@ private fun SkeletonRow() {
 
 @Composable
 private fun EmptyState(vip: Boolean, error: String?, onRetry: () -> Unit) {
+    // Translate the repo's machine keys into a human sentence: "empty_after_host_fetch" was the exact
+    // string the user sent back as a bug report - machine codes must never be the entire message.
+    val humanError = error?.let {
+        when {
+            it == "net_unreachable" -> stringResource(R.string.feed_err_net)
+            it == "host_building" -> stringResource(R.string.feed_err_building)
+            it == "payload_rejected" -> stringResource(R.string.feed_err_payload)
+            it == "empty_after_host_fetch" -> stringResource(R.string.feed_err_net)
+            it.startsWith("http_") -> stringResource(R.string.feed_err_http, it.removePrefix("http_"))
+            else -> stringResource(R.string.feed_err_generic, it)
+        }
+    }
     MeelanoEmptyState(
         title = stringResource(if (vip) R.string.empty_vip_title else R.string.empty_free_title),
         body = stringResource(if (vip) R.string.empty_vip_body else R.string.empty_free_body),
         action = stringResource(R.string.retry),
         onAction = onRetry,
         iconRes = if (vip) R.drawable.ic_shield else R.drawable.ic_bolt,
-        error = error,
+        error = humanError,
     )
 }
 

@@ -239,6 +239,9 @@ fun HomeScreen(vm: VpnViewModel) {
                     onServers = { servers = true },
                     onSettings = { settings = true },
                 )
+                // the same studio signature as on onboarding: homes and doors carry the same mark
+                BrandFooter()
+                Spacer(Modifier.height(6.dp))
             }
         }
     }

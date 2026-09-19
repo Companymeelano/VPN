@@ -59,6 +59,12 @@
     <string name="empty_free_body">لیست رایگان هر چند دقیقه عوض می‌شود. «تست دوباره» را بزن تا فهرست تازه بگیریم.</string>
     <string name="empty_vip_title">لیست ویژه به اپ نرسید</string>
     <string name="empty_vip_body">اینترنت را چک کن؛ اگر وصل است، از پشتیبانی بخواه فایل را دوباره بسازد.</string>
+    <string name="feed_err_net">به هاست دسترسی پیدا نشد — اگر هاست مرورگر وصل است، روش «آنبرد» را از تنظیمات بزن یا دوباره تلاش کن.</string>
+    <string name="feed_err_building">هاست در حال ساختن اولین لیست است؛ چند دقیقه‌ی دیگر خودش می‌آید.</string>
+    <string name="feed_err_payload">پاسخ هاست قابل فهم نبود — ساختار قدیمی روی هاست مانده؛ نسخه‌ی سرور را به‌روز کن.</string>
+    <string name="feed_err_http">خطای سرور (%1$s) — اگر 403 است کلید فید را هماهنگ کن، اگر 404 است آدرس /v/ را چک کن.</string>
+    <string name="feed_err_generic">دریافت لیست ناموفق بود (%1$s).</string>
+    <string name="brand_credit">ساخته‌ی استودیوی میلانو · Meelano Studio Design</string>
     <string name="last_update">آخرین به‌روزرسانی فهرست: %1$s</string>
 
     <!-- control kit (Controls.kt): نوار وضعیتِ بالای صفحه، گروه‌های تنظیمات، دکمه‌های لیست -->
