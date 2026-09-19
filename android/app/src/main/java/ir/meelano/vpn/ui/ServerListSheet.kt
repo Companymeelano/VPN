@@ -3,6 +3,7 @@ package ir.meelano.vpn.ui
 import ir.meelano.vpn.ui.theme.LocalMotionPrefs
 import ir.meelano.vpn.ui.theme.LocalPalette
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -28,7 +29,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -214,27 +219,48 @@ fun ServerListSheet(
                 }
             }
 
-            Row(
+            /*
+             * One line of health, never three: when the list is fine the footer is a signature at the
+             * bottom of the sheet; when there is host prose worth reading, it folds open on tap.
+             * Persian detail text used to occupy the whole bottom five lines of this sheet.
+             */
+            var infoOpen by remember { mutableStateOf(false) }
+            Column(
                 Modifier
                     .fillMaxWidth()
                     .padding(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.last_update, relTime(vm.generatedAt(if (seg == SEG_FREE) "free" else "vip"))),
-                        fontSize = 11.sp, color = p.faint,
-                    )
-                    Text(vm.feedSourceLabel(), fontSize = 10.sp, color = p.faint.copy(alpha = 0.78f))
-                    feedNotes.firstOrNull()?.let { note ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Row(
+                            Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable(enabled = feedNotes.isNotEmpty()) { infoOpen = !infoOpen }
+                                .padding(horizontal = 2.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                stringResource(R.string.last_update, relTime(vm.generatedAt(if (seg == SEG_FREE) "free" else "vip"))),
+                                fontSize = 11.sp, color = p.faint, maxLines = 1,
+                            )
+                            if (feedNotes.isNotEmpty()) {
+                                Spacer(Modifier.size(5.dp))
+                                Icon(
+                                    painterResource(R.drawable.ic_bolt),
+                                    contentDescription = stringResource(R.string.feed_now, vm.feedSourceLabel()),
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .alpha(if (infoOpen) 1f else 0.55f),
+                                    tint = p.accent,
+                                )
+                            }
+                        }
                         Text(
-                            "· $note",
-                            fontSize = 10.sp, color = p.faint.copy(alpha = 0.85f),
-                            maxLines = 2, lineHeight = 14.sp,
+                            vm.feedSourceLabel(),
+                            fontSize = 10.sp, color = p.faint.copy(alpha = 0.78f), maxLines = 1,
                         )
                     }
-                }
-                MeelanoButton(
+                    MeelanoButton(
                     label = stringResource(R.string.row_retest),
                     onClick = { vm.refreshBoth() },
                     tone = BtnTone.Tonal,
@@ -243,6 +269,18 @@ fun ServerListSheet(
                     enabled = !syncing,
                     loading = syncing,
                 )
+                }
+                AnimatedVisibility(visible = infoOpen) {
+                    Column(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                        feedNotes.take(3).forEach { note ->
+                            Text(
+                                "· $note",
+                                fontSize = 10.sp, color = p.faint.copy(alpha = 0.85f),
+                                maxLines = 2, lineHeight = 14.sp,
+                            )
+                        }
+                    }
+                }
             }
         }
     }

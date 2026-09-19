@@ -217,7 +217,7 @@ private fun ConnectRing(
         failed -> 1f
         connected -> 0.9f
         connecting -> 0.55f + 0.25f * sin((sweep.value * 2 * PI)).toFloat()
-        else -> 0.18f * (breathe?.value ?: 1f)
+        else -> 0.24f + 0.14f * (breathe?.value ?: 1f)   // idle halo, mint: the button lights its own corner
     }
 
     Box(
@@ -284,9 +284,10 @@ private fun ConnectRing(
             val arcSize = Size(this.size.width - inset * 2, this.size.height - inset * 2)
             val top = Offset(inset, inset)
 
-            // track
+            // track - brand-tinted even before the first connect, so the dial never reads as grey plastic
             drawArc(
-                color = p.tint(0.06f), 0f, 360f, false,
+                color = p.accent.copy(alpha = if (connected || connecting || failed) 0.08f else 0.14f),
+                0f, 360f, false,
                 topLeft = top, size = arcSize,
                 style = Stroke(width = stroke, cap = StrokeCap.Round),
             )
@@ -314,10 +315,10 @@ private fun ConnectRing(
                     style = Stroke(width = stroke * 0.5f, cap = StrokeCap.Round),
                 )
             }
-            // idle hint ring
+            // idle hint ring: a breathing mint hairline - an invitation, not a decoration
             if (!connected && !connecting && !failed) {
                 drawCircle(
-                    color = p.tint(0.10f * (breathe?.value ?: 1f)),
+                    color = p.accent.copy(alpha = 0.12f + 0.10f * (breathe?.value ?: 1f)),
                     radius = arcSize.width / 2,
                     center = Offset(size / 2f, size / 2f),
                     style = Stroke(width = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 12f))),
@@ -345,10 +346,12 @@ private fun ConnectRing(
 @Composable
 private fun PowerGlyph(connected: Boolean, failed: Boolean, size: Int) {
     val p = LocalPalette.current
+    // The mark carries the brand green even at idle now: the biggest control on the screen should
+    // say "this is the app", not "nothing has happened yet". Danger still wins - red must stay red.
     val tint = when {
         failed -> p.danger
         connected -> p.accent
-        else -> p.muted
+        else -> p.accent.copy(alpha = 0.92f)
     }
     val scale by animateFloatAsState(if (connected) 1.06f else 1f, Motion.enter, label = "glyph")
     Canvas(Modifier.size((size * 0.30f).dp).scale(scale)) {

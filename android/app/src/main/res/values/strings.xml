@@ -57,6 +57,7 @@
     <string name="auto_desc">هر ۲۴ ساعت یک بار بهترین نود را انتخاب کن</string>
     <string name="empty_free_title">فعلاً نود آزادی نیست که تست را رد نکرده باشد</string>
     <string name="empty_free_body">لیست رایگان هر چند دقیقه عوض می‌شود. «تست دوباره» را بزن تا فهرست تازه بگیریم.</string>
+    <string name="home_no_nodes_notice">لیست ویژه هنوز نرسیده — برای مشاهده و تلاش بزن</string>
     <string name="empty_vip_title">لیست ویژه به اپ نرسید</string>
     <string name="empty_vip_body">اینترنت را چک کن؛ اگر وصل است، از پشتیبانی بخواه فایل را دوباره بسازد.</string>
     <string name="feed_err_net">به هاست دسترسی پیدا نشد — اگر هاست مرورگر وصل است، روش «آنبرد» را از تنظیمات بزن یا دوباره تلاش کن.</string>

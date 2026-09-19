@@ -433,7 +433,8 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                 }
             }
 
-            // Motion + theme.
+            // Motion. The theme row moved to the home top bar, where a theme control belongs:
+            // one tap, its own legend (the icon IS the state), and no settings dive to find it.
             item {
                 MeelanoPanel(title = stringResource(R.string.group_general)) {
                     SwitchRow(
@@ -442,23 +443,6 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                         on = AppSettings.reducedMotion,
                         onChange = { AppSettings.setReducedMotion(ctx, it) },
                     )
-                    PanelDivider()
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
-                        Text(
-                            stringResource(R.string.set_theme),
-                            fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
-                        )
-                        Spacer(Modifier.height(9.dp))
-                        MeelanoSegmented(
-                            items = listOf(
-                                stringResource(R.string.theme_system),
-                                stringResource(R.string.theme_dark),
-                                stringResource(R.string.theme_light),
-                            ),
-                            index = AppSettings.themeMode,
-                            onIndex = { AppSettings.setThemeMode(ctx, it) },
-                        )
-                    }
                 }
             }
 

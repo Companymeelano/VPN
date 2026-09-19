@@ -17,7 +17,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -203,20 +205,47 @@ fun HomeScreen(vm: VpnViewModel) {
 
                 Spacer(Modifier.height(8.dp))
                 // a caret, not an icon: this control *opens* the list, it does not do anything
-                MeelanoButton(
-                    label = if (AppSettings.autoSelect && node != null && activeId == null) {
-                        stringResource(R.string.seg_auto)
-                    } else if (node == null) {
-                        stringResource(R.string.empty_vip_title)
-                    } else {
-                        node.countryFa().ifEmpty { node.name }
-                    },
-                    onClick = { servers = true },
-                    tone = BtnTone.Tonal,
-                    size = BtnSize.Small,
-                    iconRes = if (connected) R.drawable.ic_shield else R.drawable.ic_location,
-                    trailingChevron = true,
-                )
+                if (node == null) {
+                    // "لیست ویژه به اپ نرسید" was a whole sentence sitting where a control belongs -
+                    // and it duplicated the servers sheet it pointed at. Now it's one mint-dotted pill:
+                    // the message AND the action, in the element's own size.
+                    Row(
+                        Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(
+                                Brush.verticalGradient(listOf(p.tint(0.10f), p.tint(0.04f))),
+                            )
+                            .border(1.dp, p.accent.copy(alpha = 0.28f), RoundedCornerShape(999.dp))
+                            .clickable { servers = true }
+                            .padding(horizontal = 14.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(p.accent),
+                        )
+                        Spacer(Modifier.size(8.dp))
+                        Text(
+                            stringResource(R.string.home_no_nodes_notice),
+                            color = p.text, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                        )
+                    }
+                } else {
+                    MeelanoButton(
+                        label = if (AppSettings.autoSelect && activeId == null) {
+                            stringResource(R.string.seg_auto)
+                        } else {
+                            node.countryFa().ifEmpty { node.name }
+                        },
+                        onClick = { servers = true },
+                        tone = BtnTone.Tonal,
+                        size = BtnSize.Small,
+                        iconRes = if (connected) R.drawable.ic_shield else R.drawable.ic_location,
+                        trailingChevron = true,
+                    )
+                }
 
                 Spacer(Modifier.weight(1f))
 
@@ -266,6 +295,7 @@ fun HomeScreen(vm: VpnViewModel) {
 @Composable
 private fun TopBar(connected: Boolean, syncing: Boolean, onRefresh: () -> Unit, onSettings: () -> Unit) {
     val p = LocalPalette.current
+    val ctx = LocalContext.current
     Row(
         Modifier
             .fillMaxWidth()
@@ -285,6 +315,29 @@ private fun TopBar(connected: Boolean, syncing: Boolean, onRefresh: () -> Unit, 
             letterSpacing = 0.1.sp,
         )
         Spacer(Modifier.weight(1f))
+        // Theme, one tap away instead of buried three panels deep: a cycle, not a menu — the icon
+        // IS the state (follow-system / dark / light), so the control doubles as its own legend.
+        val themeIcon = when (AppSettings.themeMode) {
+            AppSettings.THEME_DARK -> R.drawable.ic_moon
+            AppSettings.THEME_LIGHT -> R.drawable.ic_sun
+            else -> R.drawable.ic_theme_auto
+        }
+        MeelanoIconButton(
+            iconRes = themeIcon,
+            contentDescription = stringResource(R.string.set_theme),
+            onClick = {
+                val next = when (AppSettings.themeMode) {
+                    AppSettings.THEME_SYSTEM -> AppSettings.THEME_DARK
+                    AppSettings.THEME_DARK -> AppSettings.THEME_LIGHT
+                    else -> AppSettings.THEME_SYSTEM
+                }
+                AppSettings.setThemeMode(ctx, next)
+            },
+            sizeDp = 38.dp,
+            corner = 12.dp,
+            tintIn = if (AppSettings.themeMode == AppSettings.THEME_SYSTEM) p.muted else p.accent,
+        )
+        Spacer(Modifier.width(6.dp))
         // the light and the words are the same signal at two sizes: readable from across the room,
         // and legible at arm's length, without opening anything
         StateDot(

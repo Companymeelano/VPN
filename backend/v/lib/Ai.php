@@ -442,7 +442,7 @@ final class Ai
 
     /* ------------------------------------------------------------------ budget + breaker */
 
-    public static function spend($inTok = null, $outTok = null, array $p = null)
+    public static function spend($inTok = null, $outTok = null, ?array $p = null)
     {
         $path = Util::dataDir() . '/' . self::SPEND_FILE;
         $s = json_decode((string) Util::readText($path, '{}'), true);

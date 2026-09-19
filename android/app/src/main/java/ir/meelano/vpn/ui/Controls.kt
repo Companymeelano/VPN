@@ -731,7 +731,13 @@ fun MeelanoSwitch(
                     if (checked) {
                         Brush.verticalGradient(listOf(Color.White, Color(0xFFD6E6DE)))
                     } else {
-                        Brush.verticalGradient(listOf(Color(0xFF9FB2C4), Color(0xFF6B7E90)))
+                        // the OFF thumb answered only to the dark theme; on porcelain it read as a
+                        // bruise. Light gets its own porcelain knob, dark keeps the steel one.
+                        if (p.isDark) {
+                            Brush.verticalGradient(listOf(Color(0xFF9FB2C4), Color(0xFF6B7E90)))
+                        } else {
+                            Brush.verticalGradient(listOf(Color.White, Color(0xFFDCE3DC)))
+                        }
                     },
                     CircleShape,
                 )

@@ -555,7 +555,7 @@ final class Builder
         return (isset($n['proto']) && $n['proto'] === 'vless' && !empty($n['pbk'])) ? 'xtls-rprx-vision' : '';
     }
 
-    private static function toPublic(array $n, $tier, $slot, $brand, array $tune = null)
+    private static function toPublic(array $n, $tier, $slot, $brand, ?array $tune = null)
     {
         $cc = isset($n['cc']) && preg_match('~^[A-Z]{2}$~', (string) $n['cc']) ? $n['cc'] : null;
         $lat = isset($n['latencyMs']) && $n['latencyMs'] !== null ? (int) $n['latencyMs'] : null;

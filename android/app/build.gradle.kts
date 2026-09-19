@@ -99,6 +99,12 @@ android {
         buildConfigField("String", "CORE_BRIDGE_CLASS", "\"${coreBridgeClass.trim()}\"")
         buildConfigField("String", "CHANNEL", "\"stable\"")
 
+        // The pinned libXray AAR ships .so for all four ABIs; x86/x86_64 exist only for emulators,
+        // and including them doubled the shipped APK (250MB). Devices get the two ARM slices -
+        // arm64 since forever ("16KB-page ready" per the gomobile flags), v7a for the old phones
+        // this country still has. Emulator builds can flip this locally; CI must not grow it back.
+        ndk { abiFilters("arm64-v8a", "armeabi-v7a") }
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
