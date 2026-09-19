@@ -1,0 +1,10 @@
+vless://1b3a4a1e-2a3f-4b8c-9d2e-1f2a3b4c5d6e@185.143.233.10:443?encryption=none&security=tls&sni=de1.edge.example.dev&fp=chrome&type=ws&host=de1.edge.example.dev&path=%2Fvless%3Fed%3D2024&flow=xtls-rprx-vision#DE%20Frankfurt%2001
+vless://7c2f1d9a-5b44-4a0e-8f31-c0ffee123456@146.19.24.77:2053?encryption=none&security=reality&sni=www.speedtest.net&pbk=SbVKOEMjK0sIlbwg4akyBg5mL5K5W6g5F4EgAg0BJFM&sid=6ba85179&type=tcp&fp=chrome&flow=xtls-rprx-vision#🇫🇮 Helsinki reality
+trojan://Tr0janPass!@162.159.99.5:443?allowInsecure=1&sni=us-edge.example.dev&type=tcp#USA-NY-free-3
+vmess://eyJ2IjoiMiIsInBzIjoiUHJpdmF0ZS1JcmFuLVNlcnZlci0wNyIsImFkZCI6IjUxLjE1LjIwMC40NCIsInBvcnQiOiI0NDMiLCJpZCI6IjEyYjhjMWE4LTZhMmQtNGI3ZS05YTNmLTBmMmExYjJjM2Q0ZSIsImFpZCI6IjAiLCJzY3kiOiJhdXRvIiwibmV0Ijoid3MiLCJob3N0IjoiZGUtZnJhbmtmdXJ0LmV4YW1wbGUuZGV2IiwicGF0aCI6Ii93cyIsInRscyI6InRscyIsInNuaSI6ImRlLWZyYW5rZnVydC5leGFtcGxlLmRldiIsImFscG4iOiJoMixodHRwLzEuMSJ9#Iran-private-07
+ss://YWVzLTI1Ni1nY206U3VwM3JTZWNyZXQ=@51.15.200.10:8388#FR-Paris-SS
+ss://YWVzLTI1Ni1nY206VHIwamFuUGFzcyFAMTQ2LjE5LjI0Ljg6NDQz#legacy-encoding-NL
+hy2://Sup3rSecretPsk@45.76.12.90:443?insecure=1&sni=sg.example.dev&alpn=h3#Singapore-HY2
+socks5://178.62.86.217:1080
+not-a-proxy-line at all
+vless://broken-no-port@host.example:0#should-be-dropped
