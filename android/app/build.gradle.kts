@@ -200,12 +200,22 @@ dependencies {
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     // THE TUNNEL. Pick exactly one and keep the version pinned; docs/CORE-INTEGRATION.md is the
-    // checklist that turns MEELANO_CORE_LINKED into "true" (API surface: TunnelEngine in
-    // vpn/CoreApi.kt, config dialect in vpn/CoreProfiles).
-    //   preferred (MPL-2.0, ships in a closed app): the libXray AAR built with
-    //     `python3 build/main.py android` from github.com/XTLS/libXray -> app/libs/XrayCore.aar
-    //   or the GPL route:  implementation("io.github.nekohasemangroup:sing-box:1.10.0")
-    // implementation("io.github.tahowang:tproxy:5.3.0")
+    // checklist (API surface: TunnelEngine in vpn/CoreApi.kt, config dialect in vpn/CoreProfiles,
+    // reflection bridge in vpn/XrayBridge.kt).
+    //
+    // Done: CI builds XTLS/libXray (MIT; carries Xray-core, MPL-2.0 - both ship in a closed app) at the
+    // pinned tag from .github/workflows/apk.yml and drops `app/libs/core.aar` here. The Kotlin side
+    // never imports a class from it (reflection keeps the repo building with zero binary blobs), but
+    // the dependency is what actually packs libgojni.so into the APK. A core-linked build without the
+    // file must fail loudly - a silent fall-through is exactly "CORE_LINKED=true on a dead tunnel".
+    val coreAar = file("libs/core.aar")
+    if (coreLinked == "true") {
+        require(coreAar.isFile) {
+            "MEELANO_CORE_LINKED=true ولی app/libs/core.aar نیست — " +
+                "اول پایپ‌لاین هسته را بزن (apk.yml › job core) یا -PMEELANO_CORE_LINKED=false"
+        }
+        implementation(files("libs/core.aar"))
+    }
 
     testImplementation("junit:junit:4.13.2")
 }

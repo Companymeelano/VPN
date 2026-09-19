@@ -18,12 +18,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.item
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
@@ -80,7 +81,12 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
     // Read once, off the composition: `remember` + a suspend read means the sheet opens without waiting
     // on a disk seek, and the draft is what the user sees from then on.
     var savedVip by remember { mutableStateOf("") }
-    LaunchedEffect(Unit) { savedVip = vm.readLocalVip() }
+    // Read once, off the composition: File.length() on the UI thread is jank you can feel.
+    var hasLocalVip by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        savedVip = vm.readLocalVip()
+        hasLocalVip = runCatching { vm.hasLocalVip() }.getOrDefault(false)
+    }
     var vipDraft by remember { mutableStateOf<String?>(null) }
     var subDraft by remember { mutableStateOf<String?>(null) }
     var savedLines by remember { mutableStateOf(-1) }
@@ -92,414 +98,439 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
         contentColor = p.text,
         dragHandle = null,
     ) {
-        Column(
+        LazyColumn(
             Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
                 .padding(bottom = 20.dp),
         ) {
-            Box(
-                Modifier
-                    .padding(top = 10.dp)
-                    .size(width = 32.dp, height = 3.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(p.tint(0.18f))
-                    .align(Alignment.CenterHorizontally)
-            )
-            Row(
-                Modifier.fillMaxWidth().padding(start = 18.dp, end = 12.dp, top = 12.dp, bottom = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    stringResource(R.string.settings),
-                    fontSize = 17.sp, fontWeight = FontWeight.Bold, color = p.text,
+            // A header + close button.
+            item {
+                Box(
+                    Modifier
+                        .padding(top = 10.dp)
+                        .size(width = 32.dp, height = 3.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(p.tint(0.18f))
+                        .align(Alignment.CenterHorizontally)
                 )
-                Spacer(Modifier.weight(1f))
-                MeelanoIconButton(
-                    iconRes = R.drawable.ic_close,
-                    contentDescription = stringResource(R.string.close),
-                    onClick = onDismiss,
-                    sizeDp = 38.dp,
-                    corner = 12.dp,
-                )
-            }
-
-            MeelanoPanel(title = stringResource(R.string.group_vpn)) {
-                SwitchRow(
-                    title = stringResource(R.string.set_keepalive),
-                    body = stringResource(R.string.set_keepalive_body),
-                    on = AppSettings.smartReconnect,
-                    onChange = {
-                        AppSettings.setSmartReconnect(ctx, it)
-                        // the watchdog only exists while it is on; toggling mid-session must take effect
-                        // now, not on the next cold start — that gap is how "I turned it on and it still
-                        // dropped" is born
-                        runCatching { if (it) KeepAlive.enableWatchdog(ctx) else KeepAlive.disableWatchdog(ctx) }
-                    },
-                )
-                PanelDivider()
-                SwitchRow(
-                    title = stringResource(R.string.set_killswitch),
-                    body = stringResource(R.string.set_killswitch_body),
-                    on = AppSettings.killSwitch,
-                    onChange = { AppSettings.setKillSwitch(ctx, it) },
-                )
-                PanelDivider()
-                SwitchRow(
-                    title = stringResource(R.string.set_dns),
-                    body = stringResource(R.string.set_dns_body),
-                    on = AppSettings.secureDns,
-                    onChange = { AppSettings.setSecureDns(ctx, it) },
-                )
-            }
-
-            /*
-             * The resistance panel is a first-class group, not a debug drawer: in this country "the VPN
-             * doesn't work" is a transport problem nine times out of ten, and the four dials that fix it
-             * have until now been buried in a fork's config file. The defaults are already right for Iran
-             * (docs/ANTI-BLOCK.md §۴); this panel exists for the day they are not - and for the user who
-             * wants to see the verdict of the last local probe instead of trusting us.
-             */
-            MeelanoPanel(title = stringResource(R.string.group_resist)) {
-                Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 18.dp, end = 12.dp, top = 12.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text(
-                        stringResource(R.string.set_regime),
-                        fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
+                        stringResource(R.string.settings),
+                        fontSize = 17.sp, fontWeight = FontWeight.Bold, color = p.text,
                     )
-                    Spacer(Modifier.height(8.dp))
-                    MeelanoSegmented(
-                        items = listOf(
-                            stringResource(R.string.regime_auto),
-                            stringResource(R.string.regime_calm),
-                            stringResource(R.string.regime_tight),
-                            stringResource(R.string.regime_blackout),
-                        ),
-                        index = when (AppSettings.regime) {
-                            "auto" -> 0
-                            "calm" -> 1
-                            "blackout" -> 3
-                            else -> 2
-                        },
-                        onIndex = { i ->
-                            AppSettings.setRegime(ctx, listOf("auto", "calm", "tight", "blackout")[i])
-                        },
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        stringResource(R.string.set_regime_body),
-                        fontSize = 11.sp, color = p.faint, lineHeight = 16.sp,
-                    )
-                }
-                PanelDivider()
-                SwitchRow(
-                    title = stringResource(R.string.set_frag),
-                    body = stringResource(R.string.set_frag_body),
-                    on = AppSettings.fragmentAuto,
-                    onChange = { AppSettings.setFragmentAuto(ctx, it) },
-                )
-                PanelDivider()
-                SwitchRow(
-                    title = stringResource(R.string.set_mux),
-                    body = stringResource(R.string.set_mux_body),
-                    on = AppSettings.muxEnabled,
-                    onChange = { AppSettings.setMuxEnabled(ctx, it) },
-                )
-                PanelDivider()
-                SwitchRow(
-                    title = stringResource(R.string.set_reality),
-                    body = stringResource(R.string.set_reality_body),
-                    on = AppSettings.realityFirst,
-                    onChange = { AppSettings.setRealityFirst(ctx, it) },
-                )
-                PanelDivider()
-                SwitchRow(
-                    title = stringResource(R.string.set_boot),
-                    body = stringResource(R.string.set_boot_body),
-                    on = AppSettings.autoConnectOnBoot,
-                    onChange = { AppSettings.setAutoConnectOnBoot(ctx, it) },
-                )
-                PanelDivider()
-                Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                    Text(
-                        stringResource(R.string.set_mtu),
-                        fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    MeelanoSegmented(
-                        items = listOf("1280", "1400", "1500"),
-                        index = when (AppSettings.mtu) { 1280 -> 0; 1400 -> 1; else -> 2 },
-                        onIndex = { i -> AppSettings.setMtu(ctx, listOf(1280, 1400, 1500)[i]) },
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        stringResource(R.string.set_mtu_body),
-                        fontSize = 11.sp, color = p.faint, lineHeight = 16.sp,
-                    )
-                }
-                PanelDivider()
-                Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                    Text(
-                        stringResource(R.string.probe_title),
-                        fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        remember(AppSettings.lastBlockReport) {
-                            runCatching {
-                                val o = org.json.JSONObject(AppSettings.lastBlockReport)
-                                val probes = o.optInt("probes")
-                                val alive = (probes - (o.optDouble("tcpFail", 0.0) * probes).toInt()).coerceAtLeast(0)
-                                buildString {
-                                    append("$alive/$probes گره از این مسیر پاسخ داد")
-                                    val rtt = o.optLong("rtt")
-                                    if (rtt > 0) append(" · میانه‌ی تأخیر ${rtt}ms")
-                                    append(" · DNS ")
-                                    append(if (o.optBoolean("dnsPoisoned")) "دروغ گفته" else "سالم")
-                                }
-                            }.getOrDefault(ctx.getString(R.string.probe_none))
-                        },
-                        fontSize = 11.sp, color = p.muted, lineHeight = 16.sp,
+                    Spacer(Modifier.weight(1f))
+                    MeelanoIconButton(
+                        iconRes = R.drawable.ic_close,
+                        contentDescription = stringResource(R.string.close),
+                        onClick = onDismiss,
+                        sizeDp = 38.dp,
+                        corner = 12.dp,
                     )
                 }
             }
 
-            MeelanoPanel(title = stringResource(R.string.group_data)) {
-                SwitchRow(
-                    title = stringResource(R.string.set_update),
-                    body = stringResource(R.string.set_update_body),
-                    on = AppSettings.autoUpdate,
-                    onChange = { AppSettings.setAutoUpdate(ctx, it) },
-                )
-                PanelDivider()
-                SwitchRow(
-                    title = stringResource(R.string.set_feedback),
-                    body = stringResource(R.string.set_feedback_body),
-                    on = AppSettings.feedback,
-                    onChange = { AppSettings.setFeedback(ctx, it) },
-                )
+            // The VPN panel - the two switches that matter most, first.
+            item {
+                MeelanoPanel(title = stringResource(R.string.group_vpn)) {
+                    SwitchRow(
+                        title = stringResource(R.string.set_keepalive),
+                        body = stringResource(R.string.set_keepalive_body),
+                        on = AppSettings.smartReconnect,
+                        onChange = {
+                            AppSettings.setSmartReconnect(ctx, it)
+                            // the watchdog only exists while it is on; toggling mid-session must take effect
+                            // now, not on the next cold start — that gap is how "I turned it on and it still
+                            // dropped" is born
+                            runCatching { if (it) KeepAlive.enableWatchdog(ctx) else KeepAlive.disableWatchdog(ctx) }
+                        },
+                    )
+                    PanelDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.set_killswitch),
+                        body = stringResource(R.string.set_killswitch_body),
+                        on = AppSettings.killSwitch,
+                        onChange = { AppSettings.setKillSwitch(ctx, it) },
+                    )
+                    PanelDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.set_dns),
+                        body = stringResource(R.string.set_dns_body),
+                        on = AppSettings.secureDns,
+                        onChange = { AppSettings.setSecureDns(ctx, it) },
+                    )
+                }
+
             }
 
-            /*
-             * Where the two lists come from, in the user's words. HOST stays the default - the server's
-             * gate, ban ledger and multi-day ranking are things a phone cannot copy - but DIRECT makes the
-             * product work with no host at all, and both paths end in the same cache and the same sheet.
-             */
-            MeelanoPanel(title = stringResource(R.string.group_feed)) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
-                    Text(
-                        stringResource(R.string.feed_source),
-                        fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
+            // The resistance panel is a first-class group, not a debug drawer: in this country "the VPN
+            // doesn't work" is a transport problem nine times out of ten, and the four dials that fix it
+            // have until now been buried in a fork's config file. The defaults are already right for
+            // Iran (docs/ANTI-BLOCK.md §۴) - this panel exists for the day they are not.
+            item {
+                MeelanoPanel(title = stringResource(R.string.group_resist)) {
+                    Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                        Text(
+                            stringResource(R.string.set_regime),
+                            fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        MeelanoSegmented(
+                            items = listOf(
+                                stringResource(R.string.regime_auto),
+                                stringResource(R.string.regime_calm),
+                                stringResource(R.string.regime_tight),
+                                stringResource(R.string.regime_blackout),
+                            ),
+                            index = when (AppSettings.regime) {
+                                "auto" -> 0
+                                "calm" -> 1
+                                "blackout" -> 3
+                                else -> 2
+                            },
+                            onIndex = { i ->
+                                AppSettings.setRegime(ctx, listOf("auto", "calm", "tight", "blackout")[i])
+                            },
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            stringResource(R.string.set_regime_body),
+                            fontSize = 11.sp, color = p.faint, lineHeight = 16.sp,
+                        )
+                    }
+                    PanelDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.set_frag),
+                        body = stringResource(R.string.set_frag_body),
+                        on = AppSettings.fragmentAuto,
+                        onChange = { AppSettings.setFragmentAuto(ctx, it) },
                     )
-                    Spacer(Modifier.height(8.dp))
-                    MeelanoSegmented(
-                        items = listOf(
-                            stringResource(R.string.feed_source_host),
-                            stringResource(R.string.feed_source_auto),
-                            stringResource(R.string.feed_source_direct),
-                        ),
-                        index = AppSettings.feedMode,
-                        onIndex = { vm.setFeedSource(it) },
+                    PanelDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.set_mux),
+                        body = stringResource(R.string.set_mux_body),
+                        on = AppSettings.muxEnabled,
+                        onChange = { AppSettings.setMuxEnabled(ctx, it) },
                     )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        stringResource(R.string.feed_source_body),
-                        fontSize = 11.sp, color = p.faint, lineHeight = 16.sp,
+                    PanelDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.set_reality),
+                        body = stringResource(R.string.set_reality_body),
+                        on = AppSettings.realityFirst,
+                        onChange = { AppSettings.setRealityFirst(ctx, it) },
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        stringResource(R.string.feed_now, vm.feedSourceLabel()),
-                        fontSize = 11.sp, color = p.muted,
+                    PanelDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.set_boot),
+                        body = stringResource(R.string.set_boot_body),
+                        on = AppSettings.autoConnectOnBoot,
+                        onChange = { AppSettings.setAutoConnectOnBoot(ctx, it) },
                     )
-                    if (feedNotes.isNotEmpty()) {
+                    PanelDivider()
+                    Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                        Text(
+                            stringResource(R.string.set_mtu),
+                            fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        MeelanoSegmented(
+                            items = listOf("1280", "1400", "1500"),
+                            index = when (AppSettings.mtu) { 1280 -> 0; 1400 -> 1; else -> 2 },
+                            onIndex = { i -> AppSettings.setMtu(ctx, listOf(1280, 1400, 1500)[i]) },
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            stringResource(R.string.set_mtu_body),
+                            fontSize = 11.sp, color = p.faint, lineHeight = 16.sp,
+                        )
+                    }
+                    PanelDivider()
+                    Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                        Text(
+                            stringResource(R.string.probe_title),
+                            fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
+                        )
                         Spacer(Modifier.height(4.dp))
-                        feedNotes.take(3).forEach { note ->
-                            Text(
-                                "· $note",
-                                fontSize = 10.sp, color = p.faint, lineHeight = 15.sp,
-                            )
-                        }
+                        Text(
+                            remember(AppSettings.lastBlockReport) {
+                                runCatching {
+                                    val o = org.json.JSONObject(AppSettings.lastBlockReport)
+                                    val probes = o.optInt("probes")
+                                    val alive = (probes - (o.optDouble("tcpFail", 0.0) * probes).toInt()).coerceAtLeast(0)
+                                    buildString {
+                                        append("$alive/$probes گره از این مسیر پاسخ داد")
+                                        val rtt = o.optLong("rtt")
+                                        if (rtt > 0) append(" · میانه‌ی تأخیر ${rtt}ms")
+                                        append(" · DNS ")
+                                        append(if (o.optBoolean("dnsPoisoned")) "دروغ گفته" else "سالم")
+                                    }
+                                }.getOrDefault(ctx.getString(R.string.probe_none))
+                            },
+                            fontSize = 11.sp, color = p.muted, lineHeight = 16.sp,
+                        )
                     }
                 }
-                PanelDivider()
-                Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
-                    Text(
-                        stringResource(R.string.feed_vip_title),
-                        fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
+            }
+
+            // The update/feedback panel.
+            item {
+                MeelanoPanel(title = stringResource(R.string.group_data)) {
+                    SwitchRow(
+                        title = stringResource(R.string.set_update),
+                        body = stringResource(R.string.set_update_body),
+                        on = AppSettings.autoUpdate,
+                        onChange = { AppSettings.setAutoUpdate(ctx, it) },
                     )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        stringResource(R.string.feed_vip_body),
-                        fontSize = 11.sp, color = p.faint, lineHeight = 16.sp,
+                    PanelDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.set_feedback),
+                        body = stringResource(R.string.set_feedback_body),
+                        on = AppSettings.feedback,
+                        onChange = { AppSettings.setFeedback(ctx, it) },
                     )
-                    Spacer(Modifier.height(10.dp))
-                    val draft = vipDraft ?: savedVip
-                    FeedWell(
-                        value = draft,
-                        onValue = { vipDraft = it; savedLines = -1 },
-                        placeholder = if (draft.isBlank()) {
-                            stringResource(R.string.feed_vip_placeholder)
-                        } else ""
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                }
+
+                /*
+                 * Where the two lists come from, in the user's words. HOST stays the default - the server's
+                 * gate, ban ledger and multi-day ranking are things a phone cannot copy - but DIRECT makes the
+                 * product work with no host at all, and both paths end in the same cache and the same sheet.
+                 */
+            }
+
+            // Where the two lists come from, in the user\u2019s words.
+            item {
+                MeelanoPanel(title = stringResource(R.string.group_feed)) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+                        Text(
+                            stringResource(R.string.feed_source),
+                            fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        MeelanoSegmented(
+                            items = listOf(
+                                stringResource(R.string.feed_source_host),
+                                stringResource(R.string.feed_source_auto),
+                                stringResource(R.string.feed_source_direct),
+                            ),
+                            index = AppSettings.feedMode,
+                            onIndex = { vm.setFeedSource(it) },
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            stringResource(R.string.feed_source_body),
+                            fontSize = 11.sp, color = p.faint, lineHeight = 16.sp,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            stringResource(R.string.feed_now, vm.feedSourceLabel()),
+                            fontSize = 11.sp, color = p.muted,
+                        )
+                        if (feedNotes.isNotEmpty()) {
+                            Spacer(Modifier.height(4.dp))
+                            feedNotes.take(3).forEach { note ->
+                                Text(
+                                    "· $note",
+                                    fontSize = 10.sp, color = p.faint, lineHeight = 15.sp,
+                                )
+                            }
+                        }
+                    }
+                    PanelDivider()
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+                        Text(
+                            stringResource(R.string.feed_vip_title),
+                            fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            stringResource(R.string.feed_vip_body),
+                            fontSize = 11.sp, color = p.faint, lineHeight = 16.sp,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        val draft = vipDraft ?: savedVip
+                        FeedWell(
+                            value = draft,
+                            onValue = { vipDraft = it; savedLines = -1 },
+                            placeholder = if (draft.isBlank()) {
+                                stringResource(R.string.feed_vip_placeholder)
+                            } else ""
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            MeelanoButton(
+                                label = stringResource(R.string.feed_vip_save),
+                                onClick = {
+                                    val text = vipDraft ?: savedVip
+                                    vm.saveVipConfigs(text) { n -> savedLines = n; vipDraft = text }
+                                },
+                                tone = BtnTone.Tonal,
+                                size = BtnSize.Small,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            MeelanoButton(
+                                label = stringResource(R.string.feed_vip_clear),
+                                onClick = {
+                                    vipDraft = ""
+                                    savedLines = 0
+                                    vm.saveVipConfigs("")
+                                },
+                                tone = BtnTone.Ghost,
+                                size = BtnSize.Small,
+                            )
+                            Spacer(Modifier.weight(1f))
+                            if (savedLines >= 0) {
+                                Text(
+                                    stringResource(R.string.feed_vip_saved, savedLines),
+                                    fontSize = 11.sp, color = p.accent,
+                                )
+                            } else if (!hasLocalVip) {
+                                Text(
+                                    stringResource(R.string.feed_vip_none),
+                                    fontSize = 11.sp, color = p.faint,
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            stringResource(R.string.feed_sub_url),
+                            fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            stringResource(R.string.feed_sub_url_body),
+                            fontSize = 11.sp, color = p.faint, lineHeight = 16.sp,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        val url = subDraft ?: AppSettings.feedExtraUrl
+                        FeedWell(
+                            value = url,
+                            onValue = { subDraft = it },
+                            placeholder = "https://…",
+                            singleLine = true,
+                            uri = true,
+                        )
+                        Spacer(Modifier.height(8.dp))
                         MeelanoButton(
-                            label = stringResource(R.string.feed_vip_save),
+                            label = stringResource(
+                                if (url.isBlank()) R.string.feed_sub_save else R.string.feed_sub_update,
+                            ),
                             onClick = {
-                                val text = vipDraft ?: savedVip
-                                vm.saveVipConfigs(text) { n -> savedLines = n; vipDraft = text }
+                                // never "?: empty": a user who opens the sheet and taps save without
+                                // touching the field must not have the URL they already set wiped
+                                val v = (subDraft ?: AppSettings.feedExtraUrl).trim()
+                                vm.setFeedSubscriptionUrl(v)
+                                subDraft = v
                             },
                             tone = BtnTone.Tonal,
                             size = BtnSize.Small,
                         )
-                        Spacer(Modifier.width(8.dp))
-                        MeelanoButton(
-                            label = stringResource(R.string.feed_vip_clear),
-                            onClick = {
-                                vipDraft = ""
-                                savedLines = 0
-                                vm.saveVipConfigs("")
-                            },
-                            tone = BtnTone.Ghost,
-                            size = BtnSize.Small,
+                    }
+                }
+            }
+
+            // Motion + theme.
+            item {
+                MeelanoPanel(title = stringResource(R.string.group_general)) {
+                    SwitchRow(
+                        title = stringResource(R.string.set_reduced),
+                        body = stringResource(R.string.set_reduced_body),
+                        on = AppSettings.reducedMotion,
+                        onChange = { AppSettings.setReducedMotion(ctx, it) },
+                    )
+                    PanelDivider()
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
+                        Text(
+                            stringResource(R.string.set_theme),
+                            fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
                         )
-                        Spacer(Modifier.weight(1f))
-                        if (savedLines >= 0) {
-                            Text(
-                                stringResource(R.string.feed_vip_saved, savedLines),
-                                fontSize = 11.sp, color = p.accent,
-                            )
-                        } else if (!vm.hasLocalVip()) {
-                            Text(
-                                stringResource(R.string.feed_vip_none),
-                                fontSize = 11.sp, color = p.faint,
-                            )
-                        }
+                        Spacer(Modifier.height(9.dp))
+                        MeelanoSegmented(
+                            items = listOf(
+                                stringResource(R.string.theme_system),
+                                stringResource(R.string.theme_dark),
+                                stringResource(R.string.theme_light),
+                            ),
+                            index = AppSettings.themeMode,
+                            onIndex = { AppSettings.setThemeMode(ctx, it) },
+                        )
                     }
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        stringResource(R.string.feed_sub_url),
-                        fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        stringResource(R.string.feed_sub_url_body),
-                        fontSize = 11.sp, color = p.faint, lineHeight = 16.sp,
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    val url = subDraft ?: AppSettings.feedExtraUrl
-                    FeedWell(
-                        value = url,
-                        onValue = { subDraft = it },
-                        placeholder = "https://…",
-                        singleLine = true,
-                        uri = true,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    MeelanoButton(
-                        label = stringResource(
-                            if (url.isBlank()) R.string.feed_sub_save else R.string.feed_sub_update,
-                        ),
-                        onClick = {
-                            // never "?: empty": a user who opens the sheet and taps save without
-                            // touching the field must not have the URL they already set wiped
-                            val v = (subDraft ?: AppSettings.feedExtraUrl).trim()
-                            vm.setFeedSubscriptionUrl(v)
-                            subDraft = v
-                        },
-                        tone = BtnTone.Tonal,
-                        size = BtnSize.Small,
-                    )
                 }
             }
 
-            MeelanoPanel(title = stringResource(R.string.group_general)) {
-                SwitchRow(
-                    title = stringResource(R.string.set_reduced),
-                    body = stringResource(R.string.set_reduced_body),
-                    on = AppSettings.reducedMotion,
-                    onChange = { AppSettings.setReducedMotion(ctx, it) },
-                )
-                PanelDivider()
-                Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    Text(
-                        stringResource(R.string.set_theme),
-                        fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
-                    )
-                    Spacer(Modifier.height(9.dp))
-                    MeelanoSegmented(
-                        items = listOf(
-                            stringResource(R.string.theme_system),
-                            stringResource(R.string.theme_dark),
-                            stringResource(R.string.theme_light),
-                        ),
-                        index = AppSettings.themeMode,
-                        onIndex = { AppSettings.setThemeMode(ctx, it) },
-                    )
-                }
-            }
-
-            MeelanoPanel(title = stringResource(R.string.danger_zone)) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp)) {
-                    MeelanoButton(
-                        label = if (confirmReset) stringResource(R.string.set_reset) + " ؟" else stringResource(R.string.set_reset),
-                        onClick = {
-                            if (confirmReset) {
-                                AppSettings.reset(ctx)
-                                confirmReset = false
-                                onDismiss()
-                            } else confirmReset = true
-                        },
-                        tone = BtnTone.Danger,
-                        size = BtnSize.Medium,
-                        fill = true,
-                    )
-                    if (confirmReset) {
-                        Spacer(Modifier.height(6.dp))
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
-                        ) {
-                            MeelanoButton(
-                                label = "بی‌خیال",
-                                onClick = { confirmReset = false },
-                                tone = BtnTone.Ghost,
-                                size = BtnSize.Small,
-                            )
+            // The reset row lives inside its own panel with a two-step confirm.
+            item {
+                MeelanoPanel(title = stringResource(R.string.danger_zone)) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp)) {
+                        MeelanoButton(
+                            label = if (confirmReset) stringResource(R.string.set_reset) + " ؟" else stringResource(R.string.set_reset),
+                            onClick = {
+                                if (confirmReset) {
+                                    AppSettings.reset(ctx)
+                                    confirmReset = false
+                                    onDismiss()
+                                } else confirmReset = true
+                            },
+                            tone = BtnTone.Danger,
+                            size = BtnSize.Medium,
+                            fill = true,
+                        )
+                        if (confirmReset) {
+                            Spacer(Modifier.height(6.dp))
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                            ) {
+                                MeelanoButton(
+                                    label = "بی‌خیال",
+                                    onClick = { confirmReset = false },
+                                    tone = BtnTone.Ghost,
+                                    size = BtnSize.Small,
+                                )
+                            }
                         }
                     }
                 }
             }
 
-            /*
-             * Permanent access to the shareable report. The failure card offers it too, but a person who
-             * already fixed the problem and wants to hand over "what did it look like" shouldn't have to
-             * break the app again to find the button.
-             */
-            Spacer(Modifier.height(10.dp))
-            MeelanoButton(
-                label = stringResource(R.string.diag_open),
-                onClick = { diagnostics = true },
-                tone = BtnTone.Tonal,
-                size = BtnSize.Small,
-                fill = true,
-            )
-            if (diagnostics) DiagnosticsSheet(vm = vm, onDismiss = { diagnostics = false })
+            // Permanent access to the shareable report, without having to break the app first.
+            item {
+                /*
+                 * Permanent access to the shareable report. The failure card offers it too, but a person who
+                 * already fixed the problem and wants to hand over "what did it look like" shouldn't have to
+                 * break the app again to find the button.
+                 */
+                Spacer(Modifier.height(10.dp))
+                MeelanoButton(
+                    label = stringResource(R.string.diag_open),
+                    onClick = { diagnostics = true },
+                    tone = BtnTone.Tonal,
+                    size = BtnSize.Small,
+                    fill = true,
+                )
+                if (diagnostics) DiagnosticsSheet(vm = vm, onDismiss = { diagnostics = false })
+            }
 
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(start = 18.dp, end = 18.dp, top = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    stringResource(R.string.set_version, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
-                    fontSize = 11.sp, color = p.faint, modifier = Modifier.weight(1f),
-                    style = TextStyle(fontFeatureSettings = "tnum"),
-                )
-                StateDot(
-                    on = AppSettings.smartReconnect,
-                    label = if (AppSettings.smartReconnect) "نگه‌دارنده روشن" else "نگه‌دارنده خاموش",
-                )
+            // Version + the watchdog state dot.
+            item {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(start = 18.dp, end = 18.dp, top = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        stringResource(R.string.set_version, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
+                        fontSize = 11.sp, color = p.faint, modifier = Modifier.weight(1f),
+                        style = TextStyle(fontFeatureSettings = "tnum"),
+                    )
+                    StateDot(
+                        on = AppSettings.smartReconnect,
+                        label = if (AppSettings.smartReconnect) "نگه‌دارنده روشن" else "نگه‌دارنده خاموش",
+                    )
+                }
             }
         }
     }
@@ -594,3 +625,4 @@ private fun SwitchRow(title: String, body: String, on: Boolean, onChange: (Boole
         Box(Modifier.alpha(if (on) 1f else 0.85f)) { MeelanoSwitch(checked = on, onChange = onChange) }
     }
 }
+

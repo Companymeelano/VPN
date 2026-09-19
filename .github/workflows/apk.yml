@@ -78,6 +78,9 @@ permissions:
 env:
   ANDROID_HOME: ${{ github.workspace }}/android-sdk
   GRADLE_USER_HOME: ${{ github.workspace }}/.gradle-home
+  # XTLS/libXray CalVer، پین‌شده عمداً: موتور را یک‌جا عوض کن، نه در هر بیلد به‌صورت سرنوشت‌محور.
+  # این تگ go.mod خودش xray-core را هم قفل کرده، پس با آپدیت این یک خط، جفت با هم می‌آیند.
+  LIBXRAY_TAG: v26.9.9
 
 jobs:
   apk:
@@ -137,6 +140,71 @@ jobs:
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "### نسخه: $name ($code)" >> "$GITHUB_STEP_SUMMARY"
 
+      # ── هسته‌ی تونل: XTLS/libXray را در تگ سنجیده‌شده می‌سازیم و AAR را در app/libs می‌گذاریم.
+      #    روی تگ همیشه (آن چیزی است که کاربر نصب می‌کند) و روی dispatch — نه روی PRها (رانر ۹۰ ثانیه‌ای را
+      #    سنگین نکند). کلاسِ واگرفکننده با javap استخراج می‌شود، نه حدس، و انعطاف‌شکنیِ رشته‌ای اینجاست:
+      #    اگر upstream نام invoke را عوض کرد، همین step قرمز می‌شود — نه کاربرِ اپ.
+      - uses: actions/setup-go@v5
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.core_linked != 'false') || startsWith(github.ref, 'refs/tags/') }}
+        with:
+          go-version: '1.27'
+          check-latest: true
+
+      - name: cache libXray core
+        id: core-cache
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.core_linked != 'false') || startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/cache@v4
+        with:
+          path: android/app/libs/core.aar
+          # tag های CalVer دست‌نخورده‌اند؛ کلید = خود تگ. نسخه‌ی xray-core داخل go.mod همان تگ قفل است.
+          key: libxray-core-${{ env.LIBXRAY_TAG }}-${{ hashFiles('android/app/src/main/java/ir/meelano/vpn/vpn/XrayBridge.kt') }}
+
+      - name: build the tunnel core (XTLS/libXray, pinned)
+        id: core
+        if: ${{ ((github.event_name == 'workflow_dispatch' && inputs.core_linked != 'false')
+                   || startsWith(github.ref, 'refs/tags/'))
+                 && steps.core-cache.outputs.cache-hit != 'true' }}
+        env:
+          ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk-bundle
+        run: |
+          set -euo pipefail
+          # NDK: ubuntu-24.04 چند NDK دارد؛ آخرین را انتخاب کن (path نصب‌شده‌ی پیش‌فرض رانرها)
+          if [ ! -d "$ANDROID_NDK_HOME" ]; then
+            ANDROID_NDK_HOME=$(ls -d /usr/local/lib/android/sdk/ndk/* | sort -V | tail -1)
+          fi
+          echo "using NDK: $ANDROID_NDK_HOME"
+          export ANDROID_NDK_HOME PATH="$PATH:$(go env GOPATH)/bin"
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          gomobile init
+          git clone --depth 1 --branch "$LIBXRAY_TAG" https://github.com/XTLS/libXray /tmp/libxray
+          cd /tmp/libxray
+          python3 build/main.py android
+          mkdir -p "$GITHUB_WORKSPACE/android/app/libs"
+          cp libXray.aar "$GITHUB_WORKSPACE/android/app/libs/core.aar"
+
+      - name: verify the bridge contract inside the AAR
+        id: bridge
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.core_linked != 'false') || startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          set -euo pipefail
+          cd android/app/libs
+          unzip -o -q core.aar classes.jar
+          # نه حدس: کلاسِ واگرفکننده را از خودِ جار بخوان (لاجیک در XrayBridge.kt)
+          bridge=$(jar tf classes.jar | grep -E '(^|/)LibXray\.class$' | grep -v '\$' | head -1 | sed 's;/;.;g; s;\.class$;;')
+          if [ -z "$bridge" ]; then
+            echo "::error::no LibXray wrapper class inside classes.jar"
+            jar tf classes.jar | grep -i '\.class$' | head -20
+            exit 1
+          fi
+          javap -classpath classes.jar -public "$bridge" | tee /tmp/bridge.txt
+          grep -q 'invoke' /tmp/bridge.txt
+          grep -q 'registerDialerController' /tmp/bridge.txt
+          grep -q 'setDNS' /tmp/bridge.txt
+          echo "bridge=$bridge" >> "$GITHUB_OUTPUT"
+          sha256sum core.aar | awk '{print "core_sha256=" $1}' >> "$GITHUB_OUTPUT"
+          echo "core bridge: $bridge" >> "$GITHUB_STEP_SUMMARY"
+
       - name: kotlin comment balance
         # One stray `/*` inside a KDoc silently swallows the rest of the file, and Kotlin block comments
         # *nest*, so a nested opener does not even fix itself at the next `*/`: the failure surfaces as an
@@ -195,6 +263,15 @@ jobs:
                 -PMEELANO_FEED_BASE="$MEELANO_FEED_BASE"
                 -PMEELANO_SELF_UPDATE="$SELF_UPDATE"
                 -PMEELANO_CORE_LINKED="$CORE_LINKED")
+          # وقتی job هسته AAR را ساخت/کش کرد، بیلدِ حاضر core-linked است — هر چیزی که «false» بگوید
+          # یک حلقه‌ی سبز دروغین بود. ورودیِ dispatch همچنان راهِ بیلد گرفتن «بدون هسته» است (پرچم را
+          # دستی false گذاشته باشی و core job هم اجرا نشود، همان false برنده است).
+          # قاعده: اگر بالا AAR ساخته شد، این بیلد هسته دارد؛ job هسته فقط وقتی می‌دود که لینک
+          # مطلوب بوده (تگ، یا dispatch با core_linked=true)، پس غافلگیری ناممکن است.
+          if [ -n "${{ steps.bridge.outputs.bridge }}" ]; then
+            args+=(-PMEELANO_CORE_LINKED=true -PMEELANO_CORE_BRIDGE_CLASS="${{ steps.bridge.outputs.bridge }}")
+            echo "core-linked build: bridge=${{ steps.bridge.outputs.bridge }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
           [ -n "${MEELANO_FEED_KEY_IN:-}" ] && args+=(-PMEELANO_FEED_KEY="$MEELANO_FEED_KEY_IN")
           # سِکِرِتِ HMAC فقط برای *وریفای* آپدیت در کلاینت است؛ اگر ست نشده باشد فیلد خالی می‌ماند
           # و کلاینت امضای فایل را بررسی نمی‌کند — پس ریلیز واقعی بدون آن نساز.

@@ -206,16 +206,26 @@ class CoreProfilesTest {
     }
 
     @Test
-    fun everyProfileHasALocalInboundOnOnePort() {
-        for (engine in listOf(CoreEngine.XRAY, CoreEngine.SING_BOX)) {
-            val p = profile(node(tls = "tls", network = "ws", path = "/"), Tune.Default, engine)
-            @Suppress("UNCHECKED_CAST")
-            val inb = (p["inbounds"] as List<Map<String, Any?>>)[0]
-            val port = inb["port"] ?: inb["listen_port"]
-            assertEquals(10808, port)
-            val listen = inb["listen"]
-            assertEquals("127.0.0.1", listen)
-        }
+    fun everyProfileConsumesTheTunnelTheWayItsEngineDoes() {
+        // Xray reads packets off the VpnService fd itself (env."xray.tun.fd", see XrayBridge.bindRaw):
+        // a tun inbound carrying the tune's MTU, and NO loopback port - a leftover dokodemo-rightdoor
+        // 10808 inbound would mean the profile asks for traffic that nothing ever sends.
+        val x = profile(node(tls = "tls", network = "ws", path = "/"), Tune.Default, CoreEngine.XRAY)
+        @Suppress("UNCHECKED_CAST")
+        val xinb = (x["inbounds"] as List<Map<String, Any?>>)[0]
+        assertEquals("tun", xinb["protocol"])
+        assertNull(xinb["listen"])
+        @Suppress("UNCHECKED_CAST")
+        assertEquals(Tune.Default.mtu, (xinb["settings"] as Map<String, Any?>)["MTU"])
+        val renderedX = CoreProfiles.render(xinb)
+        assertFalse("dokodemo", renderedX.contains("dokodemo"))
+
+        // sing-box dialect keeps the mixed listener: that engine is fed by its own tun2socks front
+        val s = profile(node(tls = "tls", network = "ws", path = "/"), Tune.Default, CoreEngine.SING_BOX)
+        @Suppress("UNCHECKED_CAST")
+        val sinb = (s["inbounds"] as List<Map<String, Any?>>)[0]
+        assertEquals(10808, sinb["listen_port"] ?: sinb["port"])
+        assertEquals("127.0.0.1", sinb["listen"])
     }
 
     @Test

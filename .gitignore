@@ -1,3 +1,7 @@
+# CI-built engine binary (30MB+ of .so): produced by the apk.yml core job, never committed -
+# rebuilding it at the pinned libXray tag is deterministic, and a blob in git is forever.
+/android/app/libs/*.aar
+
 # runtime artifacts of the feed endpoint (created on the host, never committed)
 /backend/v/data/cache/
 /backend/v/data/locks/

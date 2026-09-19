@@ -50,7 +50,11 @@ object CoreApi {
         // The order is deliberate: the engine is configured first and the tunnel is bound a moment later
         // (VpnOrchestrator: startProxy -> establish() -> attachTunnelFd -> onTunnelUp). That is how tProxy
         // and libXray both work, and it is why the fd is not an argument here.
+        //
+        // protect() is the anti-loop: every socket the core itself dials must go *outside* the tunnel.
+        // The bridge delegates to this lambda through libXray's dialer controller.
         mtu = runCatching { ir.meelano.vpn.data.AppSettings.tuneFor(spec.node).mtu }.getOrDefault(1280)
+        XrayBridge.protect = { fd -> runCatching { service.protect(fd) }.getOrDefault(false) }
         XrayBridge.start(spec.profilePath, tag = spec.node.id, tunFd = tunFd, mtu = mtu)
         running = true
     }
@@ -61,7 +65,9 @@ object CoreApi {
         if (LINKED) {
             // failing here is required: a core that is configured but not bound to the TUN carries no
             // traffic, and "connected, no traffic" is the single symptom users cannot diagnose.
-            XrayBridge.bind(fd, mtu)
+            // bindRaw is where libXray actually starts: the fd travels as `env."xray.tun.fd"` inside the
+            // config that `runXray` receives (XrayBridge.kt documents the two-stage start in full).
+            XrayBridge.bindRaw(tunFd, mtu)
         }
         running = true
     }
@@ -423,11 +429,18 @@ object CoreProfiles {
         val profile = LinkedHashMap<String, Any?>()
         profile["log"] = mapOf("loglevel" to "warning")
         profile["inbounds"] = listOf(
+            // The TUN inbound, not a socket: Xray-core (>= the v26 line pinned by libXray v26.9.9) reads
+            // packets straight off the VpnService fd, which is handed over in env."xray.tun.fd" at bind
+            // time (XrayBridge.bindRaw). port/listen are ignored by schema for this inbound; the MTU is
+            // mirrored from the tune so the core and Builder::setMtu clamp together, never apart.
             mapOf(
-                "listen" to "127.0.0.1",
-                "port" to LOCAL_PORT,
-                "protocol" to "dokodemo-door",
-                "settings" to mapOf("network" to if (s.supportsUdp) "tcp,udp" else "tcp"),
+                "port" to 0,
+                "protocol" to "tun",
+                "tag" to "tun-in",
+                "settings" to mapOf(
+                    "name" to "xray0",
+                    "MTU" to s.mtu,
+                ),
                 "sniffing" to mapOf(
                     "enabled" to true,
                     "destOverride" to listOf("http", "tls", "quic"),

@@ -1,17 +1,28 @@
 # وصل‌کردنِ هسته‌ی تونل (از «CORE_LINKED=false» تا بیلدی که واقعاً ترافیک می‌برد)
 
-این تنها سندِ فازِ بعدی است: همه‌چیزِ این repo — فید، تست، رتبه‌بندی، رژیم‌ها، آپدیت، کاشی، UI —
-بی‌هسته کار می‌کند و **عمداً** ادعای اتصال نمی‌کند. وقتی هسته وصل شود، چیزی در آن‌ها عوض نمی‌شود؛
-فقط سه درِ زیر باز می‌شوند. هر قدمتی که این‌جا نوشته نشده، یعنی هنوز تصمیم گرفته نشده — حدس نزنید.
+> **وضعیت از v2.4.0-beta.5:** انجام شد. CI هسته را با **XTLS/libXray @ v26.9.9** (MIT؛ حامل
+> Xray-core تحت MPL-2.0 — هر دو مجاز در اپ بسته‌مصدر) می‌سازد، AAR را در `app/libs/core.aar`
+> می‌گذارد، و با `javap` قرارداد را تأیید می‌کند (`invoke` + `registerDialerController` +
+> `setDNS` + `resetDNS`)، بعد gradle با `MEELANO_CORE_LINKED=true` و کلاسِ استخراج‌شده بیلد
+> می‌گیرد. `XrayBridge` روی API واحدِ `Invoke(requestJSON)` پیاده‌سازی شده — شروع دو‌مرحله‌ای:
+> `start()` کنترلرِ protect و DNS را می‌نشاند، `bind()` عددِ fd را در `env."xray.tun.fd"` داخل
+> کانفیگ می‌نویسد و `runXray` را صدا می‌زند. اینبaund کانفیگ `protocol=tun` است (خواندنِ مستقیم
+> از fd؛ درگاهِ سوکَس 10808 فقط برای لهجه‌ی sing-box مانده).
+>
+> بقیه‌ی سند — قراردادها، ردیابی باگ، ملاک‌های پذیرش — به‌روز است و حفظ می‌شود.
+
+این تنها سندِ فازِ بعدی بود: همه‌چیزِ این repo — فید، تست، رتبه‌بندی، رژیم‌ها، آپدیت، کاشی، UI —
+بدونِ هسته هم کار می‌کرد و **عمداً** ادعای اتصال نمی‌کرد (و در بیلدهای coreless هنوز نمی‌کند).
 
 ---
 
 ## ۰) قانونِ پایه
 
-تا لحظه‌ای که `XrayBridge.start0()` و `bind0()` بدنه‌ی واقعی دارند، **هیچ** مسیری نباید
+تا لحظه‌ای که job هسته در CI واقعاً AAR بسازد و javap قرارداد را تأیید کند، **هیچ** مسیری نباید
 `CORE_LINKED=true` بگیرد. دلیلش تجربه‌ی همین پروژه است: یک حلقه‌ی سبزِ دروغین، از حلقه‌ی قرمز
-بدتر است، چون کاربر تنظیمات را دست می‌زند و مشکل را پیدا نمی‌کند. `CoreApi.startProxy` عمداً
-`CoreNotLinked` می‌اندازد و `build.gradle.kts` عمداً `assembleRelease` را رد می‌کند.
+بدتر است، چون کاربر تنظیمات را دست می‌زند و مشکل را پیدا نمی‌کند. در بیلدهای بدون AAR،
+`CoreApi.startProxy` عمداً `CoreNotLinked` می‌اندازد و `build.gradle.kts` عمداً `assembleRelease`
+را رد می‌کند.
 
 ## ۱) انتخاب موتور (این تصمیم برگشت‌ناپذیر است)
 
@@ -56,34 +67,30 @@ MEELANO_CORE_BRIDGE_CLASS=life.xtls.<...>.Xray
 `android/app/build.gradle.kts` آن را به `BuildConfig.CORE_BRIDGE_CLASS` می‌ریزد و `XrayBridge` فقط همان
 را با `Class.forName` بار می‌کند. اگر تنظیم نکنید، `XrayBridge.describe()` دقیقاً می‌گوید چه چیزی کم است.
 
-## ۳) ده خطی که همه‌چیز را وصل می‌کند
+## ۳) ده خطی که همه‌چیز را وصل می‌کند — **پیاده‌شده**
 
-`XrayBridge` هر چیزی را که **بدون** دانستنِ AAR ممکن است انجام می‌دهد: بارگذاریِ کلاس، `probe()` که
-می‌گوید کدام متد وجود دارد، و پیامِ خطای خواندنی. کارِ شما فقط پرکردنِ دو تابع است:
+`XrayBridge` با reflection روی API «Invoke» پیاده شد (`libXray v26.9.9`؛ گوموبایل همه‌چیز را در یک
+کلاس `libxray.LibXray` می‌گذارد که CI آن را با javap از داخل جار استخراج می‌کند):
 
-```kotlin
-// 1) کانفیگ را به موتور بده (این فراخوانی باید آفلاینِ نخ اصلی باشد؛ CoreApi این را تضمین کرده)
-private fun start0(m: Method, recv: Any?, profilePath: String, tag: String, tunFd: Int, mtu: Int) {
-    m.invoke(recv, tag, profilePath)                  // ← شکلِ واقعی را از javap بردارید
-}
+- `start()` — `registerDialerController` + `registerListenerController` با یک Proxy جاوا که
+  `VpnService.protect(fd)` را برمی‌گرداند (پاد‌حلقه)، سپس `setDNS(controller, "1.1.1.1:53")`.
+- `bind()` — fd خام را می‌خواند، در `env."xray.tun.fd"` ریشه‌ی کانفیگ می‌نویسد، و
+  `{"apiVersion":3,"method":"runXray","payload":{"xrayJson":…}}` را invoke می‌کند.
+  (این جایگزینِ رسمیِ `SetTunFd` حذف‌شده است؛ ترتیبِ config ← establish ← bind حفظ شده چون
+  خودِ موتور همین‌جا شروع می‌شود، نه قبل‌تر.)
+- `stop()` — `stopXray` + `resetDNS()`؛ نخِ اصلی هرگز (ارکستراتور تضمین می‌کند).
+- خطاها همه به‌صورت `Missing(why)` بالا می‌آیند تا AdviceCard دلیل بگوید، نه «وصل شدم ولی نه».
 
-// 2) فیلدِ TUN را به موتور بده (VpnOrchestrator اول startProxy و بعد attachTunnelFd را صدا می‌زند)
-private fun bind0(fd: FileDescriptor, mtu: Int) {
-    val c = clazz!!
-    find(c, M_BIND_READ)!!.invoke(recvOf(c), fd, mtu, readCallback)
-    find(c, M_BIND_WRITE)!!.invoke(recvOf(c), fd, mtu, writeCallback)
-}
-```
-
-و بعد:
+در CI بیلد هسته (تگ‌ها و dispatch با `core_linked=true`):
 
 ```bash
-./gradlew :app:assembleDebug   -PMEELANO_CORE_LINKED=true -PMEELANO_CORE_BRIDGE_CLASS=<class>
-./gradlew :app:assembleRelease -PMEELANO_CORE_LINKED=true -PMEELANO_CORE_BRIDGE_CLASS=<class>
+git clone --depth 1 --branch "$LIBXRAY_TAG" https://github.com/XTLS/libXray
+cd libXray && python3 build/main.py android       # خروجی: libXray.aar (16KB-page ready)
+cp libXray.aar android/app/libs/core.aar
+# سپس در همان workflow: استخراج کلاس + javap-gate + -PMEELANO_CORE_LINKED=true
 ```
 
-در CI همان‌ها به‌شکل `inputs.core_linked` و `inputs.bridge_class` روی `workflow_dispatch` اضافه شوند
-(فایل `.github/workflows/apk.yml`؛ `variant=release` بدون `keystore.properties` نمی‌سازد و این درست است).
+بیلد محلی بدون کلونِ CI هم کار می‌کند (همان مراحل دستی + دو پِراپرتی `-PMEELANO_...`).
 
 ## ۴) پیمانِ فراخوانی‌ها (جایی که بیشترِ باگ‌ها هست)
 
