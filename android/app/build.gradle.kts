@@ -103,7 +103,7 @@ android {
         // and including them doubled the shipped APK (250MB). Devices get the two ARM slices -
         // arm64 since forever ("16KB-page ready" per the gomobile flags), v7a for the old phones
         // this country still has. Emulator builds can flip this locally; CI must not grow it back.
-        ndk { abiFilters("arm64-v8a", "armeabi-v7a") }
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
