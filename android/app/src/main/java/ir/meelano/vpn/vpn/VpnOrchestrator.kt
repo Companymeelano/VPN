@@ -56,9 +56,15 @@ class VpnOrchestrator(
                 state.value = ConnectPhase.Idle
                 throw c
             } catch (t: Throwable) {
-                // a failed dial must not leave a half-open tunnel fd behind: that is how "it says
-                // connected but nothing passes, restart fixes it" happens
-                releaseTun()
+                // A failed dial must not leave a half-open tunnel fd behind: that is how "it says
+                // connected but nothing passes, restart fixes it" happens. One deliberate exception -
+                // the kill switch. With it on, a dial that dies *after* the interface exists keeps the
+                // interface: every packet then routes into a tunnel with no engine, i.e. the phone is
+                // offline, which is exactly what a kill switch promises. Disconnect still closes it
+                // (the toggle's Failed branch -> orchestrator.disconnect() -> releaseTun()).
+                if (!runCatching { ir.meelano.vpn.data.AppSettings.killSwitch }.getOrDefault(false)) {
+                    releaseTun()
+                }
                 state.value = ConnectPhase.Failed(t.message ?: "tunnel_error")
             }
         }
@@ -79,6 +85,10 @@ class VpnOrchestrator(
     }
 
     private suspend fun run(node: FeedNode) = withContext(Dispatchers.Default) {
+        // start clean: a previous attempt (or a kill-switch hold) may have kept a tunnel fd, and
+        // establishing a second interface over it is the "two tunnels, one dead" class of bug
+        releaseTun()
+
         // ---- 0. permission must already be granted; prepare() is cheap but not free
         if (VpnService.prepare(context) != null) {
             state.value = ConnectPhase.Failed("permission_required")
@@ -162,8 +172,13 @@ class VpnOrchestrator(
         b.setSession(context.getString(ir.meelano.vpn.R.string.app_name))
             .setMtu(mtu)
             .addAddress(VPN_IP, 32)
-            .addDnsServer(DNS_PRIMARY)
             .addRoute("0.0.0.0", 0)
+        // The "DNS امن" switch is finally real, and honest about its scope: it chooses WHICH resolver
+        // the system advertises to apps inside the tunnel. Both candidates still enter the tun and the
+        // core's routing rule sends every :53 flow to the proxy - so "off" means a plainer resolver on
+        // the same protected path, never a leak back to the local ISP.
+        val secureDns = runCatching { ir.meelano.vpn.data.AppSettings.secureDns }.getOrDefault(true)
+        (if (secureDns) DNS_SECURE else DNS_PLAIN).forEach { b.addDnsServer(it) }
         // There is no "exclude this route" API on VpnService.Builder: addRoute() only *includes*
         // networks, and adding a host route for our own server with a default route already inside the
         // tunnel is exactly how you get a loop (tunnel traffic dialling the tunnel). The supported
@@ -207,7 +222,12 @@ class VpnOrchestrator(
     companion object {
         private const val MTU = 1420                 // 1280-ish is safest over ws/tls tunnels
         private const val VPN_IP = "10.128.0.2"
-        private const val DNS_PRIMARY = "1.1.1.1"
+        private val DNS_SECURE = listOf("1.1.1.1", "1.0.0.1")
+        private val DNS_PLAIN = listOf("8.8.8.8", "8.4.4.4")
+        // a hostname, not an IP literal: single escapes on purpose. "\\\\." in a Kotlin
+        // string is the regex "literal backslash, then any character" - which no real hostname
+        // contains, so for two releases the dns_failed fast-fail below could never trigger
+        // and an unresolvable server hung inside the core instead of failing with a name.
         private val HOSTNAME = Regex("^[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}$")
     }
 }

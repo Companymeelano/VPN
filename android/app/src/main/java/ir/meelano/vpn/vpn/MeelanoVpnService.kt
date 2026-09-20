@@ -370,11 +370,21 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
         connectivity = getSystemService(ConnectivityManager::class.java)
         val cb = object : android.net.ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: android.net.Network) {
+                // only a live session has anything to rebind; on a dormant service this used to tickle
+                // the core for no reason every time the radio came back
+                if (_phase.value !is ConnectPhase.Connected) return
                 if (!hasVpnUnderlying()) return
                 serviceScope.launch { runCatching { CoreApi.rebindUnderlying(this@MeelanoVpnService) } }
             }
 
             override fun onLost(network: android.net.Network) {
+                // a radio drop must disturb the UI only while the user actually *stands on* the tunnel:
+                // flipping an idle or failed ring to "connecting 40%" is how "the app reconnects by
+                // itself" ghost stories start
+                val p = _phase.value
+                val live = p is ConnectPhase.Connected || p is ConnectPhase.Handshake ||
+                    p is ConnectPhase.TunnelUp || p is ConnectPhase.Verifying
+                if (!live) return
                 _phase.value = ConnectPhase.Handshake(0.4f)
                 serviceScope.launch {
                     KeepAlive.retryWithBackoff(this@MeelanoVpnService)

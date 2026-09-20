@@ -97,12 +97,27 @@ object CoreApi {
     fun alive(): Boolean = running
 
     /**
-     * Device-wide counters. Named `getTotalRxBytes/getTotalTxBytes` (there is no getTotalRx).
-     * Prefer swapping this for the core's own counters when you wire a real engine: these also
-     * count non-VPN traffic, so a download in another app shows up in the speed row.
+     * Counters scoped to THIS uid: the linked core runs in-process, so every socket it dials carries
+     * the app's uid and per-uid stats are, to a very good approximation, "traffic through the tunnel".
+     * Device-wide totals (getTotalRxBytes/…TxBytes) also count what a video app does at the same moment
+     * and make a dead tunnel look busy. Uid-scoped reads exist on API 28+; older ROMs keep the device
+     * total as the fallback, wrapped because a few OEMs throw instead of returning -1.
      */
-    fun rxBytes(): Long = runCatching { android.net.TrafficStats.getTotalRxBytes() }.getOrDefault(0L)
-    fun txBytes(): Long = runCatching { android.net.TrafficStats.getTotalTxBytes() }.getOrDefault(0L)
+    fun rxBytes(): Long = counter(rx = true)
+    fun txBytes(): Long = counter(rx = false)
+
+    private fun counter(rx: Boolean): Long {
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            val uid = android.os.Process.myUid()
+            val v = runCatching {
+                if (rx) android.net.TrafficStats.getUidRxBytes(uid) else android.net.TrafficStats.getUidTxBytes(uid)
+            }.getOrDefault(-1L)
+            if (v >= 0) return v
+        }
+        return runCatching {
+            if (rx) android.net.TrafficStats.getTotalRxBytes() else android.net.TrafficStats.getTotalTxBytes()
+        }.getOrDefault(0L)
+    }
 
     suspend fun stop(service: VpnService) {
         if (LINKED) XrayBridge.stop()

@@ -24,9 +24,4 @@ object FeedHolder {
     }
 
     fun isReady(): Boolean = ready
-
-    /** Called by the service when it is done dialing: the repo can start reporting too. */
-    fun onTunnelStarted() {
-        if (ready) runCatching { repo.startReporting() }
-    }
 }

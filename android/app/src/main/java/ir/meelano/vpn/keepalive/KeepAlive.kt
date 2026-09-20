@@ -77,9 +77,15 @@ object KeepAlive {
         }
     }
 
+    /**
+     * The user's "اتصال خودکار/هوشمند" switch (the same `smart_reconnect` pref the Settings row writes).
+     * It used to read an `auto_connect` key that *nothing in the app ever wrote* - which made the
+     * watchdog, the boot receiver and the retry loop permanently on and the toggle a fake. One key, one
+     * meaning: when the user turns smart reconnect off, every automatic resurrection path goes quiet.
+     */
     fun autoConnectEnabled(context: Context) =
         context.getSharedPreferences("meelano_prefs", Context.MODE_PRIVATE)
-            .getBoolean("auto_connect", true)
+            .getBoolean("smart_reconnect", true)
 
     /** Intent for the onboarding row: "اجازه‌ی اجرا در پس‌زمینه" */
     fun batteryOptimizationIntent(context: Context): Intent? {
