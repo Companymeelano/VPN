@@ -508,7 +508,10 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        stringResource(R.string.set_version, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
+                        // build id is part of the answer, not decoration: two APKs with the same
+                        // versionCode can be different builds, and "send me what you see" must work
+                        stringResource(R.string.set_version, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE) +
+                            if (BuildConfig.BUILD_ID.isNotBlank()) " · ${BuildConfig.BUILD_ID}" else "",
                         fontSize = 11.sp, color = p.faint, modifier = Modifier.weight(1f),
                         style = TextStyle(fontFeatureSettings = "tnum"),
                     )

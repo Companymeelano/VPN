@@ -82,6 +82,7 @@ fun DiagnosticsSheet(
             Diagnostics.Input(
                 versionName = BuildConfig.VERSION_NAME,
                 versionCode = BuildConfig.VERSION_CODE,
+                buildId = BuildConfig.BUILD_ID,
                 channel = BuildConfig.CHANNEL,
                 coreLinked = BuildConfig.CORE_LINKED,
                 coreEngine = BuildConfig.CORE_ENGINE,
@@ -102,6 +103,7 @@ fun DiagnosticsSheet(
                 blockReport = AppSettings.lastBlockReport,
                 feedCount = vip.size + free.size,
                 feedSource = vm.feedSourceLabel(),
+                coreBridge = ir.meelano.vpn.vpn.XrayBridge.describe(),
             )
         )
     }

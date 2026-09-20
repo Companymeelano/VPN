@@ -24,6 +24,8 @@ object Diagnostics {
     data class Input(
         val versionName: String = "",
         val versionCode: Int = 0,
+        /** ci-injected short sha so a screenshot answers "which build is this, actually" */
+        val buildId: String = "",
         val channel: String = "",
         val coreLinked: Boolean = false,
         val coreEngine: String = "",
@@ -47,17 +49,28 @@ object Diagnostics {
         /** which builder made today's list - "هاست" or "آنبرد". Useful because a thin list has two very
          *  different explanations, and this line is the one that tells support which one it is. */
         val feedSource: String = "",
+        /** XrayBridge.describe(): one line that proves whether the wrapper class + invoke entry are
+         *  discoverable on THIS device, not merely "was linked at build time". */
+        val coreBridge: String = "",
     )
 
     fun render(i: Input): String {
         val sb = StringBuilder()
         sb.appendLine("M•A VPN — گزارشِ عیب‌یابی")
-        line(sb, "نسخه", "${i.versionName} (${i.versionCode})${if (i.channel.isBlank()) "" else " ${i.channel}"}")
+        line(
+            sb, "نسخه",
+            "${i.versionName} (${i.versionCode})" +
+                (if (i.buildId.isBlank()) "" else " · build ${i.buildId}") +
+                (if (i.channel.isBlank()) "" else " ${i.channel}"),
+        )
         line(
             sb, "هسته",
             if (i.coreLinked) "وصل‌شده (${i.coreEngine.ifBlank { "نامشخص" }})"
             else "در این بیلد وصل نشده — تونل عملاً برقرار نمی‌شود",
         )
+        // this row is the truth about the linked state ON THIS DEVICE: "linked" at build time and
+        // "the class is actually findable here" can disagree (repackaged apk, wrong lib slice).
+        if (i.coreBridge.isNotBlank()) line(sb, "پل هسته", i.coreBridge)
         line(sb, "حالتِ ضدفیلتر", i.regime.ifBlank { "—" })
         if (i.detectedRegime.isNotBlank() && i.detectedRegime != i.regime) {
             line(sb, "تشخیصِ خودکار", i.detectedRegime)

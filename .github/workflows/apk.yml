@@ -272,6 +272,8 @@ jobs:
             args+=(-PMEELANO_CORE_LINKED=true -PMEELANO_CORE_BRIDGE_CLASS="${{ steps.bridge.outputs.bridge }}")
             echo "core-linked build: bridge=${{ steps.bridge.outputs.bridge }}" >> "$GITHUB_STEP_SUMMARY"
           fi
+          # شناسه‌ای که روی گوشی دیده می‌شود: «کدام بیلد واقعاً نصب است» برای گزارش کاربر ضروری است
+          args+=(-PMEELANO_BUILD_ID="${GITHUB_SHA::7}")
           [ -n "${MEELANO_FEED_KEY_IN:-}" ] && args+=(-PMEELANO_FEED_KEY="$MEELANO_FEED_KEY_IN")
           # سِکِرِتِ HMAC فقط برای *وریفای* آپدیت در کلاینت است؛ اگر ست نشده باشد فیلد خالی می‌ماند
           # و کلاینت امضای فایل را بررسی نمی‌کند — پس ریلیز واقعی بدون آن نساز.
@@ -471,6 +473,8 @@ jobs:
             echo "- نصب روی گوشی: \`adb install -r $FILE\`"
             echo "- برای آپدیت خودکار: \`$FILE\` و \`$FILE.sha256\` را در \`public_html/v/apk/\` بگذار — نام فایل از قبل با قاعده‌ی \`Version.php::scan()\` می‌خواند، پس تغییرنام لازم نیست"
             echo "- این بیلد debug است (کلید debug). ریلیز کاربران را با keystore خودت بساز: docs/ANDROID-BUILD.md"
+            [ -n "${{ steps.bridge.outputs.core_sha256 }}" ] && echo "- هسته: libXray ${{ env.LIBXRAY_TAG }} — bridge \`${{ steps.bridge.outputs.bridge }}\` · core.aar sha256 \`${{ steps.bridge.outputs.core_sha256 }}\`"
+            echo "- ⚠️ اگر نصب به‌روزرسانی خطا داد: بیلدهای debug روی هر رانر امضای متفاوت می‌گیرند — نسخه‌ی قبلی را کامل پاک کن بعد نصب کن"
           } > notes.md
           assets="$FILE $FILE.sha256"
           [ -f design/preview/assets/ic-store-512.png ] && assets="$assets design/preview/assets/ic-store-512.png"

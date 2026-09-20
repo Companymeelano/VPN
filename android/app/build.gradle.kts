@@ -39,6 +39,10 @@ val selfUpdate = providers.gradleProperty("MEELANO_SELF_UPDATE").orNull ?: "true
 // true ONLY when a real engine (tProxy / sing-box) is a dependency and CoreApi calls it.
 val coreLinked = providers.gradleProperty("MEELANO_CORE_LINKED").orNull ?: "false"
 
+// short sha CI injects (-PMEELANO_BUILD_ID=${GITHUB_SHA::7}), so a settings screenshot answers
+// "which exact build is on the phone" - versionCode/Name are intentionally slow-moving.
+val buildId = providers.gradleProperty("MEELANO_BUILD_ID").orNull ?: ""
+
 // Which config dialect CoreProfiles renders. Two facts decide this, not taste:
 //   xray     -> XTLS/Xray-core is MPL-2.0, so a closed-source app may ship libXray; Reality+Vision is
 //               the combination that still works under Iranian DPI, and it is what the vip feed carries.
@@ -98,6 +102,7 @@ android {
         buildConfigField("String", "CORE_ENGINE", "\"${coreEngine.trim()}\"")
         buildConfigField("String", "CORE_BRIDGE_CLASS", "\"${coreBridgeClass.trim()}\"")
         buildConfigField("String", "CHANNEL", "\"stable\"")
+        buildConfigField("String", "BUILD_ID", "\"$buildId\"")
 
         // The pinned libXray AAR ships .so for all four ABIs; x86/x86_64 exist only for emulators,
         // and including them doubled the shipped APK (250MB). Devices get the two ARM slices -
