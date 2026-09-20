@@ -37,8 +37,8 @@ class DirectFeedTest {
     fun healthyPrimaries_neverTouchTheFallbackTier() = runBlocking {
         val net = Net(
             mapOf(
-                "https://a.example/x" to vless("10.0.0.1"),
-                "https://b.example/y" to vless("10.0.0.2"),
+                "https://a.example/x" to vless("203.0.113.11"),
+                "https://b.example/y" to vless("203.0.113.12"),
             )
         )
         val boom = DirectFeed.Upstream("fallback", "https://fallback.example/z")
@@ -61,7 +61,7 @@ class DirectFeedTest {
     fun thinPrimaries_autoEngageTheFallbackTier() = runBlocking {
         val net = Net(
             mapOf(
-                "https://fn.example/daily" to vless("10.1.0.1") + "\n" + vless("10.1.0.2"),
+                "https://fn.example/daily" to vless("198.51.100.7") + "\n" + vless("198.51.100.8"),
             )
         )
         val res = DirectFeed.buildFree(
@@ -81,7 +81,7 @@ class DirectFeedTest {
 
     @Test
     fun mirrorChain_walksToTheNextHostAndSaysSo() = runBlocking {
-        val net = Net(mapOf("https://cdn.example/doc" to vless("10.2.0.1")))
+        val net = Net(mapOf("https://cdn.example/doc" to vless("203.0.113.21")))
         val res = DirectFeed.buildFree(
             sources = listOf(
                 DirectFeed.Upstream("m", "https://raw.example/doc", mirrors = listOf("https://cdn.example/doc")),
@@ -102,9 +102,9 @@ class DirectFeedTest {
     @Test
     fun undialableRows_neverBecomeTappableNodes() = runBlocking {
         val body = listOf(
-            "hysteria2://secretpass@10.3.0.1:443?sni=example.com#hy2-row",
-            "socks5://user:pass@10.3.0.2:1080#socks-row",
-            vless("10.3.0.3"),
+            "hysteria2://secretpass@203.0.113.31:443?sni=example.com#hy2-row",
+            "socks5://user:pass@203.0.113.32:1080#socks-row",
+            vless("203.0.113.33"),
         ).joinToString("\n")
         val net = Net(mapOf("https://mixed.example/list" to body))
         val res = DirectFeed.buildFree(
