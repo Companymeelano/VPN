@@ -247,6 +247,8 @@ class NodeUriTest {
         val r = DirectFeed.buildFree(
             sources = listOf(DirectFeed.Upstream("t", "https://example.invalid/l.txt")),
             brand = "Free M•A",
+            // grading/dedup is what is asserted here; the mirror/fallback tiers have their own test class
+            fallbacks = emptyList(),
             fetch = { body },
             probe = { list ->
                 list.associate { n ->
@@ -276,6 +278,8 @@ class NodeUriTest {
                 DirectFeed.Upstream("a", "https://example.invalid/a.txt"),
                 DirectFeed.Upstream("b", "https://example.invalid/b.txt"),
             ),
+            // per-source death is what is asserted here; a fallback tier would change sourcesTotal
+            fallbacks = emptyList(),
             fetch = { u -> if (u.id == "a") "vless://u@203.0.113.30:443?security=tls" else null },
             probe = { emptyMap() },
         )
