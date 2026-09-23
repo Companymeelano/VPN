@@ -376,12 +376,19 @@ private fun StatusLine(phase: ConnectPhase, node: FeedNode?) {
         is ConnectPhase.Idle -> "برای اتصال لمس کنید" to p.muted
         is ConnectPhase.Connected -> (node?.name ?: "Vip Meelano") to p.text
         is ConnectPhase.Failed -> when (phase.reason) {
-            // the one failure that is a property of *this build*, not of the network: say so plainly
-            ir.meelano.vpn.vpn.CoreApi.NOT_LINKED -> "هسته‌ی تونل در این بیلد وصل نشده است" to p.warn
+            // the one failure that is a property of *this build*, not of the network: say so plainly,
+            // and put the build id on the screen so a single screenshot is the whole bug report
+            ir.meelano.vpn.vpn.CoreApi.NOT_LINKED ->
+                "هسته‌ی تونل در این بیلد وصل نشده است · بیلد ${ir.meelano.vpn.BuildConfig.BUILD_ID.ifBlank { "؟" }}" to p.warn
             else -> "اتصال برقرار نشد" to p.danger
         }
         else -> "در حال اتصال… ${(phase.progress * 100).toInt()}%" to p.muted
     }
+    // a "چرا نشد" that only says "نشد" is how support tickets become loops: the raw reason rides
+    // under the friendly line (latin code, tiny, muted - readable in a screenshot, invisible otherwise)
+    val reason: String? = (phase as? ConnectPhase.Failed)?.reason
+        ?.takeIf { it != ir.meelano.vpn.vpn.CoreApi.NOT_LINKED }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (node != null && phase is ConnectPhase.Connected) {
             Flag(cc = node.cc)
@@ -394,6 +401,16 @@ private fun StatusLine(phase: ConnectPhase, node: FeedNode?) {
             fontWeight = FontWeight.Medium,
             style = TextStyle(fontFeatureSettings = "tnum"),
         )
+    }
+    if (reason != null) {
+        Text(
+            text = reason.take(140),
+            color = p.faint.copy(alpha = 0.8f),
+            fontSize = 10.sp,
+            maxLines = 2,
+            style = TextStyle(fontFeatureSettings = "tnum"),
+        )
+    }
     }
 }
 
