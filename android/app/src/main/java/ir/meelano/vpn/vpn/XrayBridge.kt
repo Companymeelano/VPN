@@ -54,6 +54,7 @@ object XrayBridge {
     private const val METHOD_RUN = "runXray"
     private const val METHOD_STOP = "stopXray"
     private const val METHOD_VERSION = "xrayVersion"
+    private const val METHOD_PING_BATCH = "pingBatch"
 
     /** Go's own DNS goes here, via a protected socket (same DNS the VpnService advertises). */
     private const val CORE_DNS = "1.1.1.1:53"
@@ -217,6 +218,46 @@ object XrayBridge {
         return runCatching {
             val data = invoke(METHOD_VERSION, null)
             data.optString("version").ifBlank { data.toString().take(80) }
+        }.getOrNull()
+    }
+
+    /**
+     * libXray's temporary-core latency race: parses only the `outbounds` of each config and dials a
+     * real HEAD through every one concurrently (an engine-grade probe - TLS and transport included -
+     * not a bare socket open). Hard API cap: five configs per call, callers chunk.
+     *
+     * `data` is hand-parsed rather than going through [invoke] because its shape is a result ARRAY
+     * (one item per config, in input order) and the helper assumes an object.
+     *
+     * @return per-config delays in ms (>= 10000 means error/timeout), or null when the engine cannot
+     *         race at all (unlinked build, missing method, unreadable envelope). Callers treat null as
+     *         "keep the curated order", never as "everyone failed".
+     */
+    fun pingBatch(configs: List<String>, timeoutSec: Int = 5): List<Long>? {
+        if (clazz == null || configs.isEmpty()) return null
+        val c = configs.take(5)
+        return runCatching {
+            val arr = org.json.JSONArray()
+            for (cfg in c) arr.put(org.json.JSONObject().put("xrayJson", cfg))
+            val req = org.json.JSONObject()
+            req.put("apiVersion", API_VERSION)
+            req.put("method", METHOD_PING_BATCH)
+            req.put(
+                "payload",
+                org.json.JSONObject()
+                    .put("configs", arr)
+                    .put("timeout", timeoutSec)
+                    .put("url", "https://cp.cloudflare.com/"),
+            )
+            val resp = org.json.JSONObject(invokeUnchecked(req.toString()).ifBlank { "{}" })
+            if (!resp.optBoolean("success", false)) return null
+            val d = resp.opt("data")
+            val results = when (d) {
+                is org.json.JSONArray -> d
+                is org.json.JSONObject -> d.optJSONArray("results") ?: d.optJSONArray("items")
+                else -> null
+            } ?: return null
+            List(c.size) { i -> results.optJSONObject(i)?.optLong("delay", 11_000L) ?: 11_000L }
         }.getOrNull()
     }
 

@@ -14,8 +14,13 @@ import ir.meelano.vpn.vpn.MeelanoVpnService
 import ir.meelano.vpn.vpn.Traffic
 import ir.meelano.vpn.update.UpdateManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -58,16 +63,19 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
         get() = (vip.value + free.value).firstOrNull { it.id == _activeId.value } ?: bestAuto()
 
     /** "خودکار" is a real choice, not a label: the best node of the merged list, stable ordering. */
-    fun bestAuto(): FeedNode? {
-        val all = (vip.value + free.value).filter { it.samples >= 0 }
-        if (all.isEmpty()) return null
-        return all.minWith(
-            compareByDescending<FeedNode> { it.tier == "vip" }
-                .thenBy { gradeRank(it.grade) }
-                .thenBy { it.latencyMs ?: Long.MAX_VALUE }
-                .thenByDescending { it.reliability }
-        )
-    }
+    fun bestAuto(): FeedNode? = rankedCandidates().firstOrNull()
+
+    /** Ranked, dialable candidates for auto mode - one comparator shared by the tap and the ladder. */
+    private fun rankedCandidates(): List<FeedNode> =
+        (vip.value + free.value)
+            .filter { it.samples >= 0 }
+            .filter { it.proto in ir.meelano.vpn.data.DirectFeed.TUNNEL_PROTOS }
+            .sortedWith(
+                compareByDescending<FeedNode> { it.tier == "vip" }
+                    .thenBy { gradeRank(it.grade) }
+                    .thenBy { it.latencyMs ?: Long.MAX_VALUE }
+                    .thenByDescending { it.reliability }
+            )
 
     fun toggle() {
         val p = phase.value
@@ -78,11 +86,80 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
             }
             p !is ConnectPhase.Idle -> return        // connecting/failing-over: the ring already shows a percentage; a second tap must not restart the dial
         }
+        // "تک‌ضرب مثل JumpJump": with انتخاب خودکار on, one tap is a race + a ladder - the app
+        // walks down the ranked list until a tunnel actually lands. A manually chosen row still
+        // connects to exactly that row.
+        if (AppSettings.autoSelect && rankedCandidates().size > 1) {
+            autoLadder()
+            return
+        }
         val node = activeNode
         // Reading the phase once, then re-checking before we actually dial: the phase can flip to
         // Busy between the user's tap and the connect call (race), and dialing twice wedges the
         // ring exactly like the old bug. The stale-read branch below just exits quietly.
         connect(node)
+    }
+
+    /* ------------------------------------------------ the JumpJump tap: race, then ladder */
+
+    private var ladderJob: Job? = null
+
+    /**
+     * One tap, many chances. The top ten candidates first race through libXray's own temporary core
+     * - `pingBatch` is a real outbound dial, TLS and transport included, not a bare TCP open - and
+     * then the connect hops down the ranking until one node actually lands a tunnel. Stops after five
+     * hops: past that, the operator is the problem, not the node.
+     */
+    private fun autoLadder() {
+        if (ladderJob?.isActive == true) return
+        ladderJob = viewModelScope.launch {
+            val all = rankedCandidates().take(10)
+            if (all.isEmpty()) { connect(null); return@launch }
+            val ordered = withContext(Dispatchers.IO) { preRace(all) }
+            var hops = 0
+            for (node in ordered) {
+                if (hops >= 5 || !isActive) return@launch
+                hops++
+                val before = phase.value
+                connect(node)
+                // a consent dialog pauses the ladder: the dialog's own result path connects afterwards
+                delay(1_500)
+                if (_consent.value != null) return@launch
+                val terminal = withTimeoutOrNull(12_000) {
+                    phase.filter {
+                        it !== before && (it is ConnectPhase.Connected || it is ConnectPhase.Failed)
+                    }.first()
+                }
+                if (terminal is ConnectPhase.Connected) return@launch
+                runCatching { repo.reportResult(node.id, false, -1L, "ladder_hop$hops") }
+                if (!isActive) return@launch
+                runCatching { MeelanoVpnService.stop(getApplication()) }
+                delay(450)
+            }
+            // the last hop's real failure stays on the ring, with its reason line under it
+        }
+    }
+
+    /**
+     * The race: per-node outbound latency measured by the linked core itself (pingBatch, five per
+     * call - the API's hard cap). In an unlinked build, or when the engine cannot race at all, the
+     * curated order simply stands - nobody is dropped, only healthy nodes move to the front.
+     */
+    private fun preRace(list: List<FeedNode>): List<FeedNode> {
+        if (!runCatching { ir.meelano.vpn.vpn.CoreApi.LINKED }.getOrDefault(false)) return list
+        if (!runCatching { ir.meelano.vpn.vpn.XrayBridge.configured }.getOrDefault(false)) return list
+        val score = HashMap<String, Long>(list.size)
+        var raced = false
+        for (chunk in list.chunked(5)) {
+            val cfgs = chunk.map {
+                ir.meelano.vpn.vpn.CoreProfiles.pingConfigJson(it, AppSettings.tuneFor(it))
+            }
+            val delays = ir.meelano.vpn.vpn.XrayBridge.pingBatch(cfgs, timeoutSec = 5) ?: continue
+            raced = true
+            chunk.forEachIndexed { i, n -> score[n.id] = delays.getOrElse(i) { 11_000L } }
+        }
+        if (!raced) return list
+        return list.sortedBy { score[it.id] ?: 11_000L }   // stable: ties and the unraced keep order
     }
 
     fun connect(node: FeedNode?) {

@@ -409,15 +409,7 @@ object CoreProfiles {
         // option and an unknown field here is silently dropped, which is worse than absent.
         stream["sockopt"] = mapOf("tcpNoDelay" to true, "tcpFastOpen" to s.connectionReuse)
 
-        val outbound = LinkedHashMap<String, Any?>()
-        outbound["sendThrough"] = "0.0.0.0"
-        outbound["protocol"] = s.proto
-        outbound["tag"] = "proxy"
-        outbound["settings"] = settings
-        outbound["streamSettings"] = stream
-        if (s.mux) {
-            outbound["mux"] = mapOf("enabled" to true, "concurrency" to s.muxConcurrency.coerceIn(1, 64))
-        }
+        val outbound = xrayUsableOutbound(s, settings, stream)
         if (s.needsFragment) {
             // Upstream Xray has no transport fragmenter. It is echoed rather than faked: a build that
             // needs fragmentation in BLACKOUT selects the sing-box dialect, where the same numbers are
@@ -470,6 +462,45 @@ object CoreProfiles {
         )
         profile["routing"] = mapOf("domainStrategy" to "IPIfNonMatch", "rules" to rules)
         return profile
+    }
+
+    /**
+     * The outbound exactly as Xray spells it - and exactly the unit libXray's `pingBatch` races.
+     * App-only echoes (meelanoTune / meelanoFragment) stay OUT of this map: those are written for
+     * humans diffing a profile, while an engine must accept this piece standing alone.
+     */
+    private fun xrayUsableOutbound(
+        s: Spec,
+        settings: Map<String, Any?>,
+        stream: Map<String, Any?>,
+    ): LinkedHashMap<String, Any?> {
+        val outbound = LinkedHashMap<String, Any?>()
+        outbound["sendThrough"] = "0.0.0.0"
+        outbound["protocol"] = s.proto
+        outbound["tag"] = "proxy"
+        outbound["settings"] = settings
+        outbound["streamSettings"] = stream
+        if (s.mux) {
+            outbound["mux"] = mapOf("enabled" to true, "concurrency" to s.muxConcurrency.coerceIn(1, 64))
+        }
+        return outbound
+    }
+
+    /**
+     * What `pingBatch` receives for one node: a throwaway config whose outbounds carry no App-only
+     * fields, because the temporary core is constructed from this alone (autopilot off: an unknown
+     * field here would fail the race for a node that is in fact dialable). The XRAY dialect is
+     * hard-coded on purpose - the race runs against the linked engine, which is Xray in every
+     * shipping build.
+     */
+    fun pingConfigJson(node: FeedNode, tune: ir.meelano.vpn.net.Tune): String {
+        val full = xray(specFor(node, tune))
+        val outbounds = (full["outbounds"] as? List<*>) ?: return render(mapOf("outbounds" to emptyList<Any>()))
+        val cleaned = outbounds.map { ob ->
+            @Suppress("UNCHECKED_CAST")
+            (ob as? Map<String, Any?>)?.filterKeys { !it.startsWith("meelano") } ?: ob
+        }
+        return render(mapOf("outbounds" to cleaned))
     }
 
     /* -------------------------------------------------------- sing-box / Hiddify-fork dialect */
