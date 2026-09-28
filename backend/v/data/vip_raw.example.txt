@@ -1,0 +1,20 @@
+# ============================================================
+#  YOUR VIP LIST  —  copy this file to  vip_raw.txt  and paste your configs.
+#  (or paste straight into the admin panel: /v/admin/ -> "VIP list")
+#
+#  Anything works as input, the server normalizes it:
+#    - one config per line (vless:// vmess:// trojan:// ss:// hy2://)
+#    - a base64 subscription string
+#    - an HTML page or a Telegram export containing the links
+#    - JSON array of the same links
+#
+#  IMPORTANT: the text after  #  (the vendor's own name) is NEVER shown in the app.
+#  The app only ever gets  "Vip Meelano" + the country code it draws a flag from.
+# ============================================================
+
+vless://2a4e1b0c-77aa-4b0e-9d11-serversid1@37.120.190.11:443?encryption=none&security=reality&type=tcp&sni=www.microsoft.com&pbk=SbVKOEMjK0sIlbwg4akyBg5mL5K5W6g5F4EgAg0BJFM&sid=a1b2c3d4&fp=chrome&flow=xtls-rprx-vision#VIP-DE-Frankfurt-01 (MCI 200GB)
+vless://9c1f2d3e-55bb-4c11-8f22-serversid2@146.70.80.12:2087?encryption=none&security=tls&type=ws&host=stockholm.edge.me&path=%2F%3Fed%3D2024&fp=safari#VIP-SE-Stockholm
+trojan://L0ngTr0janKey@162.159.200.5:443?sni=ny.edge.me&type=tcp&allowInsecure=0#VIP-US-NewYork
+vmess://eyJ2IjoiMiIsInBzIjoiVklQLUlSLVRlaHJhbiIsImFkZCI6IjUuMjAyLjEwLjEwIiwicG9ydCI6IjQ0MyIsImlkIjoiMzNmMmQxYzAtYmFkZi00MzIxLTk4NzYtNTQzMmRlZmFiY2RlIiwiYWlkIjoiMCIsInNjeSI6ImF1dG8iLCJuZXQiOiJ3cyIsImhvc3QiOiJpcjEuZGV2IiwicGF0aCI6Ii9ncnBjIiwidGxzIjoidGxzIn0=
+ss://YWVzLTI1Ni1nY206VGVhbVNlY3JldEA1MS4xNS4yMDAuMTEwOjgzODg=#VIP-FR-Paris-SS
+hy2://HyTw0Secur3Psk@45.76.12.120:443?insecure=1&sni=sg1.meelano.dev#VIP-SG-Singapore

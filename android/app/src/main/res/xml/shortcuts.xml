@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- long-press the launcher icon: the two actions people actually repeat.
+         Both go through MainActivity with an extra; a shortcut that connects without the
+         system VPN consent dialog would be a security hole, and the OS blocks it anyway. -->
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_qs_vpn"
+        android:shortcutId="connect"
+        android:shortcutShortLabel="@string/action_connect">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="ir.meelano.vpn.MainActivity"
+            android:targetPackage="ir.meelano.vpn">
+            <extra android:name="ShortcutAction" android:value="connect" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_qs_vpn"
+        android:shortcutId="servers"
+        android:shortcutShortLabel="@string/sheet_servers">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="ir.meelano.vpn.MainActivity"
+            android:targetPackage="ir.meelano.vpn">
+            <extra android:name="ShortcutAction" android:value="servers" />
+        </intent>
+    </shortcut>
+</shortcuts>

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  روشن (Light) palette. MIRROR of ui/theme/Color.kt (Palette.Light) and of the CSS custom properties in
+  design/preview/index.html. Three mirrors, one truth - check-theme.sh fails the build on drift.
+
+  This file is the *default* (values/), and it is the LIGHT palette: an Android resource qualifier
+  works by override, so whatever lives in values/ is also what a pre-21 device, a launcher widget,
+  or a malformed night config falls back to. Light-as-default is the safe fallback (a white window
+  background on a light-mode phone is correct; on a dark-mode phone the night file overrides it).
+
+  icon_field is deliberately NOT inverted: the M•A slab tile stays graphite in both themes (Android
+  adapts the *themed* icon through @drawable/ic_launcher_monochrome, which does invert). A launcher
+  that repaints itself per theme is how you lose brand recognition on the home screen.
+-->
+<resources>
+    <color name="bg">#FFF2F5F0</color>
+    <color name="surface">#FFFBFCFA</color>
+    <color name="surface_high">#FFE8EDE5</color>
+    <color name="well">#FFE3E9DF</color>
+    <color name="line">#FFD9E0D5</color>
+    <color name="hairline">#0E141C16</color>
+    <color name="bezel_top">#FFFFFFFF</color>
+    <color name="bezel_bottom">#FFCBD5C6</color>
+    <color name="text">#FF141C16</color>
+    <color name="muted">#FF4E5C51</color>
+    <color name="muted_faint">#FF71806F</color>
+    <color name="accent">#FF0C7A50</color>
+    <color name="accent_deep">#FF075138</color>
+    <color name="accent_ink">#FFFFFFFF</color>
+    <color name="info">#FF0B6A90</color>
+    <color name="warn">#FF8A5A00</color>
+    <color name="danger">#FFB3382E</color>
+    <color name="accent_12">#1F0C7A50</color>
+    <color name="accent_18">#2E0C7A50</color>
+    <color name="accent_28">#470C7A50</color>
+    <color name="danger_18">#2EB3382E</color>
+    <color name="icon_field">#FF13171C</color>
+    <color name="tile_icon">#FF0D151C</color>
+</resources>

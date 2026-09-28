@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Brand control icon: stroke-only on the 24 grid, 2.1 weight, round caps — same drawing hand as
+     ic_stat_vpn / ic_qs_vpn, because a mixed icon set (some filled, some outlined) is what makes an
+     app look assembled from a template. Tinted by the caller, so no colour lives here. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path
+        android:pathData="M12,3.2 L5.2,6 L5.2,12 C5.2,16.4 8.2,19.6 12,20.8 C15.8,19.6 18.8,16.4 18.8,12 L18.8,6 Z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.1"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+    />
+    <path
+        android:pathData="M8.8,12 L11.2,14.4 L15.4,9.6"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.1"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+    />
+</vector>

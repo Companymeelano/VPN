@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Night variant of Theme.Meelano. Only two things differ from values/themes.xml: the pre-Compose
+  window background (so a cold start never flashes white-on-dark or dark-on-white for the ~300 ms
+  before the first frame) and windowLightStatusBar. Compose sets the bar appearances itself;
+  this file is what the system sees before it runs.
+-->
+<resources>
+    <style name="Theme.Meelano" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:colorBackground">@color/bg</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowActivityTransitions">true</item>
+        <item name="android:windowAnimationStyle">@style/Animation.Meelano</item>
+    </style>
+</resources>

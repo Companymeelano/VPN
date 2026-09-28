@@ -1,0 +1,52 @@
+# /v/  — Meelano VPN feed endpoint  (shared hosting: Apache + mod_rewrite, best-effort)
+# Everything here is optional except the deny rules; the PHP entry points work without rewrite too.
+
+Options -Indexes -MultiViews
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /v/
+
+  # pretty URLs for the app and for testing in a browser
+  RewriteRule ^$ index.php [L]
+  RewriteRule ^(vip|free|version|health|status|stats|selftest|refresh|feedback)(\.json|\.txt)?/?$ index.php?action=$1 [QSA,L,NC]
+
+  # never serve the internals directly
+  RewriteRule ^lib/ - [F,L]
+
+  # NOTE: `admin/` is deliberately NOT forbidden here. The control panel is the only way to paste the
+  # VIP list, rebuild the cache or mint the keys, and a shared host has no shell - blanket-denying the
+  # directory does not harden anything, it bricks the deploy (the panel guards itself: login gate +
+  # CSRF + session, and admin/.htaccess allows nothing but its two entry points). If you are reading
+  # this thinking "admin should be blocked": block the *files*, not the two PHP entry points.
+</IfModule>
+
+<IfModule mod_headers.c>
+  Header set Access-Control-Allow-Origin "*"
+  Header set X-Content-Type-Options "nosniff"
+  Header set Referrer-Policy "no-referrer"
+</IfModule>
+
+# Long client caching + no server-side compression fights with our pre-built .gz
+<IfModule mod_deflate.c>
+  SetEnvIfNoCase REQUEST_URI ".*" no-gzip
+</IfModule>
+
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType application/json "access plus 5 minutes"
+</IfModule>
+
+# data/ holds cache + your pasted VIP list + uploaded APKs: no direct browsing
+RedirectMatch 404 ^/v/data/(cache|locks|log)/
+RedirectMatch 404 ^/v/lib/
+
+<FilesMatch "^(config\.local\.php|ledger\.json|dns\.json|vip_raw\.txt)$">
+  Require all denied
+  Deny from all
+</FilesMatch>
+
+# APK downloads must not be cached by intermediate caches for too long (integrity + size)
+<IfModule mod_mime.c>
+  AddType application/vnd.android.package-archive .apk
+</IfModule>
