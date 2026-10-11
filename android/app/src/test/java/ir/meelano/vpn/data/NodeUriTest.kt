@@ -321,7 +321,7 @@ class NodeUriTest {
         assertEquals(1, r.sourcesOk)
         assertEquals(2, r.sourcesTotal)
         assertEquals(1, r.nodes.size)
-        assertTrue(r.notes.any { it.contains("جواب نداد") })
+        assertTrue(r.notes.any { it.contains("پاسخ نداد") })
     }
 
     @Test
