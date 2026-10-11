@@ -46,6 +46,19 @@ class DirectFeedTest {
     /* ------------------------------------------------------------------ audited defaults */
 
     @Test
+    fun publicFeedUserAgentIsAsciiAndAcceptedByOkHttp() {
+        val value = publicFeedUserAgent("2.4.3 • آزمایشی")
+        assertEquals("MA-VPN/2.4.3", value)
+        assertTrue(value.all { it.code in 0x21..0x7e })
+        // Regression for the on-device failure: Request.Builder.header threw before any socket was
+        // opened when the branded M•A value was used, making every mirror look broken at once.
+        okhttp3.Request.Builder()
+            .url("https://api.github.com/repos/example/example/contents/list.txt")
+            .header("User-Agent", value)
+            .build()
+    }
+
+    @Test
     fun builtInDiscoveryUsesOnlyPublicGithubCdnOrBuildSnapshotRoutes() {
         val all = DirectFeed.DEFAULTS + DirectFeed.FALLBACKS
         assertTrue(all.size >= 12)

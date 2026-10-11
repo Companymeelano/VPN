@@ -121,6 +121,24 @@ object XrayBridge {
         return throw Missing("${m.name} must be a static gomobile method; instance receivers are unsupported")
     }
 
+    private fun invokeJava(m: Method, vararg args: Any?): Any? = try {
+        m.invoke(receiver(m), *args)
+    } catch (error: InvocationTargetException) {
+        throw Missing("${m.name}: ${(error.targetException ?: error).message}")
+    }
+
+    /**
+     * Invoke a required gomobile method. A Go function with no return value is a Java `void` method,
+     * therefore [Method.invoke] legitimately returns null after a successful call. Never use its return
+     * value in an Elvis expression to decide whether the *method* existed: that exact mistake made
+     * registerDialerController run successfully and then report itself missing on every connection.
+     * Internal visibility exists only so the JVM regression test can exercise a real static void method.
+     */
+    internal fun invokeRequiredStatic(c: Class<*>, name: String, vararg args: Any?): Any? {
+        val method = find(c, name) ?: throw Missing("class '${c.name}' has no $name")
+        return invokeJava(method, *args)
+    }
+
     /** libXray's one-call command channel. Parses the envelope and throws [Missing] on success=false. */
     private fun invoke(method: String, payload: org.json.JSONObject?): org.json.JSONObject {
         val c = clazz ?: throw Missing(describe())
@@ -177,16 +195,11 @@ object XrayBridge {
         val c = clazz ?: throw Missing(describe())
         protect = protector
         val controller = dialerController(c)
-        find(c, M_REGISTER_DIALER)?.invoke(null, controller)
-            ?: throw Missing("class '$bridgeClass' has no $M_REGISTER_DIALER")
-        find(c, M_REGISTER_LISTENER)?.invoke(null, controller)   // optional; sockets we never bind stay harmless
-        find(c, M_SET_DNS)?.let { m ->
-            try {
-                m.invoke(null, controller, CORE_DNS)
-            } catch (e: InvocationTargetException) {
-                throw Missing("setDNS: ${(e.targetException ?: e).message}")
-            }
-        }
+        invokeRequiredStatic(c, M_REGISTER_DIALER, controller)
+        // Optional: this app never opens a core listener on a physical interface, but registering the
+        // same protector is harmless when the pinned wrapper exposes it.
+        find(c, M_REGISTER_LISTENER)?.let { invokeJava(it, controller) }
+        invokeRequiredStatic(c, M_SET_DNS, controller, CORE_DNS)
     }
 
     fun start(profilePath: String, tag: String, mtu: Int): Boolean {

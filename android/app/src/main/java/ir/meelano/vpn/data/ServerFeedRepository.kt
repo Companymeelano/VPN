@@ -36,17 +36,12 @@ import org.json.JSONObject
 import ir.meelano.vpn.keepalive.ActiveNodeCache
 import ir.meelano.vpn.vpn.MeelanoVpnService
 
-/**
- * One repo for both lists (VIP + free) because the server deliberately returns the SAME shape.
- *
- * The speed of this file is what the user feels as "the app is slow":
- *   - ETag / If-None-Match  -> most polls cost 0 bytes and 0 parse time
- *   - disk cache (OkHttp)   -> first paint never waits on the network
- *   - stale-while-revalidate-> the list renders instantly, then silently gets better
- *   - a tiny strict model    -> unknown fields are ignored instead of crashing a release
- * Nothing here touches the main thread, and nothing here parses the raw proxy lists:
- * the server did that already, which is the whole point of moving the work to /v/.
- */
+/** Wire-level identifiers must stay printable ASCII; OkHttp rejects the Persian UI brand's `•`. */
+internal fun publicFeedUserAgent(version: String): String {
+    val safeVersion = version.filter { it.code in 0x21..0x7e }.ifBlank { "unknown" }
+    return "MA-VPN/$safeVersion"
+}
+
 /**
  * Sanitised runtime telemetry for the public feed. It intentionally cannot hold a URL, endpoint,
  * config or server address, so the diagnostics sheet can share it without publishing a node.
@@ -102,6 +97,16 @@ data class FeedDiagnostics(
     }
 }
 
+/**
+ * One repo for both lists (VIP + free) because both flows deliberately use the same strict model.
+ *
+ * The speed of this file is what the user feels as "the app is slow":
+ *   - disk cache paints before the network;
+ *   - public source and mirror requests run off the main thread;
+ *   - unknown fields are ignored instead of crashing a release.
+ * Direct public discovery, parse, TCP hints and deep proxy verification all converge on [apply], so
+ * sorting, pinning and the connection service do not need separate host/direct implementations.
+ */
 class ServerFeedRepository(
     private val context: Context,
     private val baseUrl: String = BuildConfig.FEED_BASE_URL,
@@ -564,15 +569,23 @@ class ServerFeedRepository(
 
     private suspend fun fetchText(url: String, maxBytes: Int): String = withContext(Dispatchers.IO) {
         val isGithubApi = url.startsWith("https://api.github.com/")
-        val req = Request.Builder().url(url)
-            .header("User-Agent", "M\u2022A-VPN/${BuildConfig.VERSION_NAME}")
-            .apply {
-                if (isGithubApi) {
-                    header("Accept", "application/vnd.github.raw+json")
-                    header("X-GitHub-Api-Version", "2022-11-28")
+        val req = try {
+            Request.Builder().url(url)
+                // OkHttp deliberately rejects non-ASCII header values. The old branded `M•A` value
+                // threw IllegalArgumentException while constructing *every* network request, before a
+                // socket existed; that is why the build snapshot loaded but all 60 GitHub/CDN routes
+                // reported the exact same exception on the phone. Keep wire identifiers ASCII-only.
+                .header("User-Agent", publicFeedUserAgent(BuildConfig.VERSION_NAME))
+                .apply {
+                    if (isGithubApi) {
+                        header("Accept", "application/vnd.github.raw+json")
+                        header("X-GitHub-Api-Version", "2022-11-28")
+                    }
                 }
-            }
-            .build()
+                .build()
+        } catch (_: IllegalArgumentException) {
+            throw DirectFeed.FetchFailure("request_invalid")
+        }
         // Do not use the old private-host DoH/pinned retry here. DirectFeed owns several independent
         // GitHub/jsDelivr routes and needs an explicit category for each failure before moving on.
         val response = try {
