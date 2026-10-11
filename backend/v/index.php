@@ -100,7 +100,7 @@ function feed($action)
         Util::respond([], ['status' => 304, 'etag' => $etag]);
         return;
     }
-    $meta = ['etag' => $etag, 'maxAge' => (int) Util::cfg('cache.httpMaxAge', 300)];
+    $meta = ['etag' => $etag, 'maxAge' => (int) Util::cfg('cache.httpMaxAge', 300), 'private' => $action === 'vip'];
     // the pre-gzipped build on disk only matches when we served the cache untouched
     if ($cacheState !== null && isset($cacheState['state']) && $cacheState['state'] === 'fresh') {
         $meta['gzPath'] = Util::dataDir('cache') . '/' . $action . '.json.gz';
@@ -139,7 +139,7 @@ function feedback()
     // the block verdict the app measured from *inside* the country: this is the fuel for the tuner's
     // regime task. Rolling aggregate in data/block.json, merged under a lock so two workers cannot
     // lose each other's counts. Absent/malformed is fine: the tuner just has less to go on.
-    if (isset($d['block']) && is_array($d['block'])) {
+    if ($n > 0 && (bool) Util::cfg('free.feedback.enabled', true) && isset($d['block']) && is_array($d['block'])) {
         Builder::foldBlockEvidence($d['block'], isset($d['regime']) ? (string) $d['regime'] : '');
     }
     header('Content-Type: application/json; charset=utf-8');

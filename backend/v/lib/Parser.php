@@ -38,7 +38,7 @@ final class Parser
     /**
      * @return array normalized, deduplicated nodes
      */
-    public static function parseBlob($blob)
+    public static function parseBlob($blob, $proxyHint = null)
     {
         // One normaliser for every input shape (see Util::utf8): the JSON branch below dies on an invalid
         // byte inside json_decode, and the text branch would happily carry it into the payload.
@@ -91,11 +91,11 @@ final class Parser
             if ($line === '' || $line[0] === '#' || $line[0] === '/' || $line[0] === '<' || $line[0] === '=') {
                 continue;
             }
-            $n = self::parseProxyLine($line);
+            $n = self::parseProxyLine($line, $proxyHint);
             if ($n === null) {
                 // "some words 1.2.3.4:8080 trailing words" - pull the address out of the noise
                 if (preg_match('~(?:\d{1,3}\.){3}\d{1,3}:\d{2,5}~', $line, $mm)) {
-                    $n = self::parseProxyLine($mm[0]);
+                    $n = self::parseProxyLine($mm[0], $proxyHint);
                 }
             }
             if ($n) {
@@ -232,6 +232,7 @@ final class Parser
                     $node['password'] = isset($parts[1]) ? $parts[1] : '';
                 }
                 $node['tls'] = $proto === 'https' ? 'tls' : '';
+                if ($proto === 'https') $node['proto'] = 'http';
                 break;
             case 'wireguard':
                 $node['privateKey'] = $userInfo;
@@ -316,7 +317,7 @@ final class Parser
     }
 
     /** @return array|null */
-    public static function parseProxyLine($line)
+    public static function parseProxyLine($line, $protocolHint = null)
     {
         $line = trim((string) $line);
         if ($line === '') {
@@ -345,7 +346,9 @@ final class Parser
         if (!preg_match('~^\d{1,5}$~', $port) || (int) $port < 1 || (int) $port > 65535) {
             return null;
         }
-        $proto = self::looksLikeSocks($host, (int) $port) ? 'socks5' : 'http';
+        $hint = strtolower(trim((string) $protocolHint));
+        $proto = in_array($hint, ['http', 'socks5'], true)
+            ? $hint : (self::looksLikeSocks($host, (int) $port) ? 'socks5' : 'http');
         $n = [
             'proto' => $proto, 'host' => strtolower($host), 'port' => (int) $port,
             'username' => $user, 'password' => $pass, 'remark' => '', 'params' => [],
@@ -396,7 +399,8 @@ final class Parser
                 continue;
             }
             $proto = isset($r['protocol']) ? strtolower((string) $r['protocol']) : (isset($r['scheme']) ? strtolower((string) $r['scheme']) : 'http');
-            if ($proto === 'https') {
+            $proxyTls = $proto === 'https';
+            if ($proxyTls) {
                 $proto = 'http';
             }
             if (!in_array($proto, ['http', 'socks4', 'socks5'], true)) {
@@ -421,6 +425,7 @@ final class Parser
                 'proto' => $proto, 'host' => $host, 'port' => $port,
                 'username' => isset($r['username']) && $r['username'] !== null ? (string) $r['username'] : '',
                 'password' => isset($r['password']) && $r['password'] !== null ? (string) $r['password'] : '',
+                'tls'      => $proxyTls ? 'tls' : '',
                 'remark'   => isset($r['name']) ? (string) $r['name'] : '',
                 'params'   => [],
                 'cc'       => $cc,

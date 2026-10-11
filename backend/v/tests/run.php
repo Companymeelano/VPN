@@ -261,6 +261,18 @@ t('private/reserved/invalid hosts are rejected', function () use ($proxies) {
     sort($bad);
     return eq($bad, ['127.0.0.1', '192.168.1.10'], 'rejected=' . json_encode($bad));
 });
+t('bare proxy protocol hint overrides unreliable port guessing', function () {
+    $s = Parser::parseBlob("176.9.10.11:8080\n176.9.10.12:8080", 'socks5');
+    if (count($s) !== 2) return 'count=' . count($s);
+    foreach ($s as $n) if ($n['proto'] !== 'socks5') return json_encode($s);
+    $h = Parser::parseBlob("176.9.10.11:1080", 'http');
+    return isset($h[0]['proto']) && $h[0]['proto'] === 'http' ? true : json_encode($h);
+});
+t('https proxy URI normalises to HTTP outbound plus TLS', function () {
+    $n = Parser::parseUri('https://user:pass@176.9.10.11:8443');
+    return $n && $n['proto'] === 'http' && $n['tls'] === 'tls' ? true : json_encode($n);
+});
+
 t('html blob tolerated', function () {
     $html = '<html><body><p>free configs</p><a href="vless://aaaa@1.2.3.4:443?security=tls#US-1">get</a>'
           . '<img src="https://img.example/logo.png"><pre>5.6.7.8:8080</pre></body></html>';
@@ -627,27 +639,28 @@ t('status is cached, and the payload carries its own ttl', function () {
 });
 
 echo "\n== Feedback ingest ==\n";
-t('accepts a report for a known id', function () {
-    return eq(Builder::ingestFeedback('e7e7e7e7e7e7', true, 320), true);
+$knownFeedbackId = $free['servers'][0]['id'];
+$knownBanId = isset($free['servers'][1]['id']) ? $free['servers'][1]['id'] : $knownFeedbackId;
+t('accepts a report for a known id', function () use ($knownFeedbackId) {
+    return eq(Builder::ingestFeedback($knownFeedbackId, true, 320), true);
 });
-t('rejects junk ids', function () {
-    return eq(Builder::ingestFeedback('', true, 1), false) === true ? eq(Builder::ingestFeedback('../../etc/passwd', true, 1), false) : 'path survived';
+t('rejects junk and unknown well-shaped ids', function () {
+    if (Builder::ingestFeedback('', true, 1) !== false) return 'empty survived';
+    if (Builder::ingestFeedback('../../etc/passwd', true, 1) !== false) return 'path survived';
+    return Builder::ingestFeedback('e7e7e7e7e7e7', true, 1) === false ? true : 'unknown id survived';
 });
 Ledger::save();
-t('feedback persists to the ledger file', function () {
-    Builder::ingestFeedback('e7e7e7e7e7e7', true, 280);
+t('feedback persists to the ledger file', function () use ($knownFeedbackId) {
+    Builder::ingestFeedback($knownFeedbackId, true, 280);
     Ledger::save();
     $d = json_decode((string) file_get_contents(Util::dataDir() . '/ledger.json'), true);
-    $n = isset($d['nodes']['e7e7e7e7e7e7']) ? $d['nodes']['e7e7e7e7e7e7'] : null;
+    $n = isset($d['nodes'][$knownFeedbackId]) ? $d['nodes'][$knownFeedbackId] : null;
     return $n && (int) $n['cli']['ok'] === 2 && $n['cli']['lat'] === [280, 320]
         ? true : json_encode($n);
 });
-t('a client report can ban a node that keeps failing for users', function () {
-    for ($i = 0; $i < 6; $i++) {
-        Builder::ingestFeedback('ababababab01', false, 0);
-    }
-    // server-side and client-side failures both feed the same streak guard
-    return Ledger::isBanned('ababababab01') ? true : 'client failures did not ban it';
+t('a client report can ban a known node that keeps failing for users', function () use ($knownBanId) {
+    for ($i = 0; $i < 6; $i++) Builder::ingestFeedback($knownBanId, false, 0);
+    return Ledger::isBanned($knownBanId) ? true : 'client failures did not ban it';
 });
 
 echo "\n== Version / updater ==\n";
@@ -788,6 +801,41 @@ t('?action=version returns json body', function () {
 });
 
 echo "\n== Probe plumbing (no network expected in this sandbox) ==\n";
+t('fetch target guard rejects loopback, private and credentialed URLs', function () {
+    foreach (['http://127.0.0.1/x', 'http://10.0.0.1/x', 'http://user:pass@1.1.1.1/x', 'file:///etc/passwd'] as $u) {
+        if (Util::safeHttpTarget($u) !== null) return 'accepted ' . $u;
+    }
+    $ok = Util::safeHttpTarget('https://1.1.1.1/dns-query');
+    return is_array($ok) && $ok['ip'] === '1.1.1.1' && $ok['port'] === 443 ? true : json_encode($ok);
+});
+t('deep platform gate requires exact statuses and separates blocked exits', function () {
+    $eps = [
+        ['name' => 'cloudflare', 'url' => 'https://cf/x', 'status' => 204],
+        ['name' => 'google', 'url' => 'https://g/x', 'status' => 204],
+        ['name' => 'gstatic', 'url' => 'https://gs/x', 'status' => 204],
+    ];
+    $clean = PlatformProbe::classify([
+        'cloudflare' => ['status' => 204, 'ms' => 10], 'google' => ['status' => 204, 'ms' => 20],
+        'gstatic' => ['status' => 204, 'ms' => 30],
+    ], $eps);
+    $blocked = PlatformProbe::classify([
+        'cloudflare' => ['status' => 204], 'google' => ['status' => 403], 'gstatic' => ['status' => 429],
+    ], $eps);
+    return $clean['ok'] && !$clean['blocked'] && !$blocked['ok'] && $blocked['blocked'] && $blocked['robot']
+        ? true : json_encode([$clean, $blocked]);
+});
+t('raw proxy with failed applied gate is removed; non-proxy ignored gate survives', function () {
+    $proxy = ['id' => 'deepfail0001', 'proto' => 'http', 'host' => '1.1.1.1', 'port' => 8080, 'cc' => 'US'];
+    $tunnel = ['id' => 'tunnelok0001', 'proto' => 'ss', 'host' => '1.0.0.1', 'port' => 443, 'cc' => 'US'];
+    $r = Score::annotate([$proxy, $tunnel], [
+        'deepfail0001' => ['ok' => true, 'ms' => 20], 'tunnelok0001' => ['ok' => true, 'ms' => 30],
+    ], [
+        'deepfail0001' => [['applied' => true, 'ok' => false, 'blocked' => true]],
+        'tunnelok0001' => [['applied' => false, 'ok' => false]],
+    ], true);
+    return count($r) === 1 && $r[0]['id'] === 'tunnelok0001' ? true : json_encode($r);
+});
+
 t('probe always answers with a structured result (never an exception)', function () {
     // there is no real network in this sandbox, so the VALUE is meaningless here -
     // what we assert is that every id gets {ok,ms,err} and the batch terminates

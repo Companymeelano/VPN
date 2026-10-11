@@ -1,0 +1,33 @@
+diff --git a/android_wrapper.go b/android_wrapper.go
+index 9cfae63..16a04d7 100644
+--- a/android_wrapper.go
++++ b/android_wrapper.go
+@@ -4,6 +4,9 @@ package libXray
+ 
+ import (
+ 	"errors"
++	"fmt"
++	"os"
++	"strconv"
+ 
+ 	c "github.com/xtls/libxray/controller"
+ 	"github.com/xtls/libxray/dns"
+@@ -63,3 +66,18 @@ func RegisterProcessFinder(finder ProcessFinder, sdkVersion int) {
+ 		return finder.FindProcessByConnection(network, srcIP, srcPort, destIP, destPort)
+ 	}, sdkVersion)
+ }
++
++// AttachTunFd makes the ParcelFileDescriptor supplied by Android VpnService
++// available to Xray's native TUN inbound before RunXray constructs the core.
++// int32 is intentional: gomobile exposes it as Java int (Kotlin Int).
++func AttachTunFd(fd int32) error {
++	if fd < 3 {
++		return fmt.Errorf("invalid Android TUN fd: %d", fd)
++	}
++	return os.Setenv("xray.tun.fd", strconv.FormatInt(int64(fd), 10))
++}
++
++// DetachTunFd clears the process-global handoff after the core has stopped.
++func DetachTunFd() {
++	_ = os.Unsetenv("xray.tun.fd")
++}

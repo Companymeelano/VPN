@@ -5,7 +5,6 @@ import android.net.VpnService
 import ir.meelano.vpn.data.FeedNode
 import ir.meelano.vpn.data.TunnelSpec
 import java.io.File
-import java.io.FileDescriptor
 import android.net.TrafficStats
 
 /**
@@ -55,33 +54,29 @@ object CoreApi {
         // The bridge delegates to this lambda through libXray's dialer controller.
         mtu = runCatching { ir.meelano.vpn.data.AppSettings.tuneFor(spec.node).mtu }.getOrDefault(1280)
         XrayBridge.protect = { fd -> runCatching { service.protect(fd) }.getOrDefault(false) }
-        XrayBridge.start(spec.profilePath, tag = spec.node.id, tunFd = tunFd, mtu = mtu)
-        running = true
+        XrayBridge.start(spec.profilePath, tag = spec.node.id, mtu = mtu)
+        running = false // configured, but no packet can move until bindRaw accepts the public ParcelFileDescriptor fd
     }
 
-    /** Hand the tunnel fd over; the core owns it from now on. */
-    fun attachFd(service: VpnService, fd: FileDescriptor) {
-        tunFd = rawFdOf(fd)
+    /** Install socket protection before libXray's temporary-core candidate race. */
+    fun prepareProbeSockets(service: VpnService) {
+        if (!LINKED) throw CoreNotLinked()
+        XrayBridge.prepareNetwork { fd -> runCatching { service.protect(fd) }.getOrDefault(false) }
+    }
+
+    /** Hand the tunnel fd number to the core; the service keeps descriptor ownership and closes it. */
+    fun attachFd(service: VpnService, fd: Int) {
+        require(fd >= 0) { "invalid_tun_fd" }
+        tunFd = fd
         if (LINKED) {
             // failing here is required: a core that is configured but not bound to the TUN carries no
             // traffic, and "connected, no traffic" is the single symptom users cannot diagnose.
-            // bindRaw is where libXray actually starts: the fd travels as `env."xray.tun.fd"` inside the
-            // config that `runXray` receives (XrayBridge.kt documents the two-stage start in full).
+            // bindRaw starts the core only after the patched native wrapper puts this fd in
+            // Xray-core's real process environment (JSON itself cannot set environment variables).
             XrayBridge.bindRaw(tunFd, mtu)
         }
         running = true
     }
-
-    /**
-     * The int inside a FileDescriptor: Android has no public accessor before API 33, so libcore's private
-     * field is read reflectively (-1 if a future ROM renames it, which start0/bind0 then surfaces as a
-     * named failure instead of a tunnel that reads nothing).
-     */
-    private fun rawFdOf(fd: FileDescriptor): Int = runCatching {
-        val f = FileDescriptor::class.java.getDeclaredField("descriptor")
-        f.isAccessible = true
-        f.getInt(fd)
-    }.getOrDefault(-1)
 
     /** Called after the tunnel exists: start DNS/DoH, apply rules, enable routing. */
     suspend fun tunnelUp(service: VpnService) {
@@ -165,6 +160,7 @@ data class Spec(
     val port: Int,
     val userId: String,
     val alterId: Int,
+    val username: String,
     val password: String,
     val method: String,
     /** "none" | "tls" | "reality" */
@@ -174,7 +170,7 @@ data class Spec(
     val fingerprint: String,
     val ech: Boolean,
     val insecure: Boolean,
-    /** "tcp" | "ws" | "grpc" | "h2" | "xhttp" */
+    /** "tcp" | "ws" | "grpc" | "httpupgrade" | "xhttp" */
     val network: String,
     val path: String,
     val hostHeader: String,
@@ -248,6 +244,9 @@ object CoreProfiles {
     }
 
     fun specFor(node: FeedNode, tune: ir.meelano.vpn.net.Tune): Spec {
+        require(node.host.isNotBlank() && node.port in 1..65535) { "invalid_endpoint" }
+        require(!node.insecure) { "insecure_tls_not_supported" }
+        val proto = canonicalProtocol(node.proto)
         val net = normNetwork(node.network)
         val sec = when (node.tls?.trim()?.lowercase()) {
             "reality" -> "reality"
@@ -255,7 +254,14 @@ object CoreProfiles {
             else -> "none"
         }
         val sni = tune.sni.ifBlank { node.sni ?: node.host }
-        val alpn = (node.alpn ?: tune.alpn).split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        val requestedAlpn = (node.alpn ?: tune.alpn).split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        // These transports have hard ALPN requirements. In particular, advertising h3 for a TLS-over-TCP
+        // WebSocket is not camouflage: it lets the peer select a protocol this connection cannot speak.
+        val alpn = when (net) {
+            "ws", "httpupgrade" -> listOf("http/1.1")
+            "grpc" -> listOf("h2")
+            else -> requestedAlpn.filterNot { it.equals("h3", ignoreCase = true) }.distinct()
+        }
         val feedFlow = node.flow ?: ""
         // Vision is what makes Reality fast, and it is only legal on plain TCP: an
         // "xtls-rprx-vision" flow on a ws/grpc node breaks the handshake, so it is derived here instead
@@ -267,35 +273,43 @@ object CoreProfiles {
         // the anti-replay check trips on) and grpc already multiplexes streams itself.
         val mux = tune.mux && net != "grpc" && sec != "reality"
         val reuse = tune.connectionReuse && net != "grpc"
-        val method = when (node.proto) {
-            "ss" -> node.method ?: node.cipher ?: "aes-128-gcm"
+        val method = when (proto) {
+            "shadowsocks" -> node.method ?: node.cipher ?: ""
             "vmess" -> node.cipher ?: node.method ?: "auto"
             else -> node.method ?: ""
         }
+        val userId = node.userId ?: ""
+        val password = node.password ?: ""
+        when (proto) {
+            "vless", "vmess" -> require(userId.isNotBlank()) { "missing_user_id" }
+            "trojan" -> require(password.isNotBlank()) { "missing_password" }
+            "shadowsocks" -> require(password.isNotBlank() && method.isNotBlank()) { "missing_shadowsocks_credentials" }
+        }
         return Spec(
-            proto = node.proto,
+            proto = proto,
             address = node.host,
             port = node.port,
-            userId = node.userId ?: "",
+            userId = userId,
             alterId = node.alterId ?: 0,
-            password = node.password ?: node.username ?: "",
+            username = node.username ?: "",
+            password = password,
             method = method,
             security = sec,
             sni = sni,
             alpn = alpn,
             fingerprint = node.fingerprint?.takeIf { it.isNotEmpty() } ?: tune.fingerprint,
-            ech = tune.ech,
+            ech = tune.ech && sec == "tls",
             insecure = node.insecure,
             network = net,
             path = node.path ?: "",
             hostHeader = node.hostHeader ?: "",
             // free-proxy sources do not carry a grpc service name; the vip feed may one day. The
             // fallback is the convention every public grpc deployment uses, so it works and is honest.
-            serviceName = "grpc",
+            serviceName = node.serviceName?.ifBlank { null } ?: "grpc",
             grpcMulti = tune.grpcMode == "multi",
             keepAliveSec = tune.keepAliveSec,
             flow = flow,
-            packetEncoding = if (node.proto == "vless" && node.supportsUdp) "xudp" else "",
+            packetEncoding = "", // pinned Xray chooses XUDP itself; packet_encoding is not an outbound key
             publicKey = node.pbk ?: "",
             shortId = node.sid ?: "",
             supportsUdp = node.supportsUdp,
@@ -313,45 +327,53 @@ object CoreProfiles {
         )
     }
 
-    /** Source spellings differ ("raw", "net/http", "websocket"); every engine wants one of these five. */
+    /** Source spellings normalised against the transport loader in the pinned Xray core. */
     fun normNetwork(n: String?): String = when (n?.trim()?.lowercase()) {
         "ws", "websocket" -> "ws"
         "grpc" -> "grpc"
-        "h2", "http", "httpupgrade" -> "h2"
-        "xhttp" -> "xhttp"
+        "httpupgrade" -> "httpupgrade"
+        "xhttp", "splithttp" -> "xhttp"
         "raw", "tcp", "stream", "", null -> "tcp"
-        else -> "tcp"
+        "h2", "h3", "http", "quic" -> throw IllegalArgumentException("removed_transport:${n?.trim()?.lowercase()}")
+        else -> throw IllegalArgumentException("unsupported_transport:${n?.trim()?.lowercase()}")
+    }
+
+    fun canonicalProtocol(p: String): String = when (p.trim().lowercase()) {
+        "vless", "vmess", "trojan" -> p.trim().lowercase()
+        "ss", "shadowsocks" -> "shadowsocks"
+        "socks", "socks5", "socks5h" -> "socks"
+        "socks4" -> throw IllegalArgumentException("unsupported_protocol:socks4")
+        "http", "https" -> "http"
+        else -> throw IllegalArgumentException("unsupported_protocol:${p.trim().lowercase()}")
     }
 
     /* ------------------------------------------------------------------ Xray (MPL-2.0) dialect */
 
     private fun xray(s: Spec): Map<String, Any?> {
-        val server = LinkedHashMap<String, Any?>()
-        server["address"] = s.address
-        server["port"] = s.port
+        // The pinned v26 core supports (and recommends) this simplified one-endpoint form. It also
+        // avoids the easy-to-miss vnext[].users[] nesting that made earlier VLESS/VMess profiles carry
+        // an endpoint but no credential at all.
+        val settings = linkedMapOf<String, Any?>("address" to s.address, "port" to s.port)
         when (s.proto) {
             "vless" -> {
-                server["id"] = s.userId
-                server["encryption"] = "none"
-                if (s.flow.isNotEmpty()) server["flow"] = s.flow
-                if (s.packetEncoding.isNotEmpty()) server["packet_encoding"] = s.packetEncoding
+                settings["id"] = s.userId
+                settings["encryption"] = "none"
+                if (s.flow.isNotEmpty()) settings["flow"] = s.flow
             }
             "vmess" -> {
-                server["id"] = s.userId
-                server["alterId"] = s.alterId
-                server["security"] = s.method
+                settings["id"] = s.userId
+                settings["security"] = s.method
             }
-            "trojan" -> server["password"] = s.password
-            else -> {                                   // ss / ss2022
-                server["method"] = s.method
-                server["password"] = s.password
-                server["level"] = 1
-                server["ota"] = false
+            "trojan" -> settings["password"] = s.password
+            "shadowsocks" -> {
+                settings["method"] = s.method
+                settings["password"] = s.password
             }
-        }
-        val settings: Map<String, Any?> = when (s.proto) {
-            "vless", "vmess" -> mapOf("vnext" to listOf(server))
-            else -> mapOf("servers" to listOf(server))
+            "http", "socks" -> if (s.username.isNotEmpty()) {
+                settings["user"] = s.username
+                settings["pass"] = s.password
+            }
+            else -> error("unsupported_protocol:${s.proto}")
         }
 
         val stream = LinkedHashMap<String, Any?>()
@@ -375,25 +397,26 @@ object CoreProfiles {
                 }
                 stream["grpcSettings"] = g
             }
+            "httpupgrade" -> {
+                val h = linkedMapOf<String, Any?>("path" to s.path.ifEmpty { "/" })
+                if (s.hostHeader.isNotEmpty()) h["host"] = s.hostHeader
+                stream["httpupgradeSettings"] = h
+            }
             "xhttp" -> {
                 val x = linkedMapOf<String, Any?>("path" to s.path.ifEmpty { "/" }, "mode" to "auto")
                 if (s.hostHeader.isNotEmpty()) x["host"] = s.hostHeader
                 stream["xhttpSettings"] = x
             }
-            "h2" -> {
-                val h = linkedMapOf<String, Any?>("path" to s.path.ifEmpty { "/" })
-                if (s.hostHeader.isNotEmpty()) h["host"] = s.hostHeader
-                stream["httpSettings"] = h
-            }
             else -> stream["tcpSettings"] = mapOf("header" to mapOf("type" to "none"))
         }
-        if (s.isTls) {
-            stream["security"] = s.security
+        if (s.isTls) stream["security"] = s.security
+        if (s.security == "tls") {
             val tls = LinkedHashMap<String, Any?>()
             tls["serverName"] = s.sni
-            tls["allowInsecure"] = s.insecure
-            if (s.alpn.isNotEmpty() && !s.isReality) tls["alpn"] = s.alpn
-            if (!s.isReality && s.fingerprint.isNotEmpty()) tls["fingerprint"] = s.fingerprint
+            if (s.alpn.isNotEmpty()) tls["alpn"] = s.alpn
+            // Empty is intentional and supported by the pinned core (Chrome Auto).
+            tls["fingerprint"] = s.fingerprint
+            if (s.ech) tls["echConfigList"] = ECH_DOH
             stream["tlsSettings"] = tls
         }
         if (s.isReality) {
@@ -419,26 +442,25 @@ object CoreProfiles {
         outbound["meelanoTune"] = s.tuneEcho
 
         val rules = mutableListOf<Map<String, Any?>>()
-        if (!s.allowLan) {
-            // "route everything" is how a VPN eats a Chromecast, a local NAS and the printer.
-            rules.add(
-                mapOf(
-                    "type" to "field",
-                    "outboundTag" to "direct",
-                    "ip" to LAN_CIDR,
-                )
+        // Private destinations never silently escape the tunnel. The explicit LAN switch changes
+        // them from blocked to direct; with its safe default (off), local/NAT ranges are kill-switched.
+        rules.add(
+            mapOf(
+                "type" to "field",
+                "outboundTag" to if (s.allowLan) "direct" else "block",
+                "ip" to LAN_CIDR,
             )
-        }
+        )
         // the tunnel must own DNS or the local resolver keeps leaking what we look up
-        rules.add(mapOf("type" to "field", "network" to "tcp,udp", "port" to "53", "outboundTag" to "proxy"))
+        rules.add(mapOf("type" to "field", "network" to "tcp,udp", "port" to "53", "outboundTag" to "dns-out"))
         rules.add(mapOf("type" to "field", "protocol" to listOf("tls", "quic"), "outboundTag" to "proxy"))
 
         val profile = LinkedHashMap<String, Any?>()
         profile["log"] = mapOf("loglevel" to "warning")
         profile["inbounds"] = listOf(
             // The TUN inbound, not a socket: Xray-core (>= the v26 line pinned by libXray v26.9.9) reads
-            // packets straight off the VpnService fd, which is handed over in env."xray.tun.fd" at bind
-            // time (XrayBridge.bindRaw). port/listen are ignored by schema for this inbound; the MTU is
+            // packets straight off the VpnService fd, handed to the native wrapper at bind time
+            // (XrayBridge.bindRaw). port/listen are ignored by schema for this inbound; the MTU is
             // mirrored from the tune so the core and Builder::setMtu clamp together, never apart.
             mapOf(
                 "port" to 0,
@@ -446,7 +468,7 @@ object CoreProfiles {
                 "tag" to "tun-in",
                 "settings" to mapOf(
                     "name" to "xray0",
-                    "MTU" to s.mtu,
+                    "mtu" to s.mtu,
                 ),
                 "sniffing" to mapOf(
                     "enabled" to true,
@@ -455,8 +477,13 @@ object CoreProfiles {
                 ),
             )
         )
+        profile["dns"] = mapOf(
+            "queryStrategy" to "UseIPv4",
+            "servers" to listOf(mapOf("address" to DOH_ENDPOINT, "tag" to "proxy", "timeoutMs" to 5000)),
+        )
         profile["outbounds"] = listOf(
             outbound,
+            mapOf("protocol" to "dns", "tag" to "dns-out", "settings" to emptyMap<String, Any?>()),
             mapOf("protocol" to "freedom", "tag" to "direct"),
             mapOf("protocol" to "blackhole", "tag" to "block"),
         )
@@ -475,7 +502,6 @@ object CoreProfiles {
         stream: Map<String, Any?>,
     ): LinkedHashMap<String, Any?> {
         val outbound = LinkedHashMap<String, Any?>()
-        outbound["sendThrough"] = "0.0.0.0"
         outbound["protocol"] = s.proto
         outbound["tag"] = "proxy"
         outbound["settings"] = settings
@@ -495,19 +521,18 @@ object CoreProfiles {
      */
     fun pingConfigJson(node: FeedNode, tune: ir.meelano.vpn.net.Tune): String {
         val full = xray(specFor(node, tune))
-        val outbounds = (full["outbounds"] as? List<*>) ?: return render(mapOf("outbounds" to emptyList<Any>()))
-        val cleaned = outbounds.map { ob ->
-            @Suppress("UNCHECKED_CAST")
-            (ob as? Map<String, Any?>)?.filterKeys { !it.startsWith("meelano") } ?: ob
-        }
-        return render(mapOf("outbounds" to cleaned))
+        val proxy = (full["outbounds"] as? List<*>)?.firstOrNull()
+            ?: return render(mapOf("outbounds" to emptyList<Any>()))
+        @Suppress("UNCHECKED_CAST")
+        val cleaned = (proxy as? Map<String, Any?>)?.filterKeys { !it.startsWith("meelano") } ?: proxy
+        return render(mapOf("outbounds" to listOf(cleaned)))
     }
 
     /* -------------------------------------------------------- sing-box / Hiddify-fork dialect */
 
     private fun singBox(s: Spec): Map<String, Any?> {
         val out = LinkedHashMap<String, Any?>()
-        out["type"] = if (s.proto == "ss") "shadowsocks" else s.proto
+        out["type"] = s.proto
         out["tag"] = "proxy"
         out["server"] = s.address
         out["server_port"] = s.port
@@ -522,8 +547,12 @@ object CoreProfiles {
                 out["security"] = s.method
             }
             "trojan" -> out["password"] = s.password
-            else -> {
+            "shadowsocks" -> {
                 out["method"] = s.method
+                out["password"] = s.password
+            }
+            "http", "socks" -> if (s.username.isNotEmpty()) {
+                out["username"] = s.username
                 out["password"] = s.password
             }
         }
@@ -565,10 +594,10 @@ object CoreProfiles {
                 tr["path"] = s.path.ifEmpty { "/" }
                 tr["mode"] = "auto"
             }
-            "h2" -> {
-                tr["type"] = "http"
+            "httpupgrade" -> {
+                tr["type"] = "httpupgrade"
                 tr["path"] = s.path.ifEmpty { "/" }
-                tr["host"] = s.hostHeader
+                if (s.hostHeader.isNotEmpty()) tr["host"] = s.hostHeader
             }
             else -> tr["type"] = "tcp"
         }
@@ -593,7 +622,7 @@ object CoreProfiles {
 
         val rules = mutableListOf<Map<String, Any?>>()
         rules.add(mapOf("protocol" to listOf("dns"), "action" to "hijack-dns"))
-        if (!s.allowLan) rules.add(mapOf("ip_cidr" to LAN_CIDR, "outbound" to "direct"))
+        rules.add(mapOf("ip_cidr" to LAN_CIDR, "outbound" to if (s.allowLan) "direct" else "block"))
         rules.add(mapOf("action" to "sniff"))
 
         val profile = LinkedHashMap<String, Any?>()
@@ -685,6 +714,8 @@ object CoreProfiles {
         File(context.getDir("profile", Context.MODE_PRIVATE), "${node.id}.json")
 
     private const val LOCAL_PORT = 10808
+    private const val DOH_ENDPOINT = "https://1.1.1.1/dns-query"
+    private const val ECH_DOH = "https://1.1.1.1/dns-query"
 
     private val LAN_CIDR = listOf(
         "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8",

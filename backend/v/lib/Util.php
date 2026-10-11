@@ -71,9 +71,10 @@ final class Util
         $status = isset($meta['status']) ? (int) $meta['status'] : 200;
         $etag   = isset($meta['etag']) ? (string) $meta['etag'] : null;
         $maxAge = isset($meta['maxAge']) ? (int) $meta['maxAge'] : (int) self::cfg('cache.httpMaxAge', 300);
+        $private = !empty($meta['private']);
 
         if ($status === 304) {
-            self::headers($etag, $maxAge, null);
+            self::headers($etag, $maxAge, null, $private);
             if (!headers_sent()) {
                 http_response_code(304);
             }
@@ -87,7 +88,7 @@ final class Util
         $gzPath = isset($meta['gzPath']) ? $meta['gzPath'] : null;
         $serveGz = $gzPath && self::wantsGzip() && is_file($gzPath) && filesize($gzPath) > 0;
 
-        self::headers($etag, $maxAge, $serveGz ? 'gzip' : null);
+        self::headers($etag, $maxAge, $serveGz ? 'gzip' : null, $private);
         if ($serveGz) {
             if (!headers_sent()) {
                 header('Content-Encoding: gzip');
@@ -116,14 +117,16 @@ final class Util
         echo $body;
     }
 
-    private static function headers($etag, $maxAge, $encoding)
+    private static function headers($etag, $maxAge, $encoding, $private = false)
     {
         if (headers_sent()) {
             return;   // something already echoed (a stray BOM, a debug print) - never warn on top of it
         }
         header('Content-Type: application/json; charset=utf-8');
-        header('Cache-Control: public, max-age=' . $maxAge . ', stale-while-revalidate=60');
-        header('Vary: Accept-Encoding');
+        header($private
+            ? 'Cache-Control: private, no-store, max-age=0'
+            : 'Cache-Control: public, max-age=' . $maxAge . ', stale-while-revalidate=60');
+        header('Vary: Accept-Encoding' . ($private ? ', X-Feed-Key' : ''));
         header('X-Meelano: 1');
         if ($etag !== null && $etag !== '') {
             header('ETag: "' . $etag . '"');
@@ -340,11 +343,12 @@ final class Util
         }
         $timeout = (int) self::cfg('http.timeout', 6);
         $connTmo = (int) self::cfg('http.connectTimeout', 4);
-        $maxBytes = (int) self::cfg('http.maxBytes', 4194304);
+        $maxBytes = max(1024, (int) self::cfg('http.maxBytes', 4194304));
         $ua = (string) self::cfg('http.userAgent', 'MeelanoFeed/2.0');
 
         $pending = [];
         foreach ($urls as $key => $url) {
+            $url = (string) $url;
             if (strpos($url, 'fixture://') === 0) {
                 $name = substr($url, 10);
                 $base = preg_replace('/[^a-z0-9_.\-]/i', '', $name);
@@ -354,30 +358,48 @@ final class Util
                               'err' => $body === null ? 'fixture_missing' : null];
                 continue;
             }
-            if (!preg_match('~^https?://~i', $url)) {
-                $out[$key] = ['ok' => false, 'body' => '', 'status' => 0, 'err' => 'bad_scheme'];
+            $target = self::safeHttpTarget($url);
+            if ($target === null) {
+                $out[$key] = ['ok' => false, 'body' => '', 'status' => 0, 'err' => 'unsafe_or_unresolved_url'];
                 continue;
             }
-            $pending[$key] = $url;
+            $pending[$key] = ['url' => $url, 'target' => $target];
         }
 
         if ($pending && function_exists('curl_multi_exec') && function_exists('curl_init')) {
             $mh = curl_multi_init();
             $chs = [];
-            foreach ($pending as $key => $url) {
-                $ch = curl_init($url);
+            $buffers = [];
+            $oversized = [];
+            foreach ($pending as $key => $item) {
+                $buffers[$key] = '';
+                $oversized[$key] = false;
+                $ch = curl_init($item['url']);
+                $write = function ($handle, $chunk) use (&$buffers, &$oversized, $key, $maxBytes) {
+                    $len = strlen($chunk);
+                    if (strlen($buffers[$key]) + $len > $maxBytes) {
+                        $oversized[$key] = true;
+                        return 0; // abort before PHP buffers an attacker-controlled multi-megabyte body
+                    }
+                    $buffers[$key] .= $chunk;
+                    return $len;
+                };
+                $t = $item['target'];
+                $resolveIp = strpos($t['ip'], ':') !== false ? '[' . $t['ip'] . ']' : $t['ip'];
                 curl_setopt_array($ch, [
-                    CURLOPT_RETURNTRANSFER => true,
-                    CURLOPT_FOLLOWLOCATION => true,
-                    CURLOPT_MAXREDIRS      => 3,
+                    CURLOPT_RETURNTRANSFER => false,
+                    CURLOPT_FOLLOWLOCATION => false, // redirects are new SSRF targets; sources must use final URLs
                     CURLOPT_CONNECTTIMEOUT => $connTmo,
                     CURLOPT_TIMEOUT        => $timeout,
                     CURLOPT_USERAGENT      => $ua,
-                    CURLOPT_ENCODING       => '',          // accept gzip from upstream = less transfer
+                    CURLOPT_ENCODING       => '',     // callback counts decompressed bytes, preventing gzip bombs
                     CURLOPT_SSL_VERIFYPEER => true,
                     CURLOPT_SSL_VERIFYHOST => 2,
                     CURLOPT_HTTPHEADER     => ['Accept: text/plain,application/json;q=0.9,*/*;q=0.5'],
                     CURLOPT_PROTOCOLS      => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+                    CURLOPT_RESOLVE        => [$t['host'] . ':' . $t['port'] . ':' . $resolveIp],
+                    CURLOPT_WRITEFUNCTION  => $write,
+                    CURLOPT_NOSIGNAL       => true,
                 ]);
                 curl_multi_add_handle($mh, $ch);
                 $chs[$key] = $ch;
@@ -386,27 +408,23 @@ final class Util
             $started = microtime(true);
             do {
                 $status = curl_multi_exec($mh, $active);
-                if ($active) {
-                    if (curl_multi_select($mh, 0.25) === -1) {
-                        usleep(25000);
-                    }
+                if ($active && curl_multi_select($mh, 0.25) === -1) {
+                    usleep(25000);
                 }
                 if (microtime(true) - $started > $timeout + $connTmo + 2) {
-                    break;  // wall-clock guard: never let one slow upstream hang the request
+                    break;
                 }
             } while ($active && $status === CURLM_OK);
 
             foreach ($chs as $key => $ch) {
-                $body = curl_multi_getcontent($ch);
                 $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-                $err  = curl_error($ch);
+                $err = curl_error($ch);
                 curl_multi_remove_handle($mh, $ch);
                 curl_close($ch);
-                if (is_string($body) && $code >= 200 && $code < 300) {
-                    if (strlen($body) > $maxBytes) {
-                        $body = substr($body, 0, $maxBytes);
-                    }
-                    $out[$key] = ['ok' => true, 'body' => $body, 'status' => $code, 'err' => null];
+                if ($oversized[$key]) {
+                    $out[$key] = ['ok' => false, 'body' => '', 'status' => $code, 'err' => 'response_too_large'];
+                } elseif ($code >= 200 && $code < 300 && $err === '') {
+                    $out[$key] = ['ok' => true, 'body' => $buffers[$key], 'status' => $code, 'err' => null];
                 } else {
                     $out[$key] = ['ok' => false, 'body' => '', 'status' => $code,
                                   'err' => $err !== '' ? $err : ('http_' . $code)];
@@ -415,32 +433,61 @@ final class Util
             curl_multi_close($mh);
         }
 
-        // Fallback path for anything curl didn't answer.
-        foreach ($pending as $key => $url) {
-            if (isset($out[$key])) {
-                continue;
-            }
-            if (!ini_get('allow_url_fopen')) {
-                $out[$key] = ['ok' => false, 'body' => '', 'status' => 0, 'err' => 'no_curl_and_fopen_off'];
-                continue;
-            }
-            $ctx = stream_context_create(['http' => [
-                'timeout' => $timeout + $connTmo,
-                'user_agent' => $ua,
-                'header' => "Accept-Encoding: gzip\r\n",
-                'ignore_errors' => true,
-            ], 'ssl' => ['verify_peer' => true, 'verify_peer_name' => true]]);
-            $body = @file_get_contents($url, false, $ctx);
-            if (is_string($body) && isset($http_response_header[0]) && strpos($http_response_header[0], '200') !== false) {
-                if (substr($body, 0, 2) === "\x1f\x8b" && function_exists('gzdecode')) {
-                    $body = (string) gzdecode($body);
-                }
-                $out[$key] = ['ok' => true, 'body' => substr($body, 0, $maxBytes), 'status' => 200, 'err' => null];
-            } else {
-                $out[$key] = ['ok' => false, 'body' => '', 'status' => 0, 'err' => 'fetch_failed'];
+        // Remote fopen follows redirects and buffers the whole response before we can enforce a cap.
+        // Failing closed is preferable to turning a no-cURL shared host into an SSRF/memory oracle.
+        foreach ($pending as $key => $_item) {
+            if (!isset($out[$key])) {
+                $out[$key] = ['ok' => false, 'body' => '', 'status' => 0, 'err' => 'curl_required'];
             }
         }
         return $out;
+    }
+
+    /** Validate and resolve a fetch target once; cURL pins this answer with CURLOPT_RESOLVE. */
+    public static function safeHttpTarget($url)
+    {
+        $p = @parse_url((string) $url);
+        if (!is_array($p) || !isset($p['scheme'], $p['host']) || isset($p['user']) || isset($p['pass'])) {
+            return null;
+        }
+        $scheme = strtolower((string) $p['scheme']);
+        if ($scheme !== 'http' && $scheme !== 'https') {
+            return null;
+        }
+        $host = strtolower(rtrim((string) $p['host'], '.'));
+        $port = isset($p['port']) ? (int) $p['port'] : ($scheme === 'https' ? 443 : 80);
+        if ($host === '' || $port < 1 || $port > 65535) {
+            return null;
+        }
+        $ips = [];
+        if (filter_var($host, FILTER_VALIDATE_IP)) {
+            $ips[] = $host;
+        } else {
+            if (function_exists('dns_get_record')) {
+                $records = @dns_get_record($host, DNS_A | DNS_AAAA);
+                if (is_array($records)) {
+                    foreach ($records as $r) {
+                        if (!empty($r['ip'])) $ips[] = $r['ip'];
+                        if (!empty($r['ipv6'])) $ips[] = $r['ipv6'];
+                    }
+                }
+            }
+            if (!$ips) {
+                $v4 = @gethostbynamel($host);
+                if (is_array($v4)) $ips = array_merge($ips, $v4);
+            }
+        }
+        $ips = array_values(array_unique($ips));
+        if (!$ips) {
+            return null;
+        }
+        foreach ($ips as $ip) {
+            if (!self::isPublicIp($ip)) {
+                return null; // reject mixed public/private DNS answers too
+            }
+        }
+        usort($ips, function ($a, $b) { return (strpos($a, ':') === false ? 0 : 1) <=> (strpos($b, ':') === false ? 0 : 1); });
+        return ['host' => $host, 'port' => $port, 'ip' => $ips[0]];
     }
 
     /* ------------------------------------------------------------------ security bits */

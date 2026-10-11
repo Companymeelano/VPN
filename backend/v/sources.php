@@ -43,27 +43,27 @@ $urls = [
     ],
     // ---------------------------------------------------------------- raw proxy lists (fallbacks)
     'thespeedx-http' => [
-        'kind' => 'proxy', 'take' => 250,
+        'kind' => 'proxy', 'protocol' => 'http', 'take' => 250,
         'url'  => 'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt',
     ],
     'thespeedx-socks5' => [
-        'kind' => 'proxy', 'take' => 250,
+        'kind' => 'proxy', 'protocol' => 'socks5', 'take' => 250,
         'url'  => 'https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt',
     ],
     'clarketm' => [
-        'kind' => 'proxy', 'take' => 200,
+        'kind' => 'proxy', 'protocol' => 'http', 'take' => 200,
         'url'  => 'https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt',
     ],
     'shiftytr' => [
-        'kind' => 'proxy', 'take' => 200,
+        'kind' => 'proxy', 'protocol' => 'http', 'take' => 200,
         'url'  => 'https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt',
     ],
     'monosans-http' => [
-        'kind' => 'proxy', 'take' => 200,
+        'kind' => 'proxy', 'protocol' => 'http', 'take' => 200,
         'url'  => 'https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt',
     ],
     'monosans-socks5' => [
-        'kind' => 'proxy', 'take' => 200,
+        'kind' => 'proxy', 'protocol' => 'socks5', 'take' => 200,
         'url'  => 'https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks5.txt',
     ],
     'jetkai' => [
@@ -71,7 +71,7 @@ $urls = [
         'url'  => 'https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies.txt',
     ],
     'sunny9577' => [
-        'kind' => 'proxy', 'take' => 150,
+        'kind' => 'proxy', 'protocol' => 'http', 'take' => 150,
         'url'  => 'https://raw.githubusercontent.com/sunny9577/proxy-scraper/master/proxies.txt',
     ],
 ];

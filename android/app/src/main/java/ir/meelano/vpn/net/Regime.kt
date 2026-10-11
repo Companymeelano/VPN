@@ -51,8 +51,8 @@ data class Tune(
     val fragStrategy: String = "",
     /** inter-fragment pause in ms; 0 = send back-to-back (only matters when fragSize > 0). */
     val fragDelayMs: Int = 0,
-    /** ALPN offered, in preference order. h3 first: a QUIC-looking hello matches a QUIC-looking site. */
-    val alpn: String = "h3,h2",
+    /** Generic TLS ALPN; the profile builder narrows WS/HTTPUpgrade to http/1.1 and gRPC to h2. */
+    val alpn: String = "h2,http/1.1",
     /** uTLS fingerprint for Reality ("chrome", "firefox", "safari", "ios", "android", "edge", "360", "wildcard"). */
     val fingerprint: String = "chrome",
     /** SNI override; "" = the node's host. Also the cover domain when the feed supplies one. */

@@ -29,14 +29,19 @@ class CoreProfilesTest {
         sid: String? = "01234567",
         path: String? = null,
         hostHeader: String? = null,
+        serviceName: String? = null,
         sni: String? = "www.speedtest.net",
         supportsUdp: Boolean = true,
+        insecure: Boolean = false,
+        password: String? = null,
+        username: String? = null,
+        method: String? = null,
     ) = FeedNode(
         id = "n1", slot = 1, name = "M•A 01", subtitle = "", cc = "DE", kind = "vip", tier = "vip",
         proto = proto, host = "185.1.2.3", port = 443, tls = tls, network = network, sni = sni,
-        path = path, hostHeader = hostHeader, alpn = alpn, flow = flow, pbk = pbk, sid = sid,
+        path = path, hostHeader = hostHeader, serviceName = serviceName, alpn = alpn, flow = flow, pbk = pbk, sid = sid,
         fingerprint = null, userId = "11111111-2222-3333-4444-555555555555", alterId = 0,
-        password = null, username = null, method = null, cipher = null, insecure = false,
+        password = password, username = username, method = method, cipher = null, insecure = insecure,
         supportsUdp = supportsUdp, raw = null, grade = "A", latencyMs = 180L, reliability = 0.9f,
         samples = 4, config = null,
     )
@@ -80,25 +85,28 @@ class CoreProfilesTest {
     fun visionFlowOnTcpReality() {
         // Reality + vless + tcp -> Vision. It is the biggest throughput-and-block-resistance lever we
         // have, and the community feeds we ingest mostly omit it, so it is derived here (never copied).
-        val vnext = (outbound(profile(node())).path("settings", "vnext") as List<*>)[0] as Map<*, *>
-        assertEquals("xtls-rprx-vision", vnext["flow"])
-        assertEquals("xudp", vnext["packet_encoding"])
-        assertEquals("none", vnext["encryption"])
+        val settings = outbound(profile(node()))["settings"] as Map<*, *>
+        assertEquals("185.1.2.3", settings["address"])
+        assertEquals(443, settings["port"])
+        assertEquals("11111111-2222-3333-4444-555555555555", settings["id"])
+        assertEquals("xtls-rprx-vision", settings["flow"])
+        assertFalse(settings.containsKey("packet_encoding"))
+        assertEquals("none", settings["encryption"])
     }
 
     @Test
     fun visionFlowNeverOnWebsocket() {
         val n = node(network = "ws", path = "/ws")
-        val vnext = (outbound(profile(n)).path("settings", "vnext") as List<*>)[0] as Map<*, *>
+        val settings = outbound(profile(n))["settings"] as Map<*, *>
         // applying Vision on a stream transport is a guaranteed handshake failure, so it must be absent
-        assertFalse("flow must not be set on ws", vnext.containsKey("flow"))
+        assertFalse("flow must not be set on ws", settings.containsKey("flow"))
     }
 
     @Test
     fun feedSuppliedFlowWins() {
-        val vnext = (outbound(profile(node(flow = "xtls-rprx-vision"))).path("settings", "vnext") as List<*>)[0] as Map<*, *>
-        assertEquals("xtls-rprx-vision", vnext["flow"])
-        val plain = (outbound(profile(node(tls = "tls", flow = "something-else"))).path("settings", "vnext") as List<*>)[0] as Map<*, *>
+        val settings = outbound(profile(node(flow = "xtls-rprx-vision")))["settings"] as Map<*, *>
+        assertEquals("xtls-rprx-vision", settings["flow"])
+        val plain = outbound(profile(node(tls = "tls", flow = "something-else")))["settings"] as Map<*, *>
         assertEquals("something-else", plain["flow"])
     }
 
@@ -123,12 +131,13 @@ class CoreProfilesTest {
         val rulesOff = off.path("routing", "rules") as List<Map<String, Any?>>
         @Suppress("UNCHECKED_CAST")
         val rulesOn = on.path("routing", "rules") as List<Map<String, Any?>>
-        assertTrue(rulesOff.any { it["outboundTag"] == "direct" && (it["ip"] as List<*>).contains("192.168.0.0/16") })
-        assertFalse(rulesOn.any { it["outboundTag"] == "direct" })
+        assertTrue(rulesOff.any { it["outboundTag"] == "block" && (it["ip"] as List<*>).contains("192.168.0.0/16") })
+        assertTrue(rulesOn.any { it["outboundTag"] == "direct" && (it["ip"] as List<*>).contains("192.168.0.0/16") })
         // a "block" outbound must exist: without it, kill-switch has nowhere to route
         assertTrue((off["outbounds"] as List<*>).any { (it as Map<*, *>)["tag"] == "block" })
         // DNS inside the tunnel, or the local resolver leaks every name we look up
-        assertTrue(rulesOff.any { it["port"] == "53" && it["outboundTag"] == "proxy" })
+        assertTrue(rulesOff.any { it["port"] == "53" && it["outboundTag"] == "dns-out" })
+        assertTrue(off.containsKey("dns"))
     }
 
     @Test
@@ -136,7 +145,8 @@ class CoreProfilesTest {
         val ws = outbound(profile(node(tls = "tls", network = "ws", path = "/ray", hostHeader = "t.com")))
         assertEquals("/ray", ws.path("streamSettings", "wsSettings", "path"))
         assertEquals("t.com", ws.path("streamSettings", "wsSettings", "host"))
-        val g = outbound(profile(node(tls = "tls", network = "grpc"), Tune(grpcMode = "multi", keepAliveSec = 15)))
+        val g = outbound(profile(node(tls = "tls", network = "grpc", serviceName = "edge-v1"), Tune(grpcMode = "multi", keepAliveSec = 15)))
+        assertEquals("edge-v1", g.path("streamSettings", "grpcSettings", "serviceName"))
         assertEquals(true, g.path("streamSettings", "grpcSettings", "multiMode"))
         assertEquals(30, g.path("streamSettings", "grpcSettings", "idle_timeout"))
         assertEquals(60, g.path("streamSettings", "grpcSettings", "health_check_timeout"))
@@ -149,10 +159,12 @@ class CoreProfilesTest {
     fun networkNamesAreNormalised() {
         assertEquals("ws", CoreProfiles.normNetwork("websocket"))
         assertEquals("tcp", CoreProfiles.normNetwork("raw"))
-        assertEquals("h2", CoreProfiles.normNetwork("http"))
+        assertEquals("httpupgrade", CoreProfiles.normNetwork("httpupgrade"))
         assertEquals("xhttp", CoreProfiles.normNetwork("XHTTP"))
         assertEquals("tcp", CoreProfiles.normNetwork(null))
-        assertEquals("tcp", CoreProfiles.normNetwork("gibberish"))
+        for (removed in listOf("h2", "h3", "http", "quic", "gibberish")) {
+            org.junit.Assert.assertThrows(IllegalArgumentException::class.java) { CoreProfiles.normNetwork(removed) }
+        }
     }
 
     @Test
@@ -216,7 +228,7 @@ class CoreProfilesTest {
         assertEquals("tun", xinb["protocol"])
         assertNull(xinb["listen"])
         @Suppress("UNCHECKED_CAST")
-        assertEquals(Tune.Default.mtu, (xinb["settings"] as Map<String, Any?>)["MTU"])
+        assertEquals(Tune.Default.mtu, (xinb["settings"] as Map<String, Any?>)["mtu"])
         val renderedX = CoreProfiles.render(xinb)
         assertFalse("dokodemo", renderedX.contains("dokodemo"))
 
@@ -226,6 +238,46 @@ class CoreProfilesTest {
         val sinb = (s["inbounds"] as List<Map<String, Any?>>)[0]
         assertEquals(10808, sinb["listen_port"] ?: sinb["port"])
         assertEquals("127.0.0.1", sinb["listen"])
+    }
+
+    @Test
+    fun canonicalProxyProtocolsAndCredentials() {
+        val ss = outbound(profile(node(proto = "ss", tls = null, pbk = null, sid = null,
+            password = "secret", method = "chacha20-ietf-poly1305")))
+        assertEquals("shadowsocks", ss["protocol"])
+        assertEquals("secret", ss.path("settings", "password"))
+        assertEquals("chacha20-ietf-poly1305", ss.path("settings", "method"))
+
+        val http = outbound(profile(node(proto = "http", tls = null, pbk = null, sid = null,
+            supportsUdp = false, username = "alice", password = "pw")))
+        assertEquals("http", http["protocol"])
+        assertEquals("alice", http.path("settings", "user"))
+        assertEquals("pw", http.path("settings", "pass"))
+
+        val socks = outbound(profile(node(proto = "socks5", tls = null, pbk = null, sid = null,
+            supportsUdp = false, username = "bob", password = "pw2")))
+        assertEquals("socks", socks["protocol"])
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            profile(node(proto = "socks4", tls = null, pbk = null, sid = null))
+        }
+    }
+
+    @Test
+    fun tlsIsTransportAwareAndNeverAcceptsInsecure() {
+        val ws = outbound(profile(node(tls = "tls", network = "ws"), Tune(alpn = "h3,h2")))
+        assertEquals(listOf("http/1.1"), ws.path("streamSettings", "tlsSettings", "alpn"))
+        assertNull(ws.path("streamSettings", "tlsSettings", "allowInsecure"))
+        val grpc = outbound(profile(node(tls = "tls", network = "grpc"), Tune(alpn = "h3,http/1.1")))
+        assertEquals(listOf("h2"), grpc.path("streamSettings", "tlsSettings", "alpn"))
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            profile(node(tls = "tls", insecure = true))
+        }
+    }
+
+    @Test
+    fun echToggleProducesThePinnedXrayField() {
+        val o = outbound(profile(node(tls = "tls", network = "tcp"), Tune(ech = true)))
+        assertEquals("https://1.1.1.1/dns-query", o.path("streamSettings", "tlsSettings", "echConfigList"))
     }
 
     @Test

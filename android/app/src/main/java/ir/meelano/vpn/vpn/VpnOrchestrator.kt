@@ -1,207 +1,228 @@
 package ir.meelano.vpn.vpn
 
 import android.content.Context
-import android.content.Intent
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
+import ir.meelano.vpn.data.AppSettings
 import ir.meelano.vpn.data.FeedNode
 import ir.meelano.vpn.data.TunnelSpec
 import java.io.File
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Everything about *starting* a tunnel that must NOT happen on a main thread.
- *
- * Why this file exists: "the whole phone freezes for a few seconds right after I hit connect"
- * is almost always one of these four, and all four are in the connect path of a typical app:
- *
- *   1. DNS for the server hostname (InetAddress.getAllByName) before the tunnel is up  ~0.2-2s
- *   2. the core's own bootstrap (tProxy: InitConfig/StartVpn, DoH setup, TLS handshake) 1-3s
- *   3. building/parsing the profile JSON (free lists are megabytes) + SharedPreferences.commit()
- *   4. startForeground() called AFTER 1-3, so system_server is blocked waiting for the service
- *
- * The rule: the service returns from onStartCommand() immediately, and the *stages* below report
- * progress so the UI can animate a real percentage instead of an anonymous spinner. A user who
- * sees "DNS 40%" does not call the app "hang".
+ * Owns the complete VPN lifecycle: candidate ordering, profile creation, TUN replacement, proof of
+ * internet through that TUN, and periodic failover. Starting the local core is never treated as a
+ * successful connection; only exact 204 responses from the independent probe endpoints turn green.
  */
 class VpnOrchestrator(
     private val context: Context,
     private val engine: TunnelEngine,
     private val state: MutableStateFlow<ConnectPhase>,
+    private val onConnected: (FeedNode, TunnelProbe.Result) -> Unit = { _, _ -> },
+    private val onResult: (FeedNode, Boolean, Long, String?) -> Unit = { _, _, _, _ -> },
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private var job: kotlinx.coroutines.Job? = null
-    @Volatile private var tunPfd: android.os.ParcelFileDescriptor? = null
+    private val lifecycle = Mutex()
+    private var job: Job? = null
+    private var healthJob: Job? = null
+    @Volatile private var tunPfd: ParcelFileDescriptor? = null
+    private val generation = AtomicLong(0L)
+    private val cooledUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     val phase: StateFlow<ConnectPhase> get() = state
 
-    /** Never blocks: hands the work to [Dispatchers.Default] and returns. */
-    fun connect(node: FeedNode) {
-        if (job?.isActive == true) return
+    fun connect(node: FeedNode) = connect(listOf(node), reorder = false)
+
+    /** Never blocks the service main thread. A new request supersedes an in-flight startup. */
+    fun connect(candidates: List<FeedNode>, reorder: Boolean = true) {
+        if (candidates.isEmpty()) {
+            state.value = ConnectPhase.Failed("no_candidates")
+            return
+        }
+        val mine = generation.incrementAndGet()
+        job?.cancel()
+        healthJob?.cancel()
         job = scope.launch {
             try {
-                run(node)
-            } catch (c: CancellationException) {
-                releaseTun()
-                state.value = ConnectPhase.Idle
-                throw c
-            } catch (t: Throwable) {
-                // A failed dial must not leave a half-open tunnel fd behind: that is how "it says
-                // connected but nothing passes, restart fixes it" happens. One deliberate exception -
-                // the kill switch. With it on, a dial that dies *after* the interface exists keeps the
-                // interface: every packet then routes into a tunnel with no engine, i.e. the phone is
-                // offline, which is exactly what a kill switch promises. Disconnect still closes it
-                // (the toggle's Failed branch -> orchestrator.disconnect() -> releaseTun()).
-                if (!runCatching { ir.meelano.vpn.data.AppSettings.killSwitch }.getOrDefault(false)) {
-                    releaseTun()
-                }
-                state.value = ConnectPhase.Failed(t.message ?: "tunnel_error")
+                lifecycle.withLock { runCandidates(candidates, reorder, mine) }
+            } catch (cancelled: CancellationException) {
+                if (generation.get() == mine) state.value = ConnectPhase.Idle
+                throw cancelled
+            } catch (error: Throwable) {
+                if (!killSwitch()) releaseTun()
+                if (generation.get() == mine) state.value = ConnectPhase.Failed(error.message ?: "tunnel_error")
             }
         }
     }
 
+    /** Synchronous service-destruction safety net; normal disconnect still uses the suspend path. */
+    fun destroy() {
+        generation.incrementAndGet()
+        healthJob?.cancel()
+        job?.cancel()
+        releaseTun()
+    }
+
     suspend fun disconnect() {
+        generation.incrementAndGet()
+        healthJob?.cancelAndJoin()
+        healthJob = null
         job?.cancelAndJoin()
         job = null
-        withContext(Dispatchers.Default) { runCatching { engine.stop() } }
+        lifecycle.withLock { withContext(Dispatchers.Default) { runCatching { engine.stop() } } }
         releaseTun()
         state.value = ConnectPhase.Idle
     }
 
-    /** Closes the ParcelFileDescriptor we deliberately kept alive during the session. */
     private fun releaseTun() {
         runCatching { tunPfd?.close() }
         tunPfd = null
     }
 
-    private suspend fun run(node: FeedNode) = withContext(Dispatchers.Default) {
-        // start clean: a previous attempt (or a kill-switch hold) may have kept a tunnel fd, and
-        // establishing a second interface over it is the "two tunnels, one dead" class of bug
-        releaseTun()
+    private suspend fun runCandidates(source: List<FeedNode>, reorder: Boolean, mine: Long) {
+        require(VpnService.prepare(context) == null) { "permission_required" }
 
-        // ---- 0. permission must already be granted; prepare() is cheap but not free
-        if (VpnService.prepare(context) != null) {
-            state.value = ConnectPhase.Failed("permission_required")
-            return@withContext
+        // Stop only the core first. With kill switch enabled the old TUN remains the default route and
+        // black-holes packets while the replacement is prepared, avoiding a direct-network gap.
+        runCatching { engine.stop() }
+        if (!killSwitch()) releaseTun()
+
+        val distinct = source.distinctBy { it.id }.filterNot { it.insecure }.take(MAX_CANDIDATES)
+        require(distinct.isNotEmpty()) { "no_supported_candidates" }
+        val now = System.currentTimeMillis()
+        val warm = distinct.filter { (cooledUntil[it.id] ?: 0L) <= now }.ifEmpty { distinct }
+        val ordered = if (reorder) runCatching { engine.orderCandidates(warm) }.getOrDefault(warm) else warm
+        var last: Throwable = IllegalStateException("all_candidates_failed")
+
+        for ((index, node) in ordered.withIndex()) {
+            if (generation.get() != mine) throw CancellationException("superseded")
+            try {
+                val probe = startOne(node, index, ordered.size)
+                cooledUntil.remove(node.id)
+                onResult(node, true, probe.latencyMs, null)
+                onConnected(node, probe)
+                state.value = ConnectPhase.Connected(node.id, probe.latencyMs)
+                startHealthMonitor(node, ordered, mine)
+                return
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                last = error
+                val reason = error.message ?: "candidate_failed"
+                val cool = if (reason.contains("platform_blocked")) PLATFORM_COOLDOWN_MS else FAILURE_COOLDOWN_MS
+                cooledUntil[node.id] = System.currentTimeMillis() + cool
+                onResult(node, false, 0, reason)
+                runCatching { engine.stop() }
+                // Keep the just-established interface as a dead default route until the next establish()
+                // atomically replaces it. Without kill switch, restore direct networking immediately.
+                if (!killSwitch()) releaseTun()
+            }
         }
+        throw IllegalStateException("all_candidates_failed:${last.message ?: "unknown"}", last)
+    }
 
-        // ---- 1. profile materialisation: pure disk/CPU work, off the main thread, always.
-        state.value = ConnectPhase.WritingProfile(0.15f)
+    private suspend fun startOne(node: FeedNode, index: Int, total: Int): TunnelProbe.Result {
+        val offset = (index.toFloat() / total.coerceAtLeast(1)) * 0.25f
+        state.value = ConnectPhase.WritingProfile(0.08f + offset)
         val profileDir = File(context.cacheDir, "profile").apply { mkdirs() }
         val spec = withContext(Dispatchers.IO) {
-            val f = File(profileDir, "config.json")
-            val json = engine.buildProfileJson(node)
-            // write-to-temp + rename: a torn config file is a classic "works after a reboot only" bug
-            val tmp = File(profileDir, "config.json.tmp")
-            tmp.writeText(json)
-            if (!tmp.renameTo(f)) {
-                f.writeText(json)
-            }
-            TunnelSpec(node, f.absolutePath)
+            val file = File(profileDir, "config-${node.id}.json")
+            val temp = File(profileDir, "config-${node.id}.json.tmp")
+            temp.writeText(engine.buildProfileJson(node))
+            if (!temp.renameTo(file)) file.writeText(temp.readText())
+            temp.delete()
+            TunnelSpec(node, file.absolutePath)
         }
 
-        // ---- 2. resolve the server ourselves and hand the IP to the builder, so the *first*
-        //         route/DNS push can't loop back through a tunnel that is not up yet.
-        state.value = ConnectPhase.Resolving(0.30f)
-        val serverIp = withTimeoutOrNull(2_500) {
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    java.net.InetAddress.getByName(spec.node.host).hostAddress
-                }
-            }.getOrNull()
-        }
-        if (serverIp.isNullOrBlank() && spec.node.host.matches(HOSTNAME)) {
-            // a hostname we cannot resolve must fail fast (1-2s) instead of hanging in the core
-            state.value = ConnectPhase.Failed("dns_failed:${spec.node.host}")
-            return@withContext
-        }
+        // Do not pre-resolve with InetAddress here: during failover the old kill-switch TUN is kept
+        // open, so an app-level DNS query would enter that intentionally dead interface. libXray's
+        // protected resolver resolves the endpoint outside the TUN when the core starts below.
+        state.value = ConnectPhase.Resolving(0.30f + offset)
 
-        // ---- 3. bring up the engine BEFORE pushing DNS/routes: no orphaned lookups for other apps
-        state.value = ConnectPhase.Handshake(0.50f)
+        state.value = ConnectPhase.Handshake(0.48f + offset)
         engine.startProxy(spec)
 
-        // ---- 4. open the tunnel
-        state.value = ConnectPhase.TunnelUp(0.70f)
-        val pfd: ParcelFileDescriptor = builderFor(spec, serverIp).establish()
-            ?: run {
-                runCatching { engine.stop() }
-                state.value = ConnectPhase.Failed("establish_returned_null")
-                return@withContext
-            }
-        // ParcelFileDescriptor has no `autoClose` switch: what keeps the tunnel alive is a strong
-        // reference. Without this field the finalizer closes the fd while the core is still using it,
-        // which shows up as "connected for 2 seconds, then dead".
-        tunPfd = pfd
-        engine.attachTunnelFd(pfd.fileDescriptor)
+        state.value = ConnectPhase.TunnelUp(0.68f + offset)
+        val next = builderFor(spec).establish() ?: error("establish_returned_null")
+        val previous = tunPfd
+        tunPfd = next
+        // ParcelFileDescriptor.fd is the public Android API. Reflecting FileDescriptor.descriptor is a
+        // hidden-API violation and fails on hardened ROMs.
+        try {
+            engine.attachTunnelFd(next.fd)
+        } finally {
+            // establish() has already replaced the system VPN; never leak the superseded descriptor,
+            // even if native fd attachment fails and the new dead TUN is kept as the kill switch.
+            runCatching { previous?.close() }
+        }
 
-        // ---- 5. only now is the tunnel healthy enough to advertise DNS to the whole device
         state.value = ConnectPhase.Verifying(0.88f)
         engine.onTunnelUp()
-
-        state.value = ConnectPhase.Connected(spec.node.id, latencyMs = measureHandshakeMs(spec))
+        delay(PROBE_SETTLE_MS)
+        val probe = engine.verifyTunnel()
+        if (!probe.clean) error(probe.reason)
+        return probe
     }
 
-    /**
-     * Route order matters for the "other apps froze" symptom:
-     * a host route for our own server through the *underlying* network, then the default route.
-     */
-    private fun builderFor(spec: TunnelSpec, serverIp: String?): VpnService.Builder {
-        // The Builder must come from the *service* instance: a Builder that is not attached to the
-        // live VpnService yields a tunnel that opens, routes nothing, and looks "connected".
-        // error() here is caught by connect() and surfaced as ConnectPhase.Failed.
+    private fun startHealthMonitor(current: FeedNode, pool: List<FeedNode>, mine: Long) {
+        healthJob?.cancel()
+        healthJob = scope.launch {
+            delay(HEALTH_INITIAL_DELAY_MS)
+            var consecutiveFailures = 0
+            while (generation.get() == mine) {
+                val result = runCatching { engine.verifyTunnel() }.getOrNull()
+                if (result?.clean == true && engine.isTunnelAlive()) {
+                    consecutiveFailures = 0
+                } else {
+                    consecutiveFailures++
+                }
+                if (consecutiveFailures >= HEALTH_FAILURES) {
+                    val reason = result?.reason ?: "health_probe_failed"
+                    onResult(current, false, 0, reason)
+                    cooledUntil[current.id] = System.currentTimeMillis() +
+                        if (result?.platformBlocked == true) PLATFORM_COOLDOWN_MS else FAILURE_COOLDOWN_MS
+                    state.value = ConnectPhase.Handshake(0.12f)
+                    val rotated = pool.filterNot { it.id == current.id } + current
+                    connect(rotated, reorder = true)
+                    return@launch
+                }
+                delay(HEALTH_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun builderFor(spec: TunnelSpec): VpnService.Builder {
         val service = context as? VpnService
             ?: error("VpnOrchestrator must be constructed with the VpnService instance")
-        val b = service.Builder()
-        // the name Android shows in Settings > VPN and in the connect prompt
-        // MTU comes from the resolved tune, not from a constant: 1420 is a fine number until a node on
-        // a 1280-byte MTU link (Reality + fragment) needs something else, and the settings screen's
-        // MTU row has to actually change the tunnel. Clamp, because VpnService rejects absurd values
-        // and the resulting exception surfaces as "connect failed" with no hint of why.
-        val tune = runCatching { ir.meelano.vpn.data.AppSettings.tuneFor(spec.node) }.getOrNull()
+        val tune = runCatching { AppSettings.tuneFor(spec.node) }.getOrNull()
         val mtu = (tune?.mtu ?: 0).takeIf { it in 576..9000 } ?: MTU
-        b.setSession(context.getString(ir.meelano.vpn.R.string.app_name))
+        return service.Builder()
+            .setSession(context.getString(ir.meelano.vpn.R.string.app_name))
             .setMtu(mtu)
-            .addAddress(VPN_IP, 32)
+            .addAddress(VPN_IP4, 32)
+            .addAddress(VPN_IP6, 128)
             .addRoute("0.0.0.0", 0)
-        // The "DNS امن" switch is finally real, and honest about its scope: it chooses WHICH resolver
-        // the system advertises to apps inside the tunnel. Both candidates still enter the tun and the
-        // core's routing rule sends every :53 flow to the proxy - so "off" means a plainer resolver on
-        // the same protected path, never a leak back to the local ISP.
-        val secureDns = runCatching { ir.meelano.vpn.data.AppSettings.secureDns }.getOrDefault(true)
-        (if (secureDns) DNS_SECURE else DNS_PLAIN).forEach { b.addDnsServer(it) }
-        // There is no "exclude this route" API on VpnService.Builder: addRoute() only *includes*
-        // networks, and adding a host route for our own server with a default route already inside the
-        // tunnel is exactly how you get a loop (tunnel traffic dialling the tunnel). The supported
-        // mechanisms are the two below, and both are the core's job, which is why CoreApi exists.
-        if (serverIp != null) {
-            // 1) protect(): the core calls protectOutbound() on the socket/fd it uses to reach
-            //    [serverIp] BEFORE connecting, so that one connection bypasses the tunnel.
-            // 2) whole-app split tunnelling (the only route-level exclusion the platform offers) is
-            //    b.addDisallowedApplication(pkg), driven by the "این اپ‌ها خارج از VPN" setting.
-        }
-        return b
+            .addRoute("::", 0)
+            .apply {
+                // These are virtual destinations only. The profile's dns-out intercepts port 53 and
+                // resolves over DoH tagged to the selected proxy, including for TCP-only HTTP proxies.
+                DNS_VIRTUAL.forEach { addDnsServer(it) }
+            }
     }
 
-    /**
-     * What the engine must call on its *own* outbound socket before dialling the server.
-     * This — not a route — is how a VPN keeps its control connection outside the tunnel.
-     *
-     * `VpnService.protect` has exactly three overloads: `protect(int)`, `protect(Socket)` and
-     * `protect(DatagramSocket)`. There is no FileDescriptor and no ParcelFileDescriptor variant —
-     * a core holding a pfd must call `pfd.detachFd()` on its own side and hand us the int, because
-     * detaching is also a transfer of ownership and that decision belongs to whoever owns the tunnel.
-     * So the raw int here is the same value `CoreApi.set_fd` receives; nothing is dup'd or cached.
-     */
     fun protectOutbound(fd: Int): Boolean =
         runCatching { (context as? VpnService)?.protect(fd) ?: false }.getOrDefault(false)
 
@@ -211,28 +232,23 @@ class VpnOrchestrator(
     fun protectOutbound(socket: java.net.DatagramSocket): Boolean =
         runCatching { (context as? VpnService)?.protect(socket) ?: false }.getOrDefault(false)
 
-    private suspend fun measureHandshakeMs(spec: TunnelSpec): Long {
-        val t0 = System.nanoTime()
-        withTimeoutOrNull(6_000) {
-            while (!engine.isTunnelAlive()) delay(120)
-        }
-        return ((System.nanoTime() - t0) / 1_000_000).coerceAtMost(6_000)
-    }
+    private fun killSwitch(): Boolean = runCatching { AppSettings.killSwitch }.getOrDefault(false)
 
     companion object {
-        private const val MTU = 1420                 // 1280-ish is safest over ws/tls tunnels
-        private const val VPN_IP = "10.128.0.2"
-        private val DNS_SECURE = listOf("1.1.1.1", "1.0.0.1")
-        private val DNS_PLAIN = listOf("8.8.8.8", "8.4.4.4")
-        // a hostname, not an IP literal: single escapes on purpose. "\\\\." in a Kotlin
-        // string is the regex "literal backslash, then any character" - which no real hostname
-        // contains, so for two releases the dns_failed fast-fail below could never trigger
-        // and an unresolvable server hung inside the core instead of failing with a name.
-        private val HOSTNAME = Regex("^[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}$")
+        private const val MTU = 1280
+        private const val VPN_IP4 = "10.128.0.2"
+        private const val VPN_IP6 = "fd00:6d65:656c::2"
+        private val DNS_VIRTUAL = listOf("1.1.1.1", "2606:4700:4700::1111")
+        private const val MAX_CANDIDATES = 8
+        private const val PROBE_SETTLE_MS = 650L
+        private const val HEALTH_INITIAL_DELAY_MS = 15_000L
+        private const val HEALTH_INTERVAL_MS = 25_000L
+        private const val HEALTH_FAILURES = 2
+        private const val FAILURE_COOLDOWN_MS = 3 * 60_000L
+        private const val PLATFORM_COOLDOWN_MS = 15 * 60_000L
     }
 }
 
-/** Progress the UI animates. Percentages come from real stages, not from a fake timer. */
 sealed class ConnectPhase(open val progress: Float = 0f) {
     object Idle : ConnectPhase(0f)
     class WritingProfile(override val progress: Float) : ConnectPhase(progress)
@@ -244,25 +260,15 @@ sealed class ConnectPhase(open val progress: Float = 0f) {
     class Failed(val reason: String) : ConnectPhase(0f)
 }
 
-/**
- * The core (tProxy / sing-box / your own) hides behind this, so the orchestrator above is
- * testable and survives swapping engines. Adapter example for tProxy:
- *
- *   override fun startProxy(spec) {
- *       tProxy.setVpnConfigureConfig(spec.profileJson)   // must run OFF the main thread
- *       tProxy.startVpnProxy()
- *   }
- *   override fun attachTunnelFd(fd: FileDescriptor) { tProxy.startVpn(fd.detachFd()) }
- */
 interface TunnelEngine {
     fun buildProfileJson(node: FeedNode): String
+    suspend fun orderCandidates(nodes: List<FeedNode>): List<FeedNode> = nodes
     suspend fun startProxy(spec: TunnelSpec)
-    fun attachTunnelFd(fd: FileDescriptor)
+    fun attachTunnelFd(fd: Int)
     suspend fun onTunnelUp()
+    suspend fun verifyTunnel(): TunnelProbe.Result
     fun isTunnelAlive(): Boolean
     fun rxBytes(): Long
     fun txBytes(): Long
     suspend fun stop()
 }
-
-private typealias FileDescriptor = java.io.FileDescriptor

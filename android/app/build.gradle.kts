@@ -113,6 +113,17 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Ship the common phone ABI as the primary APK, while retaining one universal fallback.
+    // Per-ABI output avoids making every arm64 user download the legacy v7 native library too.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = true
+        }
+    }
+
     signingConfigs {
         if (keystoreProps.isNotEmpty()) {
             create("meelano") {

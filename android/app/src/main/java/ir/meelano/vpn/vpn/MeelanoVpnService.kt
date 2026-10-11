@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Build
@@ -20,7 +21,9 @@ import ir.meelano.vpn.MainActivity
 import ir.meelano.vpn.R
 import ir.meelano.vpn.data.FeedNode
 import ir.meelano.vpn.data.FeedHolder
+import ir.meelano.vpn.data.Prefs
 import ir.meelano.vpn.keepalive.KeepAlive
+import ir.meelano.vpn.keepalive.ActiveNodeCache
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,8 +32,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import ir.meelano.vpn.data.TunnelSpec
-import java.io.FileDescriptor
 
 /**
  * The tunnel must outlive the UI. Three rules that are usually broken in apps whose
@@ -54,6 +58,7 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
         const val ACTION_CONNECT = "ir.meelano.vpn.CONNECT"
         const val ACTION_DISCONNECT = "ir.meelano.vpn.DISCONNECT"
         const val EXTRA_NODE_ID = "node"
+        const val EXTRA_REORDER = "smart_order"
 
         private const val CHANNEL_ID = "meelano_vpn"
         private const val NOTIF_ID = 4201
@@ -77,10 +82,12 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
         /** set while a service instance is alive, so commands issued during a restart are not lost */
         @Volatile private var alive: MeelanoVpnService? = null
 
-        fun start(context: Context, node: FeedNode) {
+        fun start(context: Context, node: FeedNode, smartOrder: Boolean = true) {
+            Prefs.setVpnDesired(context, true)
             val i = Intent(context, MeelanoVpnService::class.java).apply {
                 action = ACTION_CONNECT
                 putExtra(EXTRA_NODE_ID, node.id)
+                putExtra(EXTRA_REORDER, smartOrder)
             }
             runCatching { context.startForegroundService(i) }
                 .onFailure {
@@ -96,6 +103,7 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
         }
 
         fun stop(context: Context) {
+            Prefs.setVpnDesired(context, false)
             context.startService(
                 Intent(context, MeelanoVpnService::class.java).setAction(ACTION_DISCONNECT)
             )
@@ -108,6 +116,7 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
     private lateinit var orchestrator: VpnOrchestrator
     private val statHandler = Handler(Looper.getMainLooper())
     private var engineStartedAt = 0L
+    private val tunnelProbe = TunnelProbe()
     private var lastNotifiedAt = 0L
     private var lastNotifiedRx = -1L
     private var lastNotifiedTx = -1L
@@ -120,7 +129,22 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
         // IMPORTANT: post the notification first, cheaply. Android 12+ kills the process
         // if startForeground() is not reached within ~10s of startForegroundService().
         startForeground(NOTIF_ID, buildNotification("در حال آماده‌سازی…"))
-        orchestrator = VpnOrchestrator(this, this, _phase)
+        orchestrator = VpnOrchestrator(
+            this, this, _phase,
+            onConnected = { node, probe ->
+                FeedHolder.pendingConnectId = node.id
+                Prefs.setActiveId(this, node.id)
+                ActiveNodeCache.save(this, node)
+                FeedHolder.repo.recordPlatformVerdict(node.id, "clean")
+                notify(buildNotification("متصل · آزمون اینترنت ${probe.latencyMs}ms"))
+            },
+            onResult = { node, ok, latency, error ->
+                if (!ok && error?.contains("platform_blocked") == true) {
+                    FeedHolder.repo.recordPlatformVerdict(node.id, "platform_blocked")
+                }
+                FeedHolder.repo.reportResult(node.id, ok, latency, error)
+            },
+        )
         registerNetworkCallback()
         // targetSdk 35 = Android's new export rule: registering a receiver with no export flag
         // throws SecurityException on API 33+ *right here in onCreate*, so the service dies at birth
@@ -146,6 +170,7 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_DISCONNECT -> {
+                Prefs.setVpnDesired(this, false)
                 serviceScope.launch {
                     orchestrator.disconnect()
                     stopSelfSafely()
@@ -153,14 +178,24 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
                 return START_NOT_STICKY
             }
             else -> {
-                val id = FeedHolder.pendingConnectId ?: intent?.getStringExtra(EXTRA_NODE_ID)
+                // A null intent is Android restarting a sticky service. Reconnect only if the user left
+                // the VPN on; an old active-id is history, not consent to resurrect after Disconnect.
+                if (intent == null && !Prefs.vpnDesired(this)) {
+                    stopSelfSafely()
+                    return START_NOT_STICKY
+                }
+                if (intent?.action == ACTION_CONNECT) Prefs.setVpnDesired(this, true)
+                val id = intent?.getStringExtra(EXTRA_NODE_ID) ?: FeedHolder.pendingConnectId ?: Prefs.activeId(this)
+                val reorder = intent?.getBooleanExtra(EXTRA_REORDER, true) ?: true
                 serviceScope.launch {
                     val node = id?.let { FeedHolder.repo.awaitNode(it) }
+                        ?: id?.let { ActiveNodeCache.get(this@MeelanoVpnService, it) }
                     if (node == null) {
                         _phase.value = ConnectPhase.Failed("profile_missing")
                         stopSelfSafely()
                     } else {
-                        orchestrator.connect(node)
+                        val pool = FeedHolder.repo.failoverCandidates(node)
+                        orchestrator.connect(pool, reorder = reorder)
                     }
                 }
             }
@@ -180,6 +215,8 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
         statHandler.removeCallbacks(ticker)
         runCatching { unregisterReceiver(stopReceiver) }
         networkCallback?.let { runCatching { connectivity?.unregisterNetworkCallback(it) } }
+        if (::orchestrator.isInitialized) orchestrator.destroy()
+        runCatching { XrayBridge.stop() }
         serviceScope.cancel()
         alive = null
         _phase.value = ConnectPhase.Idle
@@ -187,6 +224,7 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
     }
 
     override fun onRevoke() {
+        Prefs.setVpnDesired(this, false)
         serviceScope.launch { orchestrator.disconnect() }
         super.onRevoke()
     }
@@ -366,41 +404,47 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
      * On a network switch (wifi -> cell) the tunnel socket is dead. Reconnect the *engine*,
      * do not tear the notification down: a flash of "disconnected" is what users read as a crash.
      */
+    @Volatile private var underlying: Network? = null
+    private var networkReconnect: kotlinx.coroutines.Job? = null
+
     private fun registerNetworkCallback() {
         connectivity = getSystemService(ConnectivityManager::class.java)
-        val cb = object : android.net.ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: android.net.Network) {
-                // only a live session has anything to rebind; on a dormant service this used to tickle
-                // the core for no reason every time the radio came back
-                if (_phase.value !is ConnectPhase.Connected) return
-                if (!hasVpnUnderlying()) return
-                serviceScope.launch { runCatching { CoreApi.rebindUnderlying(this@MeelanoVpnService) } }
+        val cb = object : ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+                val physical = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+                if (!physical || !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) return
+                val old = underlying
+                underlying = network
+                if (old == null || old == network || _phase.value !is ConnectPhase.Connected) return
+                // Debounce wifi/cell capability churn. A full candidate reconnect is required; merely
+                // re-running protect() cannot revive sockets bound to the vanished network.
+                networkReconnect?.cancel()
+                networkReconnect = serviceScope.launch {
+                    delay(1_200)
+                    reconnectActive("network_changed")
+                }
             }
 
-            override fun onLost(network: android.net.Network) {
-                // a radio drop must disturb the UI only while the user actually *stands on* the tunnel:
-                // flipping an idle or failed ring to "connecting 40%" is how "the app reconnects by
-                // itself" ghost stories start
-                val p = _phase.value
-                val live = p is ConnectPhase.Connected || p is ConnectPhase.Handshake ||
-                    p is ConnectPhase.TunnelUp || p is ConnectPhase.Verifying
-                if (!live) return
-                _phase.value = ConnectPhase.Handshake(0.4f)
-                serviceScope.launch {
-                    KeepAlive.retryWithBackoff(this@MeelanoVpnService)
-                }
+            override fun onLost(network: Network) {
+                if (network != underlying) return
+                underlying = null
+                if (_phase.value is ConnectPhase.Connected) _phase.value = ConnectPhase.Handshake(0.2f)
+                // The periodic through-TUN monitor performs failover after two failed proofs. Do not run
+                // a second retry loop here; duplicate reconnectors are how two cores/two TUNs are born.
             }
         }
         networkCallback = cb
         runCatching { connectivity?.registerDefaultNetworkCallback(cb) }
     }
 
-    private fun hasVpnUnderlying(): Boolean {
-        val cm = connectivity ?: return false
-        val n = cm.activeNetwork ?: return false
-        val c = cm.getNetworkCapabilities(n) ?: return false
-        return c.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-            c.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+    private suspend fun reconnectActive(reason: String) {
+        if (!Prefs.vpnDesired(this)) return
+        val id = Prefs.activeId(this) ?: return
+        val node = FeedHolder.repo.awaitNode(id) ?: ActiveNodeCache.get(this, id) ?: return
+        _phase.value = ConnectPhase.Handshake(0.15f)
+        orchestrator.connect(FeedHolder.repo.failoverCandidates(node), reorder = true)
     }
 
     private fun stopSelfSafely() {
@@ -423,16 +467,56 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
      */
     override fun buildProfileJson(node: FeedNode): String =
         CoreProfiles.toJson(node, protect = ::protect, tune = ir.meelano.vpn.data.AppSettings.tuneFor(node))
+
+    override suspend fun orderCandidates(nodes: List<FeedNode>): List<FeedNode> = withContext(Dispatchers.IO) {
+        if (!CoreApi.LINKED || nodes.size < 2) return@withContext nodes
+        // runCandidates stops the previous core before this race. Re-register protection so these
+        // temporary-core sockets bypass the still-held kill-switch TUN instead of looping into it.
+        CoreApi.prepareProbeSockets(this@MeelanoVpnService)
+        val configs = nodes.mapNotNull { node ->
+            runCatching { node to CoreProfiles.pingConfigJson(node, ir.meelano.vpn.data.AppSettings.tuneFor(node)) }.getOrNull()
+        }
+        if (configs.isEmpty()) return@withContext nodes
+
+        fun measure(url: String): Map<String, Long>? {
+            val result = LinkedHashMap<String, Long>()
+            for (chunk in configs.chunked(5)) {
+                val delays = XrayBridge.pingBatch(chunk.map { it.second }, timeoutSec = 5, url = url) ?: return null
+                chunk.forEachIndexed { i, pair -> result[pair.first.id] = delays.getOrElse(i) { 11_000L } }
+            }
+            return result
+        }
+
+        val cloudflare = measure("https://cp.cloudflare.com/generate_204") ?: return@withContext nodes
+        val google = measure("https://www.google.com/generate_204") ?: return@withContext nodes
+        if ((cloudflare.values + google.values).none { it < 10_000L }) return@withContext nodes
+
+        nodes.sortedWith(compareBy<FeedNode>(
+            { node ->
+                val cf = (cloudflare[node.id] ?: 11_000L) < 10_000L
+                val gg = (google[node.id] ?: 11_000L) < 10_000L
+                when {
+                    cf && gg -> 0
+                    cf || gg -> 1
+                    else -> 2
+                }
+            },
+            { node -> maxOf(cloudflare[node.id] ?: 11_000L, google[node.id] ?: 11_000L) },
+            { it.slot },
+        ))
+    }
+
     override suspend fun startProxy(spec: TunnelSpec) {
         engineStartedAt = System.currentTimeMillis()
         CoreApi.startProxy(this, spec)
     }
 
-    override fun attachTunnelFd(fd: java.io.FileDescriptor) {
+    override fun attachTunnelFd(fd: Int) {
         CoreApi.attachFd(this, fd)
     }
 
     override suspend fun onTunnelUp() = CoreApi.tunnelUp(this)
+    override suspend fun verifyTunnel(): TunnelProbe.Result = tunnelProbe.run()
     override fun isTunnelAlive(): Boolean = CoreApi.alive()
     override fun rxBytes(): Long = engineRx()
     override fun txBytes(): Long = engineTx()
@@ -444,6 +528,7 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
     private val stopReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context?, i: Intent?) {
             if (i?.action == ACTION_DISCONNECT) {
+                Prefs.setVpnDesired(this@MeelanoVpnService, false)
                 serviceScope.launch { orchestrator.disconnect(); stopSelfSafely() }
             }
         }

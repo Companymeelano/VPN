@@ -157,7 +157,7 @@ jobs:
         with:
           path: android/app/libs/core.aar
           # tag های CalVer دست‌نخورده‌اند؛ کلید = خود تگ. نسخه‌ی xray-core داخل go.mod همان تگ قفل است.
-          key: libxray-core-${{ env.LIBXRAY_TAG }}-${{ hashFiles('android/app/src/main/java/ir/meelano/vpn/vpn/XrayBridge.kt') }}
+          key: libxray-core-${{ env.LIBXRAY_TAG }}-${{ hashFiles('android/app/src/main/java/ir/meelano/vpn/vpn/XrayBridge.kt', 'tools/libxray-android-tun.patch') }}
 
       - name: build the tunnel core (XTLS/libXray, pinned)
         id: core
@@ -179,6 +179,11 @@ jobs:
           gomobile init
           git clone --depth 1 --branch "$LIBXRAY_TAG" https://github.com/XTLS/libXray /tmp/libxray
           cd /tmp/libxray
+          # Upstream Xray reads the Android TUN number from the process environment. A JSON `env`
+          # member does not set that environment, so expose the tiny, typed gomobile handoff we use.
+          git apply "$GITHUB_WORKSPACE/tools/libxray-android-tun.patch"
+          gofmt -w android_wrapper.go
+          grep -q 'func AttachTunFd(fd int32)' android_wrapper.go
           python3 build/main.py android
           mkdir -p "$GITHUB_WORKSPACE/android/app/libs"
           cp libXray.aar "$GITHUB_WORKSPACE/android/app/libs/core.aar"
@@ -201,6 +206,8 @@ jobs:
           grep -q 'invoke' /tmp/bridge.txt
           grep -q 'registerDialerController' /tmp/bridge.txt
           grep -q 'setDNS' /tmp/bridge.txt
+          grep -q 'attachTunFd' /tmp/bridge.txt
+          grep -q 'detachTunFd' /tmp/bridge.txt
           echo "bridge=$bridge" >> "$GITHUB_OUTPUT"
           sha256sum core.aar | awk '{print "core_sha256=" $1}' >> "$GITHUB_OUTPUT"
           echo "core bridge: $bridge" >> "$GITHUB_STEP_SUMMARY"
@@ -420,29 +427,38 @@ jobs:
         run: |
           set -euo pipefail
           variant="${{ inputs.variant || 'debug' }}"
-          src=$(find android/app/build/outputs/apk/$variant -name '*.apk' | head -1)
-          [ -n "$src" ] || { echo "::error::APK تولید نشد"; exit 1; }
-          # نامِ فایلِ asset عمداً بدون پسوندِ variant است: Version.php::scan() با
-          # `^(.+)-(\d+\.\d+(\.\d+)?)-(\d+)\.apk$` ایندکس می‌کند، پس «…-debug.apk» روی هاست
-          # یعنی no_apk_published. variant در عنوانِ Release و در note می‌ماند (جایی که خوانده می‌شود،
-          # نه جایی که پارس می‌شود)؛ بنابراین همین فایل را می‌توان مستقیم در public_html/v/apk/ گذاشت.
+          dir="android/app/build/outputs/apk/$variant"
+          arm64=$(find "$dir" -type f -name '*arm64-v8a*.apk' | head -1)
+          universal=$(find "$dir" -type f -name '*universal*.apk' | head -1)
+          [ -n "$arm64" ] || { echo "::error::arm64-v8a APK تولید نشد"; exit 1; }
+          [ -n "$universal" ] || { echo "::error::universal APK تولید نشد"; exit 1; }
+          # The canonical backend-scannable name is intentionally the arm64 APK: that is the primary
+          # Android-phone deliverable. Universal stays a separately named CI/Release fallback.
           out="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}.apk"
-          cp "$src" "./$out"
+          uout="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}-universal.apk"
+          cp "$arm64" "./$out"
+          cp "$universal" "./$uout"
           sha=$(sha256sum "$out" | cut -d' ' -f1)
+          usha=$(sha256sum "$uout" | cut -d' ' -f1)
           size=$(stat -c%s "$out")
+          usize=$(stat -c%s "$uout")
           {
-            echo "## $out"
+            echo "## APK اصلی: $out"
             echo
-            echo "| مورد | مقدار |"
-            echo "|---|---|"
-            echo "| sha256 | \`$sha\` |"
-            echo "| حجم | $size بایت |"
-            echo "| نصب | \`adb install -r $out\` |"
-            echo "| مسیر هاست | \`public_html/v/apk/$out\` (همین فایل، بدون تغییرنام) |"
+            echo "| خروجی | ABI | حجم | SHA-256 |"
+            echo "|---|---|---:|---|"
+            echo "| \`$out\` | arm64-v8a | $size | \`$sha\` |"
+            echo "| \`$uout\` | universal (arm64 + v7a) | $usize | \`$usha\` |"
+            echo
+            echo "نصب: \`adb install -r $out\`"
+            echo "مسیر هاست: \`public_html/v/apk/$out\` (فایل اصلی arm64، بدون تغییرنام)"
           } >> "$GITHUB_STEP_SUMMARY"
           echo "file=$out" >> "$GITHUB_OUTPUT"
           echo "sha256=$sha" >> "$GITHUB_OUTPUT"
           echo "size=$size" >> "$GITHUB_OUTPUT"
+          echo "universal_file=$uout" >> "$GITHUB_OUTPUT"
+          echo "universal_sha256=$usha" >> "$GITHUB_OUTPUT"
+          echo "universal_size=$usize" >> "$GITHUB_OUTPUT"
 
       # Release با APK + sha256 + آیکون ۵۱۲. چرا Release و نه Artifact: artifact بعد از ۹۰ روز
       # می‌میرد و صفحه‌اش برای هر دانلود دوباره redirect می‌کند؛ asset یک ریلیز لینک مستقیم و ثابت است
@@ -454,6 +470,9 @@ jobs:
           FILE: ${{ steps.out.outputs.file }}
           SHA: ${{ steps.out.outputs.sha256 }}
           SIZE: ${{ steps.out.outputs.size }}
+          UFILE: ${{ steps.out.outputs.universal_file }}
+          USHA: ${{ steps.out.outputs.universal_sha256 }}
+          USIZE: ${{ steps.out.outputs.universal_size }}
           VARIANT: ${{ inputs.variant || 'debug' }}
         run: |
           set -uo pipefail
@@ -464,19 +483,21 @@ jobs:
           # فقط ۶۴ هگز، نه قالبِ sha256sum: Version.php::checksum() همین را می‌خواهد (هرچند از
           # نسخه‌ی تازه، قالبِ sha256sum را هم می‌خواند)
           printf '%s\n' "$SHA" > "$FILE.sha256"
+          printf '%s\n' "$USHA" > "$UFILE.sha256"
           pre=""
           case "$tag" in *alpha*|*beta*|*rc*) pre="--prerelease" ;; esac
           {
             echo "بیلد \`${VARIANT}\` از کامیت \`${GITHUB_SHA::7}\` — تگ \`$tag\`"
             echo
-            echo "- حجم: \`$SIZE\` بایت · sha256: \`$SHA\`"
+            echo "- APK اصلی arm64-v8a: \`$FILE\` · $SIZE بایت · sha256: \`$SHA\`"
+            echo "- APK universal (arm64 + v7a): \`$UFILE\` · $USIZE بایت · sha256: \`$USHA\`"
             echo "- نصب روی گوشی: \`adb install -r $FILE\`"
             echo "- برای آپدیت خودکار: \`$FILE\` و \`$FILE.sha256\` را در \`public_html/v/apk/\` بگذار — نام فایل از قبل با قاعده‌ی \`Version.php::scan()\` می‌خواند، پس تغییرنام لازم نیست"
             echo "- این بیلد debug است (کلید debug). ریلیز کاربران را با keystore خودت بساز: docs/ANDROID-BUILD.md"
             [ -n "${{ steps.bridge.outputs.core_sha256 }}" ] && echo "- هسته: libXray ${{ env.LIBXRAY_TAG }} — bridge \`${{ steps.bridge.outputs.bridge }}\` · core.aar sha256 \`${{ steps.bridge.outputs.core_sha256 }}\`"
             echo "- ⚠️ اگر نصب به‌روزرسانی خطا داد: بیلدهای debug روی هر رانر امضای متفاوت می‌گیرند — نسخه‌ی قبلی را کامل پاک کن بعد نصب کن"
           } > notes.md
-          assets="$FILE $FILE.sha256"
+          assets="$FILE $FILE.sha256 $UFILE $UFILE.sha256"
           [ -f design/preview/assets/ic-store-512.png ] && assets="$assets design/preview/assets/ic-store-512.png"
           # خروجی کامل gh به‌صورت annotation: لاگ build از بیرون قابل دانلود نیست، این تنها کانال اطمینان‌یافتنی است
           gh release create "$tag" $assets --title "Meelano VPN — $tag ($VARIANT)" --notes-file notes.md $pre >rel.log 2>&1 \
@@ -488,7 +509,8 @@ jobs:
           {
             echo "### لینک دانلود APK"; echo
             echo "$url/download/$FILE"; echo
-            echo "- sha256: \`$SHA\` · حجم: $SIZE بایت"
+            echo "- arm64 sha256: \`$SHA\` · حجم: $SIZE بایت"
+            echo "- universal: $url/download/$UFILE · sha256: \`$USHA\` · حجم: $USIZE بایت"
           } >> "$GITHUB_STEP_SUMMARY"
 
       # channel #2: artifact. وقتی کسی به Actions دسترسی ندارد (یا gh pr comment بی‌صدا رد می‌شود،
@@ -514,6 +536,10 @@ jobs:
         if: steps.out.outcome == 'success'
         with:
           name: meelano-apk-${{ inputs.variant || 'debug' }}
-          path: ${{ steps.out.outputs.file }}
+          path: |
+            ${{ steps.out.outputs.file }}
+            ${{ steps.out.outputs.universal_file }}
+            ${{ steps.out.outputs.file }}.sha256
+            ${{ steps.out.outputs.universal_file }}.sha256
           if-no-files-found: ignore
           retention-days: 30

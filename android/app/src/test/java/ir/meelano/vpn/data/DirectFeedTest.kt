@@ -114,17 +114,30 @@ class DirectFeedTest {
             fetch = net.fetch,
             probe = probe,
         )
-        assertEquals(1, res.nodes.size)
-        assertEquals("vless", res.nodes[0].proto)
+        assertEquals(2, res.nodes.size)
+        assertEquals(setOf("vless", "socks5"), res.nodes.map { it.proto }.toSet())
         assertTrue(res.nodes.all { it.proto in DirectFeed.TUNNEL_PROTOS })
-        assertTrue("dropped rows are counted, not silent", res.notes.any { it.contains("پروکسیِ خام") })
     }
 
     @Test
     fun tunnelProtos_areExactlyWhatTheCoreCanWrite() {
-        // CoreProfiles writes vless/vmess/trojan/ss outbounds; hy2 has no writer and must stay out -
-        // a visible hy2 row is a connect failure wearing a UI costume.
-        assertEquals(setOf("vless", "vmess", "trojan", "ss"), DirectFeed.TUNNEL_PROTOS)
+        // The pinned Xray writer also supports raw HTTP and SOCKS5; SOCKS4/hy2 stay out.
+        assertEquals(setOf("vless", "vmess", "trojan", "ss", "shadowsocks", "http", "socks5", "socks"), DirectFeed.TUNNEL_PROTOS)
+    }
+
+    @Test
+    fun bareProxySourcesUseTheirDeclaredProtocol() = runBlocking {
+        val body = "176.9.10.11:8080\n176.9.10.12:8080"
+        val net = Net(mapOf("https://proxy.example/list" to body))
+        val res = DirectFeed.buildFree(
+            sources = listOf(DirectFeed.Upstream("s", "https://proxy.example/list", kind = DirectFeed.Kind.PROXY, protocolHint = "socks5")),
+            lowWatermark = 0,
+            fallbacks = emptyList(),
+            fetch = net.fetch,
+            probe = probe,
+        )
+        assertEquals(2, res.nodes.size)
+        assertTrue(res.nodes.all { it.proto == "socks5" && it.network == "tcp" && !it.supportsUdp })
     }
 
     /* ------------------------------------------------------------------ total failure */

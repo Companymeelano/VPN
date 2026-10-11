@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/PlatformProbe.php';
 /**
  * Build pipeline. Two products, one shape:
  *
@@ -140,6 +141,22 @@ final class Builder
         }
 
         $drop = $kind === 'free';
+        if ($drop) {
+            // Fail closed for raw proxies even when this host has no cURL/egress or probing was disabled.
+            // Tunnel configs can still be validated by Android; an untested open proxy must never be
+            // advertised as clean merely because the backend could not run its gate.
+            foreach ($nodes as $n) {
+                if (!in_array($n['proto'], ['http', 'socks5'], true)) continue;
+                $hasApplied = false;
+                $existingGate = isset($gate[$n['id']]) ? (array) $gate[$n['id']] : [];
+                foreach ($existingGate as $g) {
+                    if (!empty($g['applied'])) { $hasApplied = true; break; }
+                }
+                if (!$hasApplied) {
+                    $gate[$n['id']][] = ['applied' => true, 'ok' => false, 'err' => 'deep_gate_unavailable', 'ms' => 0];
+                }
+            }
+        }
         $scored = Score::annotate($nodes, $tcp, $gate, $drop);
         Ledger::save();
 
@@ -310,7 +327,7 @@ final class Builder
                 $lines = array_slice((array) $lines, 0, max(10, $take * 4));  // head only: lists are best-first
                 $body = implode("\n", $lines);
             }
-            $parsed = Parser::parseBlob($body);
+            $parsed = Parser::parseBlob($body, isset($src['protocol']) ? $src['protocol'] : null);
             if ($kind === 'json') {
                 $parsed = array_slice($parsed, 0, max(10, $take));
             }
@@ -371,55 +388,46 @@ final class Builder
     private static function gatePass(array $nodes, array $aliveIds, array &$meta)
     {
         $endpoints = (array) Util::cfg('free.gate.endpoints', []);
-        if (!Util::cfg('free.gate.probeAll', false)) {
-            $endpoints = array_slice($endpoints, 0, 1);
-        }
         if (!$endpoints || !$aliveIds) {
             return [];
         }
-        $gate = $endpoints[0];
-        $gateHost = (string) $gate['host'];
-        $tmo = (int) Util::cfg('free.probe.proxyTimeoutMs', 2500);
-        // Dns::lookup only resolves while a run budget is set — and Probe::run sets its own, in a
-        // later step. Warm the gate host HERE: on a cold dns cache the lookup below used to return
-        // null, every SocksTask got skipped, and socks nodes never saw a gate test at all.
-        Dns::setBudget(30);
-        $gateIp = Dns::lookup($gateHost);
-        $tasks = [];
-        $byId = [];
-        foreach ($nodes as $n) {
-            $byId[$n['id']] = $n;
-            if (!isset($aliveIds[$n['id']])) {
-                continue;
-            }
-            if (in_array($n['proto'], ['http'], true)) {
-                $tasks[] = new HttpConnectTask($n['id'], $n['host'], $n['port'], $tmo,
-                    '', $gateHost, isset($n['username']) ? $n['username'] : '', isset($n['password']) ? $n['password'] : '');
-            } elseif (in_array($n['proto'], ['socks5', 'socks4'], true)) {
-                if ($gateIp === null) {
-                    continue;
-                }
-                $tasks[] = new SocksTask($n['id'], $n['host'], $n['port'], $tmo,
-                    '', $gateIp, $n['proto'] === 'socks4');
-            } else {
-                // a vless/ss/trojan config IS its own tunnel; a TCP hit is the honest limit
-                // of what a PHP box can verify. End-to-end truth comes from client feedback.
-                $tasks[] = new TcpTask($n['id'], $n['host'], $n['port'], $tmo);
-            }
-        }
-        $raw = Probe::run($tasks, (int) Util::cfg('free.probe.concurrency', 40),
-                          (int) Util::cfg('free.probe.budgetMs', 18000), 30);
+        $proxies = [];
         $out = [];
-        foreach ($raw as $id => $r) {
-            $n = isset($byId[$id]) ? $byId[$id] : null;
-            $isProxy = $n && in_array($n['proto'], ['http', 'socks4', 'socks5'], true);
-            $out[$id][] = ['ok' => !empty($r['ok']), 'gate' => $gateHost, 'ms' => isset($r['ms']) ? $r['ms'] : 0,
-                           'err' => isset($r['err']) ? $r['err'] : null, 'applied' => $isProxy];
-            if ($isProxy) {
-                Ledger::recordServer($id, !empty($r['ok']), isset($r['ms']) ? (int) $r['ms'] : 0);
+        foreach ($nodes as $n) {
+            if (!isset($aliveIds[$n['id']])) continue;
+            if (in_array($n['proto'], ['http', 'socks5'], true)) {
+                $proxies[] = $n;
+            } else {
+                // A PHP host cannot instantiate every Xray transport. Keep tunnel configs on their TCP
+                // evidence, explicitly marked not-applied; Android performs the same exact-204 gate.
+                $out[$n['id']][] = ['ok' => true, 'applied' => false, 'err' => null, 'ms' => 0];
             }
         }
-        $meta['gate'] = ['endpoint' => $gateHost, 'tested' => count($out)];
+
+        $top = max(1, (int) Util::cfg('free.probe.deepTopN', 30));
+        $selected = array_slice($proxies, 0, $top);
+        $deep = PlatformProbe::run($selected, $endpoints, (int) Util::cfg('free.probe.deepTimeoutMs', 5000));
+        $clean = $blocked = $robot = 0;
+        foreach ($proxies as $n) {
+            $id = $n['id'];
+            $r = isset($deep[$id]) ? $deep[$id] : [
+                'applied' => true, 'ok' => false, 'clean' => false, 'blocked' => false, 'robot' => false,
+                'ms' => 0, 'err' => 'not_deep_tested', 'checks' => [],
+            ];
+            $out[$id][] = $r;
+            if (!empty($r['clean'])) $clean++;
+            if (!empty($r['blocked'])) $blocked++;
+            if (!empty($r['robot'])) $robot++;
+            Ledger::recordServer($id, !empty($r['ok']), isset($r['ms']) ? (int) $r['ms'] : 0);
+        }
+        $meta['gate'] = [
+            'mode' => 'https-through-proxy',
+            'tested' => count($selected),
+            'clean' => $clean,
+            'platformBlocked' => $blocked,
+            'robotOrRateLimited' => $robot,
+            'endpoints' => array_values(array_map(function ($e) { return isset($e['name']) ? $e['name'] : 'endpoint'; }, $endpoints)),
+        ];
         return $out;
     }
 
@@ -583,7 +591,7 @@ final class Builder
             'sid'     => isset($n['sid']) ? $n['sid'] : '',
             'fingerprint' => isset($n['fingerprint']) ? $n['fingerprint'] : '',
             'insecure' => !empty($n['insecure']),
-            'supportsUdp' => in_array($n['proto'], ['vless', 'vmess', 'trojan', 'ss', 'hy2', 'tuic', 'socks5'], true),
+            'supportsUdp' => in_array($n['proto'], ['vless', 'vmess', 'trojan', 'ss', 'hy2', 'tuic'], true),
             'raw'     => $n['raw'],
             'quality' => [
                 'grade'       => isset($n['grade']) ? $n['grade'] : 'D',
@@ -593,6 +601,8 @@ final class Builder
                 'alive'       => isset($n['alive']) ? (bool) $n['alive'] : null,
                 'gateOk'      => isset($n['gateOk']) ? $n['gateOk'] : null,
             ],
+            'platformStatus' => isset($n['platformStatus']) ? $n['platformStatus'] : 'unknown',
+            'platformCheckedAt' => isset($n['platformCheckedAt']) ? (int) $n['platformCheckedAt'] : 0,
             'checkedAt' => time(),
         ];
         // The transport patch. Sparse on purpose (see net/Regime.kt): we state only what we decided,
@@ -675,9 +685,18 @@ final class Builder
     {
         $id = strtolower(trim((string) $id));
         // node ids are hex; anything else is noise or someone poking the endpoint
-        if (!preg_match('~^[a-f0-9]{6,40}$~', $id)) {
+        if (!(bool) Util::cfg('free.feedback.enabled', true) || !preg_match('~^[a-f0-9]{6,40}$~', $id)) {
             return false;
         }
+        $known = false;
+        foreach (['vip', 'free'] as $kind) {
+            $cache = Util::cacheRead($kind);
+            $servers = $cache && isset($cache['payload']['servers']) ? (array) $cache['payload']['servers'] : [];
+            foreach ($servers as $server) {
+                if (isset($server['id']) && hash_equals((string) $server['id'], $id)) { $known = true; break 2; }
+            }
+        }
+        if (!$known) return false; // authenticated app or not, unknown ids must not poison the ledger
         Ledger::recordClient($id, (bool) $ok, max(0, min(60000, (int) $ms)));
         Ledger::save();
         return true;

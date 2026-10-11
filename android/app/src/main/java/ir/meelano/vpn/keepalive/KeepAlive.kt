@@ -44,7 +44,7 @@ object KeepAlive {
     private const val WORK_TAG = "meelano_watchdog"
 
     fun enableWatchdog(context: Context) {
-        if (!autoConnectEnabled(context)) return
+        if (!autoConnectEnabled(context) || !Prefs.vpnDesired(context)) return
         val req = PeriodicWorkRequestBuilder<WatchdogWorker>(15, TimeUnit.MINUTES)
             .setConstraints(
                 Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
@@ -68,6 +68,7 @@ object KeepAlive {
         var wait = 1_500L
         repeat(attempts) {
             delay(wait)
+            if (!Prefs.vpnDesired(context) || !autoConnectEnabled(context)) return
             val id = Prefs.activeId(context) ?: return
             val node = ActiveNodeCache.get(context, id) ?: return
             if (!MeelanoVpnService.isRunning()) {
@@ -86,6 +87,10 @@ object KeepAlive {
     fun autoConnectEnabled(context: Context) =
         context.getSharedPreferences("meelano_prefs", Context.MODE_PRIVATE)
             .getBoolean("smart_reconnect", true)
+
+    fun bootConnectEnabled(context: Context) =
+        context.getSharedPreferences("meelano_prefs", Context.MODE_PRIVATE)
+            .getBoolean("auto_connect_boot", true)
 
     /** Intent for the onboarding row: "اجازه‌ی اجرا در پس‌زمینه" */
     fun batteryOptimizationIntent(context: Context): Intent? {
@@ -107,7 +112,7 @@ class WatchdogWorker(context: Context, params: WorkerParameters) : Worker(contex
     override fun doWork(): Result {
         val ctx = applicationContext
         val id = Prefs.activeId(ctx)
-        if (id == null || !KeepAlive.autoConnectEnabled(ctx)) return Result.success()
+        if (id == null || !KeepAlive.autoConnectEnabled(ctx) || !Prefs.vpnDesired(ctx)) return Result.success()
         if (VpnService.prepare(ctx) != null) return Result.success()   // user must re-consent
         if (!MeelanoVpnService.isRunning()) {
             ActiveNodeCache.get(ctx, id)?.let { MeelanoVpnService.start(ctx, it) }
@@ -123,7 +128,8 @@ class BootReceiver : BroadcastReceiver() {
         if (a != Intent.ACTION_BOOT_COMPLETED && a != Intent.ACTION_MY_PACKAGE_REPLACED &&
             a != "android.intent.action.QUICKBOOT_POWERON"
         ) return
-        if (!KeepAlive.autoConnectEnabled(context)) return
+        if (!KeepAlive.autoConnectEnabled(context) || !KeepAlive.bootConnectEnabled(context) ||
+            !Prefs.vpnDesired(context)) return
         val id = Prefs.activeId(context) ?: return
         val node = ActiveNodeCache.get(context, id) ?: return
         if (VpnService.prepare(context) == null) {

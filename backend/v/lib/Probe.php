@@ -368,7 +368,7 @@ final class Dns
             if (is_array($d) && isset($d['at']) && time() - (int) $d['at'] < 21600) {
                 foreach ((array) $d as $host => $ip) {
                     if ($host !== 'at' && is_string($ip)) {
-                        $cache[$host] = $ip === '' ? null : $ip;
+                        $cache[$host] = ($ip !== '' && Util::isPublicIp($ip)) ? $ip : null;
                     }
                 }
             }
@@ -404,7 +404,7 @@ final class Dns
     {
         self::load();
         if (filter_var($host, FILTER_VALIDATE_IP)) {
-            return $host;
+            return Util::isPublicIp($host) ? $host : null;
         }
         if (array_key_exists($host, self::$cache)) {
             return self::$cache[$host];
@@ -414,7 +414,7 @@ final class Dns
         }
         self::$budget--;
         $ip = @gethostbyname($host);
-        $ok = is_string($ip) && $ip !== $host && filter_var($ip, FILTER_VALIDATE_IP);
+        $ok = is_string($ip) && $ip !== $host && Util::isPublicIp($ip);
         self::$cache[$host] = $ok ? $ip : null;
         self::$dirty = true;
         return $ok ? $ip : null;

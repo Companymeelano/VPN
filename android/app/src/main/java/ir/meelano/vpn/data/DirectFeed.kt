@@ -23,13 +23,13 @@ import kotlinx.coroutines.coroutineScope
  *
  * What it deliberately does NOT do, and why that is not a shortcut:
  *
- *   - no CONNECT-through-proxy gate to Google/Cloudflare: that is 3 round trips per node per build, and
- *     on a phone on LTE it is the difference between a cool pocket and a warm one;
+ *   - every candidate is still verified through the established Android tunnel before it can turn the
+ *     UI green; this builder only does the cheap source/TCP stage so a phone does not fan out hundreds
+ *     of HTTPS handshakes at once;
  *   - no multi-day ledger, no ban timers: those only pay off when someone is around tomorrow, and the
  *     server keeps them;
- *   - no raw `ip:port` proxy lists (TheSpeedX, ShiftyTR, …): an HTTP/SOCKS proxy cannot carry a VPN
- *     tunnel, so on a phone they are 400 KB of bytes for nodes the core cannot dial. We keep the
- *     config-grade lists (vless / vmess / trojan / ss), which is what the core can dial.
+ *   - no SOCKS4 rows: the pinned core only supports SOCKS5. HTTP and SOCKS5 lists are accepted and
+ *     identified by an explicit per-source protocol hint (never guessed from a random port).
  *
  * Everything here is pure Kotlin and takes its IO as *lambdas*, so it runs in JVM unit tests with fake
  * fetchers. `ServerFeedRepository` supplies the real ones (OkHttp with the DoH fallback, and the same
@@ -38,13 +38,15 @@ import kotlinx.coroutines.coroutineScope
 object DirectFeed {
 
     /** CONFIG = a text file of `scheme://` lines. JSON = an array of objects with ip/port/user/pass. */
-    enum class Kind { CONFIG, JSON }
+    enum class Kind { CONFIG, PROXY, JSON }
 
     data class Upstream(
         val id: String,
         val url: String,
         val kind: Kind = Kind.CONFIG,
         val maxBytes: Int = 1_400_000,
+        /** Required for bare host:port proxy files; prevents a SOCKS list being mislabeled HTTP. */
+        val protocolHint: String? = null,
         /** Same document, other hosts. Tried in order after `url`; the first non-blank body wins. */
         val mirrors: List<String> = emptyList(),
     )
@@ -60,6 +62,26 @@ object DirectFeed {
         Upstream("gfp-trojan", "https://raw.githubusercontent.com/wiki/gfpcom/free-proxy-list/lists/trojan.txt"),
         Upstream("gfp-ss", "https://raw.githubusercontent.com/wiki/gfpcom/free-proxy-list/lists/ss.txt"),
         Upstream("gfp-vmess", "https://raw.githubusercontent.com/wiki/gfpcom/free-proxy-list/lists/vmess.txt"),
+        Upstream(
+            "speedx-http", "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
+            kind = Kind.PROXY, maxBytes = 500_000, protocolHint = "http",
+            mirrors = listOf("https://cdn.jsdelivr.net/gh/TheSpeedX/PROXY-List@master/http.txt"),
+        ),
+        Upstream(
+            "speedx-socks5", "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt",
+            kind = Kind.PROXY, maxBytes = 500_000, protocolHint = "socks5",
+            mirrors = listOf("https://cdn.jsdelivr.net/gh/TheSpeedX/SOCKS-List@master/socks5.txt"),
+        ),
+        Upstream(
+            "monosans-http", "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
+            kind = Kind.PROXY, maxBytes = 500_000, protocolHint = "http",
+            mirrors = listOf("https://cdn.jsdelivr.net/gh/monosans/proxy-list@main/proxies/http.txt"),
+        ),
+        Upstream(
+            "monosans-socks5", "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks5.txt",
+            kind = Kind.PROXY, maxBytes = 500_000, protocolHint = "socks5",
+            mirrors = listOf("https://cdn.jsdelivr.net/gh/monosans/proxy-list@main/proxies/socks5.txt"),
+        ),
     )
 
     /**
@@ -150,15 +172,17 @@ object DirectFeed {
                 if (via > 0) mirrored++
                 // The core dials vless/vmess/trojan/ss outbounds only - everything else is a row the
                 // user could tap and blame themselves for. Count them, don't list them.
-                val parsed = NodeUri.parseBlob(body, tier = "free", brand = brand)
-                val dialable = parsed.filter { it.proto in TUNNEL_PROTOS }
+                val parsed = NodeUri.parseBlob(body, tier = "free", brand = brand, proxyHint = u.protocolHint)
+                val dialable = parsed.filter { it.proto in TUNNEL_PROTOS && !it.insecure }
                 skippedProxies += parsed.size - dialable.size
                 if (dialable.isEmpty()) {
                     notes += "«${u.id}» پاسخ داد ولی نودِ قابل‌دیال نداشت"
                 } else {
-                    all += dialable
+                    // Fair share per source: one huge VLESS file must not starve SOCKS/HTTP or every
+                    // other transport before ranking gets a chance to compare them.
+                    val share = (parseCap / batch.size.coerceAtLeast(1)).coerceAtLeast(12)
+                    all += dialable.take(share)
                 }
-                if (all.size >= parseCap) break    // the head of every list is enough; stop reading intent
             }
         }
 
@@ -169,7 +193,7 @@ object DirectFeed {
             pull(fallbacks)
         }
         if (mirrored > 0) notes += "$mirrored منبع از مسیرِ جایگزین (آینهٔ jsdelivr) آورده شد"
-        if (skippedProxies > 0) notes += "$skippedProxies ردیف پروکسیِ خام حذف شد (هستهٔ اپ آن‌ها را دیال نمی‌کند)"
+        if (skippedProxies > 0) notes += "$skippedProxies ردیف با پروتکل ناامن/پشتیبانی‌نشده حذف شد"
         val failed = total - ok
         if (failed > 0) notes += "$failed منبع از $total جواب نداد (فیلترینگِ GitHub روی این مسیر طبیعی است)"
 
@@ -206,7 +230,7 @@ object DirectFeed {
      * included, until a sing-box-style writer for it exists - never reaches the list, because a row
      * that can only fail at connect time reads as the app's fault, not the source's.
      */
-    val TUNNEL_PROTOS = setOf("vless", "vmess", "trojan", "ss")
+    val TUNNEL_PROTOS = setOf("vless", "vmess", "trojan", "ss", "shadowsocks", "http", "socks5", "socks")
 
     private val GRADE_RANK = mapOf("A" to 0, "B" to 1, "C" to 2, "D" to 3)
 }

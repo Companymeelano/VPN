@@ -229,8 +229,6 @@ final class Score
      */
     public static function annotate(array $nodes, array $tcp, array $gate, $dropFailed)
     {
-        $requireOf = max(1, (int) Util::cfg('free.gate.requireOf', 2));
-        $deepOn = (bool) Util::cfg('free.probe.deepGate', false);
         $out = [];
         foreach ($nodes as $n) {
             $id = $n['id'];
@@ -240,17 +238,21 @@ final class Score
             $upstream = isset($n['upstreamLatencyMs']) && $n['upstreamLatencyMs'] > 0 ? (int) $n['upstreamLatencyMs'] : null;
 
             $gateOk = null;
+            $platformStatus = 'unknown';
             if (isset($gate[$id])) {
-                $tested = (array) $gate[$id];
-                $good = 0;
-                foreach ($tested as $g) {
-                    if (!empty($g['ok'])) {
-                        $good++;
-                    }
+                $applied = [];
+                foreach ((array) $gate[$id] as $g) {
+                    if (!empty($g['applied'])) $applied[] = $g;
                 }
-                // never demand more endpoints than we actually measured
-                $need = min($requireOf, max(1, count($tested)));
-                $gateOk = $good >= $need;
+                if ($applied) {
+                    $gateOk = true;
+                    foreach ($applied as $g) {
+                        if (empty($g['ok'])) $gateOk = false;
+                        if (!empty($g['blocked']) || !empty($g['robot'])) $platformStatus = 'blocked';
+                    }
+                    if ($gateOk) $platformStatus = 'clean';
+                    elseif ($platformStatus === 'unknown') $platformStatus = 'failed';
+                }
             }
 
             list($rel, $ledgerLat, $samples) = Ledger::quality($id);
@@ -261,13 +263,15 @@ final class Score
                 if (!$usable) {
                     continue;
                 }
-                if ($gateOk === false && !$deepOn) {
-                    continue;   // blocked by Google/Cloudflare or only port-80: not tunnel-usable
+                if ($gateOk === false) {
+                    continue;   // exact HTTPS-through-proxy checks failed; never publish this raw proxy
                 }
             }
             $n['alive'] = $usable;
             $n['tcpMs'] = $tcpMs;
             $n['gateOk'] = $gateOk;
+            $n['platformStatus'] = $platformStatus;
+            $n['platformCheckedAt'] = $platformStatus === 'unknown' ? 0 : time();
             $n['reliability'] = round($rel, 3);
             $n['samples'] = $samples;
             $n['latencyMs'] = $lat;

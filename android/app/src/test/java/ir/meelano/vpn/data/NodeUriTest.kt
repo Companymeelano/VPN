@@ -137,6 +137,26 @@ class NodeUriTest {
     }
 
     @Test
+    fun explicitHttpAndSocksUrisAreConnectableProfiles() {
+        val http = NodeUri.parseUri("http://alice:pw@176.9.10.11:8080")
+        checkNotNull(http)
+        assertEquals("http", http.proto)
+        assertEquals("tcp", http.network)
+        assertFalse(http.supportsUdp)
+        val socks = NodeUri.parseUri("socks5://bob:pw@176.9.10.12:1080")
+        checkNotNull(socks)
+        assertEquals("socks5", socks.proto)
+        assertEquals("bob", socks.username)
+        assertNull(NodeUri.parseUri("socks4://176.9.10.12:1080"))
+    }
+
+    @Test
+    fun insecureTlsLinksAreRejectedBeforeTheCore() {
+        assertNull(NodeUri.parseUri("vless://u@1.1.1.1:443?security=tls&allowInsecure=1"))
+        assertNull(NodeUri.parseUri("trojan://pw@1.1.1.1:443?security=tls&insecure=true"))
+    }
+
+    @Test
     fun addressesAPhoneShouldNeverDialAreRefused() {
         listOf(
             "127.0.0.1", "10.0.0.5", "192.168.1.1", "172.20.3.4", "169.254.9.9",

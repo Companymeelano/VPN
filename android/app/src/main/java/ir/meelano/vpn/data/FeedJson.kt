@@ -35,6 +35,10 @@ object FeedJson {
         val host = s.optString("host")
         val port = s.optInt("port")
         if (host.isBlank() || port !in 1..65535) return null
+        val proto = s.optString("proto").trim().lowercase()
+        if (proto !in SUPPORTED_PROTOCOLS || s.optBoolean("insecure", false)) return null
+        val network = s.optString("network").trim().lowercase()
+        if (network in REMOVED_TRANSPORTS) return null
         val q = s.optJSONObject("quality")
         return FeedNode(
             id = s.optString("id"),
@@ -46,14 +50,15 @@ object FeedJson {
             cc = s.optString("cc").ifBlank { null },
             kind = s.optString("tier", "vip"),
             tier = s.optString("tier", "vip"),
-            proto = s.optString("proto"),
+            proto = proto,
             host = host,
             port = port,
             tls = s.optString("tls").ifBlank { null },
-            network = s.optString("network").ifBlank { null },
+            network = network.ifBlank { null },
             sni = s.optString("sni").ifBlank { null },
             path = s.optString("path").ifBlank { null },
             hostHeader = s.optString("hostHeader").ifBlank { null },
+            serviceName = s.optString("serviceName").ifBlank { null },
             alpn = s.optString("alpn").ifBlank { null },
             flow = s.optString("flow").ifBlank { null },
             pbk = s.optString("pbk").ifBlank { null },
@@ -73,6 +78,8 @@ object FeedJson {
             reliability = (q?.optDouble("reliability", 0.0) ?: 0.0).toFloat(),
             samples = q?.optInt("samples", 0) ?: 0,
             config = s.optJSONObject("config")?.toString(),
+            platformStatus = s.optString("platformStatus", "unknown"),
+            platformCheckedAt = s.optLong("platformCheckedAt", 0L),
             // "tune" is either an object of patches or a preset name; both are clamped in TunePatch
             tune = ir.meelano.vpn.net.TunePatch.fromAny(s.opt("tune")),
         )
@@ -103,12 +110,13 @@ object FeedJson {
         .put("cc", n.cc ?: "").put("tier", n.tier).put("proto", n.proto)
         .put("host", n.host).put("port", n.port).put("tls", n.tls ?: "")
         .put("network", n.network ?: "").put("sni", n.sni ?: "").put("path", n.path ?: "")
-        .put("hostHeader", n.hostHeader ?: "").put("alpn", n.alpn ?: "").put("flow", n.flow ?: "")
+        .put("hostHeader", n.hostHeader ?: "").put("serviceName", n.serviceName ?: "").put("alpn", n.alpn ?: "").put("flow", n.flow ?: "")
         .put("pbk", n.pbk ?: "").put("sid", n.sid ?: "").put("fingerprint", n.fingerprint ?: "")
         .put("userId", n.userId ?: "").put("password", n.password ?: "")
         .put("method", n.method ?: "").put("cipher", n.cipher ?: "")
         .put("insecure", n.insecure).put("supportsUdp", n.supportsUdp)
         .put("raw", n.raw ?: "")
+        .put("platformStatus", n.platformStatus).put("platformCheckedAt", n.platformCheckedAt)
         .apply {
             if (!n.tune.isEmpty) put("tune", n.tune.toJson())
             // These two used to be missing, so a cached payload came back without them: alterId fell to
@@ -123,4 +131,7 @@ object FeedJson {
             JSONObject().put("grade", n.grade).put("reliability", n.reliability.toDouble())
                 .put("samples", n.samples).put("latencyMs", n.latencyMs ?: JSONObject.NULL)
         )
+
+    private val SUPPORTED_PROTOCOLS = setOf("vless", "vmess", "trojan", "ss", "shadowsocks", "http", "socks", "socks5")
+    private val REMOVED_TRANSPORTS = setOf("h2", "h3", "http", "quic")
 }

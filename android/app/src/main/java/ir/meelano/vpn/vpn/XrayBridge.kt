@@ -1,7 +1,6 @@
 package ir.meelano.vpn.vpn
 
 import java.io.File
-import java.io.FileDescriptor
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
@@ -31,9 +30,10 @@ import java.lang.reflect.Proxy
  *   setDNS(DialerController, String)            - pins Go's resolver to a protected IP:53 endpoint
  *   resetDNS()
  *
- * The TUN fd reaches the engine through config, not through a call: `env."xray.tun.fd"` is written into
- * the profile root right before `runXray` (that is the upstream replacement for the removed `SetTunFd`,
- * and it is why [bind] - not [start] - is where the engine actually starts).
+ * The pinned AAR is patched at build time with attachTunFd(Int)/detachTunFd(). Xray-core reads the
+ * process environment variable `xray.tun.fd`; JSON has no process-environment semantics, so putting an
+ * `env` object in a profile would merely be ignored. [bindRaw] calls that real native handoff before the
+ * core is constructed.
  */
 object XrayBridge {
 
@@ -46,6 +46,8 @@ object XrayBridge {
     private const val M_REGISTER_LISTENER = "registerListenerController"
     private const val M_SET_DNS = "setDNS"
     private const val M_RESET_DNS = "resetDNS"
+    private const val M_ATTACH_TUN = "attachTunFd"
+    private const val M_DETACH_TUN = "detachTunFd"
 
     /** gomobile generates this Go interface as a Java interface beside the wrapper class. */
     private const val DIALER_INTERFACE = "DialerController"
@@ -86,6 +88,8 @@ object XrayBridge {
             M_REGISTER_DIALER to (find(c, M_REGISTER_DIALER) != null),
             M_SET_DNS to (find(c, M_SET_DNS) != null),
             M_RESET_DNS to (find(c, M_RESET_DNS) != null),
+            M_ATTACH_TUN to (find(c, M_ATTACH_TUN) != null),
+            M_DETACH_TUN to (find(c, M_DETACH_TUN) != null),
         )
     }
 
@@ -169,14 +173,9 @@ object XrayBridge {
      * The engine itself starts in [bind], because that is where the TUN fd first exists (call order is
      * platform-mandated: config before `VpnService.establish()`, fd after it).
      */
-    fun start(profilePath: String, tag: String, tunFd: Int, mtu: Int): Boolean {
-        if (!ir.meelano.vpn.BuildConfig.CORE_LINKED) throw CoreApi.CoreNotLinked()
+    fun prepareNetwork(protector: (Int) -> Boolean) {
         val c = clazz ?: throw Missing(describe())
-        pendingProfile = profilePath
-        pendingTag = tag
-        pendingMtu = mtu
-        startedAt = System.currentTimeMillis()
-
+        protect = protector
         val controller = dialerController(c)
         find(c, M_REGISTER_DIALER)?.invoke(null, controller)
             ?: throw Missing("class '$bridgeClass' has no $M_REGISTER_DIALER")
@@ -188,28 +187,42 @@ object XrayBridge {
                 throw Missing("setDNS: ${(e.targetException ?: e).message}")
             }
         }
+    }
+
+    fun start(profilePath: String, tag: String, mtu: Int): Boolean {
+        if (!ir.meelano.vpn.BuildConfig.CORE_LINKED) throw CoreApi.CoreNotLinked()
+        pendingProfile = profilePath
+        pendingTag = tag
+        pendingMtu = mtu
+        startedAt = System.currentTimeMillis()
+        prepareNetwork(protect ?: throw Missing("VpnService protect callback is not installed"))
         return true
     }
 
     /**
-     * Stage 2: the fd arrived - inject it into the profile root env and start the engine for real.
+     * Stage 2: the fd arrived - hand it to the patched native wrapper and start the engine for real.
      * A failure here means "configured but no traffic", the single symptom users cannot diagnose, so it
      * throws by design (the orchestrator turns it into ConnectPhase.Failed, not a green ring).
      */
-    fun bind(fd: FileDescriptor, mtu: Int) {
-        bindRaw(rawFdOf(fd) ?: throw Missing("cannot read the tunnel fd (FileDescriptor.descriptor renamed?)"), mtu)
-    }
-
     fun bindRaw(tunFd: Int, mtu: Int) {
         val path = pendingProfile ?: throw Missing("start() has not run yet, so there is nothing to bind")
         val profileText = runCatching { File(path).readText() }.getOrElse { throw Missing("profile unreadable: $path") }
-        val cfg = runCatching { org.json.JSONObject(profileText) }.getOrElse { throw Missing("profile is not JSON: $path") }
-        val env = cfg.optJSONObject("env") ?: org.json.JSONObject().also { cfg.put("env", it) }
-        env.put("xray.tun.fd", tunFd)
-        val payload = org.json.JSONObject()
-        payload.put("xrayJson", cfg.toString())
-        invoke(METHOD_RUN, payload)
-        handle = clazz
+        // Parse before crossing JNI so a malformed profile cannot leave a process-global stale fd.
+        runCatching { org.json.JSONObject(profileText) }.getOrElse { throw Missing("profile is not JSON: $path") }
+        val c = clazz ?: throw Missing(describe())
+        val attach = find(c, M_ATTACH_TUN) ?: throw Missing("class '$bridgeClass' has no $M_ATTACH_TUN")
+        try {
+            attach.invoke(receiver(attach), tunFd)
+            val payload = org.json.JSONObject().put("xrayJson", profileText)
+            invoke(METHOD_RUN, payload)
+            handle = c
+        } catch (e: InvocationTargetException) {
+            find(c, M_DETACH_TUN)?.let { runCatching { it.invoke(receiver(it)) } }
+            throw Missing("attach/run: ${(e.targetException ?: e).message}")
+        } catch (t: Throwable) {
+            find(c, M_DETACH_TUN)?.let { runCatching { it.invoke(receiver(it)) } }
+            throw t
+        }
     }
 
     /** Version string the core reports; the diagnostics row prints it, logic never depends on it. */
@@ -233,7 +246,7 @@ object XrayBridge {
      *         race at all (unlinked build, missing method, unreadable envelope). Callers treat null as
      *         "keep the curated order", never as "everyone failed".
      */
-    fun pingBatch(configs: List<String>, timeoutSec: Int = 5): List<Long>? {
+    fun pingBatch(configs: List<String>, timeoutSec: Int = 5, url: String = "https://cp.cloudflare.com/generate_204"): List<Long>? {
         if (clazz == null || configs.isEmpty()) return null
         val c = configs.take(5)
         return runCatching {
@@ -247,7 +260,7 @@ object XrayBridge {
                 org.json.JSONObject()
                     .put("configs", arr)
                     .put("timeout", timeoutSec)
-                    .put("url", "https://cp.cloudflare.com/"),
+                    .put("url", url),
             )
             val resp = org.json.JSONObject(invokeUnchecked(req.toString()).ifBlank { "{}" })
             if (!resp.optBoolean("success", false)) return null
@@ -269,6 +282,7 @@ object XrayBridge {
         }
         pendingProfile = null
         pendingTag = ""
+        find(c, M_DETACH_TUN)?.let { runCatching { it.invoke(receiver(it)) } }
         find(c, M_RESET_DNS)?.let { runCatching { it.invoke(null) } }
         protect = null
         startedAt = 0L
@@ -276,10 +290,4 @@ object XrayBridge {
 
     val uptimeMs: Long get() = if (handle == null) 0L else System.currentTimeMillis() - startedAt
 
-    /** Same reflective read CoreApi does, kept local so the bridge owns its own edge cases. */
-    private fun rawFdOf(fd: FileDescriptor): Int? = runCatching {
-        val f = FileDescriptor::class.java.getDeclaredField("descriptor")
-        f.isAccessible = true
-        f.getInt(fd).takeIf { it >= 0 }
-    }.getOrNull()
 }

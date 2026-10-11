@@ -38,11 +38,11 @@ object NodeUri {
      * `hysteria2` is the long spelling AndroidManifest declares in its intent filter, so the share
      * sheet can hand us one; it normalises to `hy2`, which is what `CoreApi` and `Ladder` speak.
      */
-    private val TUNNEL_SCHEMES = setOf("vless", "vmess", "trojan", "ss", "hy2", "hysteria2")
+    private val TUNNEL_SCHEMES = setOf("vless", "vmess", "trojan", "ss", "http", "https", "socks5", "socks5h", "socks")
 
-    private val URI_RE = Regex("""(?i)\b(vless|vmess|trojan|ss|hy2|hysteria2)://[^\s"'<>\\]+""")
+    private val URI_RE = Regex("""(?i)\b(vless|vmess|trojan|ss|https?|socks5h?|socks)://[^\s"'<>\\]+""")
     private val PROXY_LINE = Regex(
-        """(?i)^(?:(socks5|socks4|http)://)?(?:([^\s:@/]+)(?::([^\s:@/]*))?@)?""" +
+        """(?i)^(?:(socks5h|socks5|socks|https|http)://)?(?:([^\s:@/]+)(?::([^\s:@/]*))?@)?""" +
             """((?:\d{1,3}\.){3}\d{1,3}|[a-z0-9._-]+):(\d{2,5})(.*)$"""
     )
     private const val BASE64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=\n\r"
@@ -51,7 +51,7 @@ object NodeUri {
      * A blob of anything: pasted configs, a subscription link's body, an HTML page, a Telegram export,
      * or a JSON list. `tier` decides the label (and what the connect path is allowed to do with it).
      */
-    fun parseBlob(blob: String, tier: String, brand: String): List<FeedNode> {
+    fun parseBlob(blob: String, tier: String, brand: String, proxyHint: String? = null): List<FeedNode> {
         val text = blob.trim()
         if (text.isEmpty()) return emptyList()
         val out = LinkedHashMap<String, FeedNode>()
@@ -75,7 +75,7 @@ object NodeUri {
         text.lineSequence().forEach { rawLine ->
             val line = rawLine.trim().trim(',', ';', '"', '\'', '<', '>', '(', ')')
             if (line.isEmpty() || line.startsWith("#") || line.contains("://")) return@forEach
-            parseProxyLine(line)?.let { out.getOrPut(it.id) { it } }
+            parseProxyLine(line, proxyHint)?.let { out.getOrPut(it.id) { it } }
         }
 
         // 4) a JSON list of {ip,port,proto,…} objects (monosans/jetkai shape - already geolocated upstream)
@@ -91,10 +91,11 @@ object NodeUri {
         val schemeEnd = token.indexOf("://")
         if (schemeEnd <= 0) return null
         val scheme = when (val raw = token.substring(0, schemeEnd).lowercase(Locale.ROOT)) {
-            "hysteria2" -> "hy2"
+            "socks", "socks5h" -> "socks5"
             else -> raw
         }
         if (scheme !in TUNNEL_SCHEMES) return null
+        if (scheme in setOf("http", "https", "socks5")) return parseProxyLine(token)
         var rest = token.substring(schemeEnd + 3)
         val remark = unescape(rest.substringAfter('#', ""))
         rest = rest.substringBefore('#')
@@ -157,6 +158,8 @@ object NodeUri {
                 // None of these dial without their secret - trojan/hy2 need the password, vless the uuid.
                 // A half-built row is worse than no row: the user taps it, it fails, and the app is to blame.
                 if (secret == null) return null
+                if (q["allowInsecure"] == "1" || q["allowInsecure"]?.equals("true", true) == true ||
+                    q["insecure"] == "1" || q["insecure"]?.equals("true", true) == true) return null
                 base.copy(
                     id = id(scheme, host, port, secret ?: q["pbk"], q["sid"]),
                     userId = if (scheme == "vless") secret else null,
@@ -171,6 +174,7 @@ object NodeUri {
                     sni = q["sni"] ?: q["peer"],
                     path = q["path"]?.ifBlank { null }?.let { unescape(it) },
                     hostHeader = q["host"]?.ifBlank { null },
+                    serviceName = q["serviceName"]?.ifBlank { null } ?: q["service_name"]?.ifBlank { null },
                     alpn = q["alpn"]?.ifBlank { null },
                     flow = q["flow"]?.ifBlank { null },
                     pbk = q["pbk"]?.ifBlank { null },
@@ -186,7 +190,7 @@ object NodeUri {
     }
 
     /** `ip:port`, `user:pass@ip:port`, `ip:port:user:pass`, and the `socks5://…` spelling. */
-    fun parseProxyLine(line: String): FeedNode? {
+    fun parseProxyLine(line: String, protocolHint: String? = null): FeedNode? {
         val m = PROXY_LINE.matchEntire(line) ?: return null
         val (scheme, user, pass, hostRaw, portRaw, tail) = m.destructured
         val host = hostRaw.trim('[', ']')
@@ -203,12 +207,18 @@ object NodeUri {
                 p = extra[1].ifBlank { null }
             }
         }
-        val proto = scheme.lowercase(Locale.ROOT).ifBlank { if (u != null) "http" else "socks5" }
-        if (proto !in setOf("http", "socks4", "socks5")) return null
+        val explicit = scheme.lowercase(Locale.ROOT)
+        val hinted = protocolHint?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        val proto0 = explicit.ifBlank { hinted.ifBlank { if (port in setOf(1080, 10808, 4145)) "socks5" else "http" } }
+        val proto = when (proto0) {
+            "socks", "socks5h" -> "socks5"
+            else -> proto0
+        }
+        if (proto !in setOf("http", "https", "socks5")) return null
         return FeedNode(
             id = id(proto, host, port, u, p), slot = 0, name = "", subtitle = "", cc = null,
-            tier = "free", proto = proto, host = host, port = port,
-            username = u, password = p, network = proto, tls = null,
+            tier = "free", proto = if (proto == "https") "http" else proto, host = host, port = port,
+            username = u?.let(::unescape), password = p?.let(::unescape), network = "tcp", tls = if (proto == "https") "tls" else null,
             supportsUdp = false, raw = line,
         )
     }
@@ -255,13 +265,13 @@ object NodeUri {
                 user != null -> "http"
                 else -> o["protocol"]?.toString()?.lowercase(Locale.ROOT)?.ifBlank { null } ?: "socks5"
             }
-            if (proto !in setOf("http", "socks4", "socks5")) continue
+            if (proto !in setOf("http", "socks5")) continue
             out += FeedNode(
                 id = id(proto, host, port, user, pass), slot = 0, name = "", subtitle = "",
                 cc = (o["country_code"] ?: o["country_code_1"] ?: o["country_code_2"])?.toString()
                     ?.uppercase(Locale.ROOT)?.takeIf { it.length == 2 },
                 tier = "free", proto = proto, host = host, port = port,
-                username = user, password = pass, network = proto, tls = null,
+                username = user, password = pass, network = "tcp", tls = null,
                 supportsUdp = false, raw = "$proto://$host:$port",
             )
         }

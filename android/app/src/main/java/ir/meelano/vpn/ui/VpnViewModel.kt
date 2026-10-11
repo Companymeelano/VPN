@@ -103,66 +103,18 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
     /* ------------------------------------------------ the JumpJump tap: race, then ladder */
 
     private var ladderJob: Job? = null
+    private var pendingSmartOrder = false
 
-    /**
-     * One tap, many chances. The top ten candidates first race through libXray's own temporary core
-     * - `pingBatch` is a real outbound dial, TLS and transport included, not a bare TCP open - and
-     * then the connect hops down the ranking until one node actually lands a tunnel. Stops after five
-     * hops: past that, the operator is the problem, not the node.
-     */
+    /** Service-owned ladder: one connect request survives Activity death and keeps monitoring forever. */
     private fun autoLadder() {
         if (ladderJob?.isActive == true) return
         ladderJob = viewModelScope.launch {
-            val all = rankedCandidates().take(10)
-            if (all.isEmpty()) { connect(null); return@launch }
-            val ordered = withContext(Dispatchers.IO) { preRace(all) }
-            var hops = 0
-            for (node in ordered) {
-                if (hops >= 5 || !isActive) return@launch
-                hops++
-                val before = phase.value
-                connect(node)
-                // a consent dialog pauses the ladder: the dialog's own result path connects afterwards
-                delay(1_500)
-                if (_consent.value != null) return@launch
-                val terminal = withTimeoutOrNull(12_000) {
-                    phase.filter {
-                        it !== before && (it is ConnectPhase.Connected || it is ConnectPhase.Failed)
-                    }.first()
-                }
-                if (terminal is ConnectPhase.Connected) return@launch
-                runCatching { repo.reportResult(node.id, false, -1L, "ladder_hop$hops") }
-                if (!isActive) return@launch
-                runCatching { MeelanoVpnService.stop(getApplication()) }
-                delay(450)
-            }
-            // the last hop's real failure stays on the ring, with its reason line under it
+            val first = rankedCandidates().firstOrNull()
+            connect(first, smartOrder = true)
         }
     }
 
-    /**
-     * The race: per-node outbound latency measured by the linked core itself (pingBatch, five per
-     * call - the API's hard cap). In an unlinked build, or when the engine cannot race at all, the
-     * curated order simply stands - nobody is dropped, only healthy nodes move to the front.
-     */
-    private fun preRace(list: List<FeedNode>): List<FeedNode> {
-        if (!runCatching { ir.meelano.vpn.vpn.CoreApi.LINKED }.getOrDefault(false)) return list
-        if (!runCatching { ir.meelano.vpn.vpn.XrayBridge.configured }.getOrDefault(false)) return list
-        val score = HashMap<String, Long>(list.size)
-        var raced = false
-        for (chunk in list.chunked(5)) {
-            val cfgs = chunk.map {
-                ir.meelano.vpn.vpn.CoreProfiles.pingConfigJson(it, AppSettings.tuneFor(it))
-            }
-            val delays = ir.meelano.vpn.vpn.XrayBridge.pingBatch(cfgs, timeoutSec = 5) ?: continue
-            raced = true
-            chunk.forEachIndexed { i, n -> score[n.id] = delays.getOrElse(i) { 11_000L } }
-        }
-        if (!raced) return list
-        return list.sortedBy { score[it.id] ?: 11_000L }   // stable: ties and the unraced keep order
-    }
-
-    fun connect(node: FeedNode?) {
+    fun connect(node: FeedNode?, smartOrder: Boolean = false) {
         if (node == null) {
             _message.value = "no_node"
             viewModelScope.launch { runCatching { repo.refresh("vip") } }
@@ -176,16 +128,20 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
         _activeId.value = node.id
         val prepare = runCatching { VpnService.prepare(ctx) }.getOrNull()
         if (prepare != null) {
+            pendingSmartOrder = smartOrder
             _consent.value = prepare
             return                                     // connect resumes after the dialog
         }
-        MeelanoVpnService.start(ctx, node)
+        pendingSmartOrder = false
+        MeelanoVpnService.start(ctx, node, smartOrder = smartOrder)
     }
 
     /** after the user answers the consent dialog */
     fun onConsentResult(granted: Boolean) {
         _consent.value = null
-        if (granted) connect(activeNode)
+        val smart = pendingSmartOrder
+        pendingSmartOrder = false
+        if (granted) connect(activeNode, smartOrder = smart)
     }
 
     /** switching node while connected: stop, then start — never "start" twice (the old freeze). */

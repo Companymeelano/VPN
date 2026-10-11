@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
@@ -61,6 +62,8 @@ class UpdateManager(private val context: Context, private val baseUrl: String = 
             .connectTimeout(6, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
+            .followRedirects(false)
+            .followSslRedirects(false)
             .build()
     }
 
@@ -69,9 +72,10 @@ class UpdateManager(private val context: Context, private val baseUrl: String = 
     suspend fun checkNow(): UpdateInfo? = withContext(Dispatchers.IO) {
         _state.value = State.Checking
         runCatching {
-            val url = "$baseUrl/?action=version&vc=${BuildConfig.VERSION_CODE}" +
-                if (BuildConfig.MEELANO_FEED_KEY.isNotEmpty()) "&key=${BuildConfig.MEELANO_FEED_KEY}" else ""
-            val resp = http.newCall(Request.Builder().url(url).header("Accept-Encoding", "gzip").build()).execute()
+            val url = "$baseUrl/?action=version&vc=${BuildConfig.VERSION_CODE}"
+            // No manual Accept-Encoding: OkHttp adds gzip and transparently inflates only when it owns
+            // that header. Adding it ourselves makes body.string() see compressed bytes.
+            val resp = http.newCall(Request.Builder().url(url).build()).execute()
             resp.use { r ->
                 if (!r.isSuccessful) {
                     _state.value = State.Idle
@@ -127,22 +131,29 @@ class UpdateManager(private val context: Context, private val baseUrl: String = 
                 (o.optInt("mandatoryBelow") > 0 && BuildConfig.VERSION_CODE < o.optInt("mandatoryBelow")),
             updateAvailable = o.optBoolean("updateAvailable", published > BuildConfig.VERSION_CODE),
             signatureOk = (sig.isBlank() || Verify.hmac(canonical, BuildConfig.MEELANO_FEED_SECRET, sig)) &&
-                (!requireHttps || url.startsWith("https://")),
+                url.startsWith("https://") && o.optString("sha256").matches(Regex("^[a-fA-F0-9]{64}$")) &&
+                o.optLong("sizeBytes") > 0,
             releasedAt = o.optString("releasedAt"),
         )
     }.getOrNull()
 
     fun downloadAndInstall(info: UpdateInfo) = scope.launch {
-        val file = File(context.cacheDir, "update-${info.versionCode}.apk")
+        val dir = File(context.cacheDir, "apk").apply { mkdirs() }
+        val file = File(dir, "update-${info.versionCode}.apk")
+        val part = File(dir, "update-${info.versionCode}.apk.part")
         try {
-            if (file.length() == info.sizeBytes && info.sha256.isNotBlank() && sha256(file) == info.sha256) {
+            if (!info.url.startsWith("https://") || info.sha256.length != 64 || info.sizeBytes <= 0) {
+                throw IllegalStateException("invalid_update_metadata")
+            }
+            if (file.length() == info.sizeBytes && info.sha256.isNotBlank() && sha256(file) == info.sha256.lowercase()) {
                 _state.value = State.Verifying
             } else {
                 _state.value = State.Downloading(0, 0)
+                part.delete()
                 http.newCall(Request.Builder().url(info.url).build()).execute().use { r ->
                     if (!r.isSuccessful) throw IllegalStateException("http_${r.code}")
-                    val total = if (info.sizeBytes > 0) info.sizeBytes else r.body?.contentLength() ?: -1L
-                    file.outputStream().use { out ->
+                    val total = info.sizeBytes
+                    part.outputStream().use { out ->
                         val input = r.body!!.byteStream()
                         val buf = ByteArray(64 * 1024)
                         var done = 0L
@@ -152,6 +163,7 @@ class UpdateManager(private val context: Context, private val baseUrl: String = 
                             if (n < 0) break
                             out.write(buf, 0, n)
                             done += n
+                            if (done > info.sizeBytes) throw IllegalStateException("download_too_large")
                             val t = System.currentTimeMillis()
                             if (t - lastTick > 250) {     // do not spam Compose per 64 KB chunk
                                 lastTick = t
@@ -161,14 +173,17 @@ class UpdateManager(private val context: Context, private val baseUrl: String = 
                             }
                         }
                     }
+                    if (part.length() != info.sizeBytes) throw IllegalStateException("size_mismatch")
                 }
                 _state.value = State.Verifying
-                if (info.sha256.isNotBlank() && sha256(file) != info.sha256) {
-                    file.delete()
-                    _state.value = State.Failed("checksum_mismatch")
-                    return@launch
+                if (sha256(part) != info.sha256.lowercase()) throw IllegalStateException("checksum_mismatch")
+                file.delete()
+                if (!part.renameTo(file)) {
+                    part.copyTo(file, overwrite = true)
+                    part.delete()
                 }
             }
+            validateArchive(file, info)?.let { throw IllegalStateException(it) }
             if (!canInstall()) {
                 _state.value = State.BlockedNeedPermission(info, file)
                 return@launch
@@ -176,9 +191,38 @@ class UpdateManager(private val context: Context, private val baseUrl: String = 
             _state.value = State.ReadyToInstall(info, file)
             launchInstaller(file)
         } catch (t: Throwable) {
+            part.delete()
             file.delete()
             _state.value = State.Failed(t.message ?: "download_failed")
         }
+    }
+
+    private fun validateArchive(file: File, info: UpdateInfo): String? = runCatching {
+        val pm = context.packageManager
+        @Suppress("DEPRECATION")
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
+            PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
+        @Suppress("DEPRECATION")
+        val archive = pm.getPackageArchiveInfo(file.absolutePath, flags) ?: return@runCatching "apk_unreadable"
+        if (archive.packageName != context.packageName) return@runCatching "wrong_package"
+        @Suppress("DEPRECATION")
+        val archiveCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) archive.longVersionCode else archive.versionCode.toLong()
+        if (archiveCode != info.versionCode.toLong() || archiveCode <= BuildConfig.VERSION_CODE.toLong()) return@runCatching "wrong_version"
+        @Suppress("DEPRECATION")
+        val installed = pm.getPackageInfo(context.packageName, flags)
+        if (signerDigests(archive) != signerDigests(installed) || signerDigests(archive).isEmpty()) return@runCatching "signature_mismatch"
+        null
+    }.getOrElse { "apk_validation_failed" }
+
+    @Suppress("DEPRECATION")
+    private fun signerDigests(info: android.content.pm.PackageInfo): Set<String> {
+        val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            info.signingInfo?.apkContentsSigners?.toList().orEmpty()
+        } else info.signatures?.toList().orEmpty()
+        return signatures.map { sig ->
+            MessageDigest.getInstance("SHA-256").digest(sig.toByteArray())
+                .joinToString("") { "%02x".format(it) }
+        }.toSet()
     }
 
     fun canInstall(): Boolean =

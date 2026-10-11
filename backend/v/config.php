@@ -81,9 +81,9 @@ $config = [
             'tcpTimeoutMs'  => 1200,
             'proxyTimeoutMs'=> 2500,
             'budgetMs'      => 18000,   // never spend more than 18s probing in one request
-            'deepGate'      => false,   // TLS-through-tunnel check (expensive; enable if host allows)
-            'deepTopN'      => 12,
-            'deepTimeoutMs' => 1500,
+            'deepGate'      => true,    // exact HTTPS status through each raw proxy; fail closed
+            'deepTopN'      => 30,
+            'deepTimeoutMs' => 5000,
             // If outbound TCP is blocked by the host, everything still works: the ranking
             // then comes from client feedback only. selftest.php tells you which mode you are in.
             'autoDisableOnBlocked' => true,
@@ -94,16 +94,12 @@ $config = [
             ['grade' => 'C', 'maxLatencyMs' => 2200, 'minReliability' => 0.25],
             ['grade' => 'D', 'maxLatencyMs' => 99999, 'minReliability' => 0.0],
         ],
-        // The "not blocked by Google / Cloudflare" gate the brief asks for:
-        // a proxy must CONNECT to >= requireOf of the endpoints below to enter the list.
-        // probeAll=false keeps cost at one endpoint (the first one) — raise both on a fast box.
+        // Raw proxies publish only after exact HTTPS status checks through their own exit.
         'gate' => [
-            'requireOf' => 1,
-            'probeAll'  => false,
             'endpoints' => [
-                ['name' => 'google',     'host' => 'www.google.com',         'port' => 443],
-                ['name' => 'cloudflare', 'host' => '1.1.1.1',               'port' => 443],
-                ['name' => 'gstatic',    'host' => 'connectivitycheck.gstatic.com', 'port' => 443],
+                ['name' => 'cloudflare', 'url' => 'https://cp.cloudflare.com/generate_204', 'status' => 204],
+                ['name' => 'google',     'url' => 'https://www.google.com/generate_204', 'status' => 204],
+                ['name' => 'gstatic',    'url' => 'https://connectivitycheck.gstatic.com/generate_204', 'status' => 204],
             ],
         ],
         'bans' => [

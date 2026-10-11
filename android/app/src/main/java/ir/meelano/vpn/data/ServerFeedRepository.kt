@@ -124,6 +124,36 @@ class ServerFeedRepository(
         return null
     }
 
+    private val platformVerdicts = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
+
+    /** Candidate ladder used by the service for startup, health failover and network changes. */
+    fun failoverCandidates(preferred: FeedNode, limit: Int = 12): List<FeedNode> {
+        val all = (listOf(preferred) + _vip.value + _free.value).distinctBy { it.id }
+            .filter { it.proto in DirectFeed.TUNNEL_PROTOS && !it.insecure }
+        val grade = mapOf("A" to 0, "B" to 1, "C" to 2, "D" to 3)
+        return all.sortedWith(
+            compareBy<FeedNode>(
+                { if (it.id == preferred.id) 0 else 1 },
+                { platformRank(platformVerdicts[it.id]?.first ?: it.platformStatus) },
+                { localPenalty(it.id) },
+                { grade[it.grade] ?: 9 },
+                { it.latencyMs ?: Long.MAX_VALUE },
+                { if (it.isVip) 0 else 1 },
+                { it.slot },
+            )
+        ).take(limit)
+    }
+
+    fun recordPlatformVerdict(nodeId: String, status: String) {
+        platformVerdicts[nodeId] = status to System.currentTimeMillis()
+    }
+
+    private fun platformRank(status: String): Int = when (status) {
+        "clean" -> 0
+        "blocked", "platform_blocked" -> 3
+        else -> 1
+    }
+
     /* ------------------------------------------------------------ fetch */
 
     /**
@@ -194,7 +224,6 @@ class ServerFeedRepository(
     private suspend fun refreshHostRound(kind: String): HostRound {
         val req = Request.Builder()
             .url("$baseUrl/?action=$kind")
-            .header("Accept-Encoding", "gzip")
             .header("X-Feed-Key", FEED_KEY)                 // optional; server ignores when unset
             .apply { etags[kind]?.let { header("If-None-Match", it) } }
             .build()
@@ -540,6 +569,7 @@ class ServerFeedRepository(
      * inside Iran and ships it back. Cheap, batched, and never on the connect path.
      */
     fun reportResult(nodeId: String, ok: Boolean, latencyMs: Long, error: String? = null) {
+        if (!AppSettings.feedback) return
         ensureReporting()                                       // a reporter that never starts loses the fleet's evidence
         reportChannel.trySend(Report(nodeId, ok, latencyMs, error))
     }
@@ -574,7 +604,7 @@ class ServerFeedRepository(
         // The reports exist to feed the host's reliability ledger. With no host (DIRECT) there is
         // nothing to upload and a bounded channel to keep draining, so drop them here rather than
         // after building the JSON body.
-        if (AppSettings.feedMode == AppSettings.FEED_DIRECT) return@withContext
+        if (AppSettings.feedMode == AppSettings.FEED_DIRECT || !AppSettings.feedback) return@withContext
         val arr = JSONArray()
         batch.forEach {
             arr.put(JSONObject().put("sid", it.nodeId).put("ok", it.ok)
@@ -654,6 +684,7 @@ data class FeedNode(
     val sni: String? = null,
     val path: String? = null,
     val hostHeader: String? = null,
+    val serviceName: String? = null,
     val alpn: String? = null,
     val flow: String? = null,
     val pbk: String? = null,
@@ -673,6 +704,9 @@ data class FeedNode(
     val reliability: Float = 0f,
     val samples: Int = 0,
     val config: String? = null,
+    /** Backend/device deep-probe verdict: clean | blocked | unknown. */
+    val platformStatus: String = "unknown",
+    val platformCheckedAt: Long = 0L,
     /**
      * The server's per-node transport patch (see net/Regime.kt). A *patch*, not a full config: absent
      * keys stay the client's decision. Default = empty, so an old feed payload still parses.
@@ -703,4 +737,11 @@ object Prefs {
 
     fun activeId(context: Context): String? =
         context.getSharedPreferences(PREF, Context.MODE_PRIVATE).getString("active", null)
+
+    fun setVpnDesired(context: Context, desired: Boolean) {
+        context.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit().putBoolean("vpn_desired", desired).apply()
+    }
+
+    fun vpnDesired(context: Context): Boolean =
+        context.getSharedPreferences(PREF, Context.MODE_PRIVATE).getBoolean("vpn_desired", false)
 }
