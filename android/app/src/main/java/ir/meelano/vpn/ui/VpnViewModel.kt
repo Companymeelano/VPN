@@ -15,6 +15,8 @@ import ir.meelano.vpn.vpn.Traffic
 import ir.meelano.vpn.update.UpdateManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
@@ -42,6 +44,8 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope, SharingStarted.Eagerly, emptyList())
     val free: StateFlow<List<FeedNode>> = repo.free.stateIn(
         viewModelScope, SharingStarted.Eagerly, emptyList())
+    val proxies: StateFlow<List<FeedNode>> = repo.proxies.stateIn(
+        viewModelScope, SharingStarted.Eagerly, emptyList())
     val syncing: StateFlow<Boolean> = repo.syncing.stateIn(
         viewModelScope, SharingStarted.Eagerly, false)
     val phase: StateFlow<ConnectPhase> = MeelanoVpnService.phase
@@ -60,21 +64,24 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
     val message: StateFlow<String?> = _message
 
     val activeNode: FeedNode?
-        get() = (vip.value + free.value).firstOrNull { it.id == _activeId.value } ?: bestAuto()
+        get() = (vip.value + free.value + proxies.value)
+            .firstOrNull { it.id == _activeId.value && it.isUsable } ?: bestAuto()
 
     /** "خودکار" is a real choice, not a label: the best node of the merged list, stable ordering. */
     fun bestAuto(): FeedNode? = rankedCandidates().firstOrNull()
 
     /** Ranked, dialable candidates for auto mode - one comparator shared by the tap and the ladder. */
     private fun rankedCandidates(): List<FeedNode> =
-        (vip.value + free.value)
-            .filter { it.samples >= 0 }
+        (vip.value + free.value + proxies.value)
+            .filter { it.samples >= 0 && it.isUsable }
             .filter { it.proto in ir.meelano.vpn.data.DirectFeed.TUNNEL_PROTOS }
             .sortedWith(
-                compareByDescending<FeedNode> { it.tier == "vip" }
-                    .thenBy { gradeRank(it.grade) }
-                    .thenBy { it.latencyMs ?: Long.MAX_VALUE }
+                // Health beats branding: a dead VIP row must never outrank a verified public route.
+                compareBy<FeedNode> { gradeRank(it.grade) }
                     .thenByDescending { it.reliability }
+                    .thenBy { it.latencyMs ?: Long.MAX_VALUE }
+                    .thenByDescending { it.tier == "vip" }
+                    .thenBy { it.slot }
             )
 
     fun toggle() {
@@ -172,7 +179,7 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
     fun retest(node: FeedNode) {
         viewModelScope.launch(Dispatchers.IO) {
             val r = runCatching { repo.probe(node, timeoutMs = 2500) }.getOrNull() ?: return@launch
-            repo.reportResult(node.id, r.ok, r.latencyMs, r.error)
+            // repo.probe records this once; recording again here doubled every manual test in history.
             _message.value = if (r.ok) "ok_${r.latencyMs}" else "fail"
         }
     }
@@ -227,8 +234,11 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
     fun generatedAt(kind: String): Long = if (FeedHolder.isReady()) repo.generatedAt(kind) else 0L
 
     fun refreshBoth() = viewModelScope.launch {
-        runCatching { repo.refresh("vip") }
-        runCatching { repo.refresh("free") }
+        coroutineScope {
+            val vipJob = async { runCatching { repo.refresh("vip") } }
+            val freeJob = async { runCatching { repo.refresh("free") } }
+            vipJob.await(); freeJob.await()
+        }
     }
 
     fun skipUpdate(v: Int) { AppSettings.setSkippedVersion(getApplication(), v) }

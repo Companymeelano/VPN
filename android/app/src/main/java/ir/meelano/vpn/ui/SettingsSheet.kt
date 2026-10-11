@@ -295,11 +295,7 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                     )
                 }
 
-                /*
-                 * Where the two lists come from, in the user's words. HOST stays the default - the server's
-                 * gate, ban ledger and multi-day ranking are things a phone cannot copy - but DIRECT makes the
-                 * product work with no host at all, and both paths end in the same cache and the same sheet.
-                 */
+                /* Feed discovery is direct-only; the history switch above controls a private on-device ledger. */
             }
 
             // Where the two lists come from, in the user\u2019s words.
@@ -307,22 +303,12 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                 MeelanoPanel(title = stringResource(R.string.group_feed)) {
                     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
                         Text(
-                            stringResource(R.string.feed_source),
+                            stringResource(R.string.feed_source_direct_title),
                             fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        MeelanoSegmented(
-                            items = listOf(
-                                stringResource(R.string.feed_source_host),
-                                stringResource(R.string.feed_source_auto),
-                                stringResource(R.string.feed_source_direct),
-                            ),
-                            index = AppSettings.feedMode,
-                            onIndex = { vm.setFeedSource(it) },
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            stringResource(R.string.feed_source_body),
+                            stringResource(R.string.feed_source_direct_body),
                             fontSize = 11.sp, color = p.faint, lineHeight = 16.sp,
                         )
                         Spacer(Modifier.height(8.dp))

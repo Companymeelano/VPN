@@ -8,12 +8,20 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
+import java.util.concurrent.atomic.AtomicInteger
 import okhttp3.Cache
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -82,6 +90,8 @@ class ServerFeedRepository(
      * So: short timeout when we have something cached, long one when we have nothing.
      */
     private val httpCold by lazy { client(30) }
+    /** Public repository documents should fail over to their mirror quickly, not hold first launch 30s. */
+    private val httpPublic by lazy { client(10) }
 
     private fun clientFor(kind: String): OkHttpClient =
         if (File(filesDir, "$kind.json").isFile) http else httpCold
@@ -96,14 +106,29 @@ class ServerFeedRepository(
             .build()
 
     private val filesDir = context.getDir("feed", Context.MODE_PRIVATE)
+    private val healthFile = File(filesDir, "node-health.tsv")
+    private val health = NodeHealthLedger().apply {
+        runCatching { if (healthFile.isFile) restore(healthFile.readText()) }
+    }
+    private val healthWriteMutex = Mutex()
     private val etags = mutableMapOf<String, String>()
 
     private val _vip = MutableStateFlow<List<FeedNode>>(emptyList())
     val vip: StateFlow<List<FeedNode>> = _vip
     private val _free = MutableStateFlow<List<FeedNode>>(emptyList())
     val free: StateFlow<List<FeedNode>> = _free
+    /** Raw HTTP/SOCKS rows, including rejected rows with their explicit scan verdict. */
+    private val _proxies = MutableStateFlow<List<FeedNode>>(emptyList())
+    val proxies: StateFlow<List<FeedNode>> = _proxies
+    private var vipProxies: List<FeedNode> = emptyList()
+    private var publicProxies: List<FeedNode> = emptyList()
     private val _syncing = MutableStateFlow(false)
     val syncing: StateFlow<Boolean> = _syncing
+
+    private val syncJobs = AtomicInteger(0)
+    private val refreshLocks = mapOf(KIND_VIP to Mutex(), KIND_FREE to Mutex())
+    private fun beginSync() { syncJobs.incrementAndGet(); _syncing.value = true }
+    private fun endSync() { if (syncJobs.decrementAndGet().coerceAtLeast(0) == 0) _syncing.value = false }
 
     /** every node we know about, indexed by id (what the service resolves a connect request from) */
     @Volatile private var index: Map<String, FeedNode> = emptyMap()
@@ -119,8 +144,11 @@ class ServerFeedRepository(
     /** Resolve an id from memory, then from disk, then from the network. */
     suspend fun awaitNode(id: String): FeedNode? {
         index[id]?.let { return it }
-        // the service can be started from a notification tap before the repo loaded: give it a moment
-        repeat(6) { refresh(KIND_VIP); refresh(KIND_FREE); index[id]?.let { return it }; delay(400) }
+        // One refresh, then wait for the in-flight cache/build. Re-running a 48-proxy deep scan six
+        // times for an id that was deleted is both slow and hostile to battery/network quota.
+        refresh(KIND_VIP)
+        refresh(KIND_FREE)
+        repeat(6) { index[id]?.let { return it }; delay(400) }
         return null
     }
 
@@ -128,8 +156,8 @@ class ServerFeedRepository(
 
     /** Candidate ladder used by the service for startup, health failover and network changes. */
     fun failoverCandidates(preferred: FeedNode, limit: Int = 12): List<FeedNode> {
-        val all = (listOf(preferred) + _vip.value + _free.value).distinctBy { it.id }
-            .filter { it.proto in DirectFeed.TUNNEL_PROTOS && !it.insecure }
+        val all = (listOf(preferred) + _vip.value + _free.value + _proxies.value).distinctBy { it.id }
+            .filter { it.proto in DirectFeed.TUNNEL_PROTOS && !it.insecure && it.isUsable }
         val grade = mapOf("A" to 0, "B" to 1, "C" to 2, "D" to 3)
         return all.sortedWith(
             compareBy<FeedNode>(
@@ -172,15 +200,10 @@ class ServerFeedRepository(
     val feedError: StateFlow<String?> = _lastError
 
     suspend fun refresh(kind: String) = withContext(Dispatchers.IO) {
-        when (AppSettings.feedMode) {
-            AppSettings.FEED_DIRECT -> refreshDirect(kind)
-            AppSettings.FEED_AUTO -> {
-                refreshHost(kind)
-                // "the host is down" must not mean "no list": fall through to the device builder
-                if ((if (kind == KIND_VIP) _vip.value else _free.value).isEmpty()) refreshDirect(kind)
-            }
-            else -> refreshHost(kind)
-        }
+        // Feed discovery is direct-only. The lock coalesces Application/Activity/service cold-start
+        // races so one refresh means one source download and one proxy scan, never three in parallel.
+        val lock = refreshLocks[kind] ?: return@withContext
+        lock.withLock { refreshDirect(kind) }
     }
 
     private suspend fun refreshHost(kind: String) = withContext(Dispatchers.IO) {
@@ -280,11 +303,7 @@ class ServerFeedRepository(
     val directNotes: StateFlow<List<String>> = _directNotes
 
     /** One line for Settings, so the user always knows where today's list came from. */
-    fun sourceLabel(): String = when (AppSettings.feedMode) {
-        AppSettings.FEED_DIRECT -> "آنبرد (بدون هاست)"
-        AppSettings.FEED_AUTO -> "هاست، در قطع شدن: آنبرد"
-        else -> "هاست"
-    }
+    fun sourceLabel(): String = "GitHub و منابع عمومی · آزمون روی گوشی"
 
     /**
      * Free: the public config lists. VIP: whatever you pasted in the app (+ your own subscription URL).
@@ -293,9 +312,9 @@ class ServerFeedRepository(
      * of pretending the two builders are equal.
      */
     private suspend fun refreshDirect(kind: String) {
-        _syncing.value = true
+        beginSync()
         try {
-            val extra = AppSettings.feedExtraUrl.takeIf { it.startsWith("http") }?.let {
+            val extra = AppSettings.feedExtraUrl.takeIf { it.startsWith("https://", ignoreCase = true) }?.let {
                 DirectFeed.Upstream(
                     "user", it,
                     if (it.contains(".json")) DirectFeed.Kind.JSON else DirectFeed.Kind.CONFIG
@@ -306,20 +325,42 @@ class ServerFeedRepository(
             } else {
                 DirectFeed.buildFree(
                     brand = FREE_BRAND,
-                    extra = extra,
+                    // The optional URL is the user's private subscription and belongs only to VIP;
+                    // public free servers continue to come exclusively from the audited source set.
+                    extra = null,
                     fetch = { u -> fetchText(u.url, u.maxBytes) },
                     probe = { nodes -> probeBatch(nodes) },
+                    deepProbe = { nodes ->
+                        ProxyScanner.scan(
+                            nodes = nodes,
+                            protect = { socket -> MeelanoVpnService.protectFeedSocket(socket) },
+                        )
+                    },
+                    onTunnelsReady = { tunnels ->
+                        // First-paint stage: healthy free servers appear as soon as their direct probe
+                        // finishes; the independent exact HTTPS proxy scan continues under "syncing".
+                        val stamp = System.currentTimeMillis() / 1000L
+                        applyFreeTunnelsProgressively(tunnels, stamp)
+                        runCatching {
+                            File(filesDir, "$KIND_FREE.json").writeText(
+                                FeedJson.encodePayload(KIND_FREE, tunnels, stamp, DIRECT_TTL_SEC)
+                            )
+                        }
+                    },
                 )
             }
             _directNotes.value = res.notes
             if (res.nodes.isEmpty()) {
-                // Nothing usable this time: keep showing the last good list (and its cache), because a
-                // filtered GitHub response is a Tuesday, not a reason to hand the user an empty screen.
+                // Nothing fetched this time: keep the last good cache but make the cause visible.
                 Log.w(TAG, "direct $kind produced nothing")
+                _lastError.value = "public_sources_empty"
                 return
             }
             val now = System.currentTimeMillis() / 1000L
             apply(FeedPayload(kind, now, DIRECT_TTL_SEC, res.nodes), kind)
+            if (kind == KIND_FREE && res.nodes.none { it.isUsable }) {
+                _lastError.value = "no_usable_paths"
+            }
             runCatching {
                 File(filesDir, "$kind.json")
                     .writeText(FeedJson.encodePayload(kind, res.nodes, now, DIRECT_TTL_SEC, res.notes))
@@ -328,8 +369,9 @@ class ServerFeedRepository(
             // for a number we already have is exactly the duplicated work that made the old build slow.
         } catch (t: Throwable) {
             Log.w(TAG, "direct $kind failed: ${t.message}")
+            _lastError.value = "public_refresh_failed"
         } finally {
-            _syncing.value = false
+            endSync()
         }
     }
 
@@ -351,17 +393,43 @@ class ServerFeedRepository(
         }
         val parsed = NodeUri.parseBlob(blob.toString(), tier = KIND_VIP, brand = VIP_BRAND)
         val head = NodeUri.dedupe(parsed, max = 48)
-        val rtt = probeBatch(head)
+        val tunnels = head.filterNot { it.isRawProxy }
+        val rawProxies = head.filter { it.isRawProxy }
+        val rtt = probeBatch(tunnels)
+        val proxyVerdicts = ProxyScanner.scan(
+            nodes = rawProxies,
+            limit = rawProxies.size,
+            protect = { socket -> MeelanoVpnService.protectFeedSocket(socket) },
+        )
+        val checkedAt = System.currentTimeMillis() / 1000L
         val nodes = head.mapIndexed { i, n ->
-            val ms = rtt[n.id]
-            n.copy(
-                slot = i + 1,
-                latencyMs = if (ms != null && ms >= 0) ms else null,
-                grade = if (ms == null || ms < 0) "D" else NodeUri.grade(ms),
-                reliability = if (ms != null && ms >= 0) 1f else 0f,
-                samples = 1,
-            )
-        }.sortedWith(compareBy({ if (it.latencyMs == null) 1 else 0 }, { it.latencyMs ?: Long.MAX_VALUE }))
+            if (n.isRawProxy) {
+                val verdict = proxyVerdicts[n.id] ?: ProxyScanner.Verdict(
+                    ProxyScanner.DEAD, null, 0f, "scan_not_completed", emptyList()
+                )
+                n.copy(
+                    slot = i + 1,
+                    latencyMs = verdict.latencyMs,
+                    grade = if (verdict.usable) NodeUri.grade(verdict.latencyMs) else "D",
+                    reliability = verdict.reliability,
+                    samples = verdict.checks.size,
+                    platformStatus = verdict.status,
+                    platformCheckedAt = checkedAt,
+                    platformReason = verdict.reason,
+                )
+            } else {
+                val ms = rtt[n.id]
+                n.copy(
+                    slot = i + 1,
+                    latencyMs = if (ms != null && ms >= 0) ms else null,
+                    grade = if (ms == null || ms < 0) "D" else NodeUri.grade(ms),
+                    reliability = if (ms != null && ms >= 0) 0.5f else 0f,
+                    samples = 1,
+                )
+            }
+        }.sortedWith(
+            compareBy({ if (it.isUsable && it.latencyMs != null) 0 else 1 }, { it.latencyMs ?: Long.MAX_VALUE })
+        )
         val notes = ArrayList<String>(2)
         notes += if (parsed.isEmpty()) "هنوز چیزی وارد نکرده‌اید: در تنظیمات، پیکربندی‌هایتان را بچسبانید"
         else "محلی · ${parsed.size} خط خوانده شد"
@@ -401,8 +469,8 @@ class ServerFeedRepository(
     }
 
     /**
-     * One capped GET, on the cold client (30 s read) because a public list can be slow, with the same
-     * DoH/pinned fallback the host path uses since GitHub names get poisoned too.
+     * One capped GET on the short public-source client. Mirror failover belongs to [DirectFeed], so a
+     * poisoned GitHub hostname is abandoned quickly instead of paying a second host-style retry here.
      *
      * No Accept-Encoding header on purpose: OkHttp only *transparently* inflates gzip when it added the
      * header itself; a hand-written one means we would be reading compressed bytes as text.
@@ -411,14 +479,17 @@ class ServerFeedRepository(
         val req = Request.Builder().url(url)
             .header("User-Agent", "M\u2022A-VPN/${BuildConfig.VERSION_NAME}")
             .build()
-        open(req, httpCold)?.use { resp ->
+        // Do not run the old host-oriented DoH+pinned retry here: each public repository already has
+        // an independent mirror chain, and spending another ~20s on a poisoned raw GitHub hostname
+        // before trying jsDelivr recreated the minute-long "nothing downloads" first launch.
+        runCatching { httpPublic.newCall(req).execute() }.getOrNull()?.use { resp ->
             if (!resp.isSuccessful) return@use null
             val src = resp.body?.byteStream() ?: return@use null
             val out = java.io.ByteArrayOutputStream(32 * 1024)
             val chunk = ByteArray(32 * 1024)
             var read = 0
             while (read < maxBytes) {
-                val n = src.read(chunk)
+                val n = src.read(chunk, 0, minOf(chunk.size, maxBytes - read))
                 if (n <= 0) break
                 out.write(chunk, 0, n)
                 read += n
@@ -429,11 +500,31 @@ class ServerFeedRepository(
         }
     }
 
-    /** Batch dial through the same helper the "why did it not connect" card uses: 1 socket per node. */
-    private suspend fun probeBatch(nodes: List<FeedNode>): Map<String, Long> {
-        if (nodes.isEmpty()) return emptyMap()
-        val res = NetGuard.tcpProbe(nodes.map { Pair(it.host, it.port) }, timeoutMs = 1500, limit = nodes.size)
-        return nodes.mapIndexed { i, n -> n.id to res.getOrElse(i) { -1L } }.toMap()
+    /**
+     * Bounded direct TCP pass. Protect each socket when a VPN is already running; otherwise a refresh
+     * would measure endpoints from the old exit node and call them healthy even when this phone's own
+     * network cannot reach them during failover.
+     */
+    private suspend fun probeBatch(nodes: List<FeedNode>): Map<String, Long> = coroutineScope {
+        if (nodes.isEmpty()) return@coroutineScope emptyMap()
+        val gate = Semaphore(12)
+        nodes.map { node ->
+            async(Dispatchers.IO) {
+                gate.withPermit {
+                    val started = System.nanoTime()
+                    val ok = runCatching {
+                        java.net.Socket().use { socket ->
+                            socket.tcpNoDelay = true
+                            if (!MeelanoVpnService.protectFeedSocket(socket)) error("socket_protect_failed")
+                            socket.connect(java.net.InetSocketAddress(node.host, node.port), 1_500)
+                        }
+                    }.isSuccess
+                    node.id to if (ok) {
+                        ((System.nanoTime() - started) / 1_000_000L).coerceAtLeast(1L)
+                    } else -1L
+                }
+            }
+        }.awaitAll().toMap()
     }
 
     /* -------------------------------------------------- the user's own configs (VIP, on-device) */
@@ -492,16 +583,35 @@ class ServerFeedRepository(
      * A probe result is a demotion, never a deletion: the path can come back in 90 seconds and an
      * empty list is the worst UI this product can show.
      */
+    private fun applyFreeTunnelsProgressively(nodes: List<FeedNode>, generatedAt: Long) {
+        val pinned = Prefs.pinnedIds(context)
+        _free.value = nodes.map { health.enrich(it.copy(kind = KIND_FREE)) }
+            .sortedWith(compareBy({ if (it.id in pinned) 0 else 1 }, { localPenalty(it.id) }, { it.slot }))
+        index = (_vip.value + _free.value + _proxies.value).associateBy { it.id }
+        lastBuildAt[KIND_FREE] = generatedAt
+        _lastError.value = null
+    }
+
     private fun apply(payload: FeedPayload, kind: String) {
         val pinned = Prefs.pinnedIds(context)
-        val list = payload.nodes.map { it.copy(kind = kind) }
+        val list = payload.nodes.map { health.enrich(it.copy(kind = kind)) }
             .sortedWith(
                 compareBy({ if (it.id in pinned) 0 else 1 }, { localPenalty(it.id) }, { it.slot })
             )
-        if (kind == KIND_VIP) _vip.value = list else _free.value = list
-        if (list.isNotEmpty()) _lastError.value = null        // a working fetch clears the banner
-        index = (list + _vip.value + _free.value).associateBy { it.id }
+        if (kind == KIND_VIP) {
+            _vip.value = list.filterNot { it.isRawProxy }
+            vipProxies = list.filter { it.isRawProxy }
+        } else {
+            // A raw proxy is never allowed to masquerade as a free tunnel row. Rejected rows remain in
+            // the proxy section for diagnosis but [isUsable] keeps them out of auto-pick/failover.
+            _free.value = list.filterNot { it.isRawProxy }
+            publicProxies = list.filter { it.isRawProxy }
+        }
+        _proxies.value = (vipProxies + publicProxies).distinctBy { it.id }
+        if (list.any { it.isUsable }) _lastError.value = null
+        index = (_vip.value + _free.value + _proxies.value).associateBy { it.id }
         lastBuildAt[kind] = payload.generatedAt
+        if (kind == KIND_FREE) lastBuildAt["proxy"] = payload.generatedAt
     }
 
     private val lastBuildAt = mutableMapOf<String, Long>()
@@ -513,10 +623,12 @@ class ServerFeedRepository(
     @Volatile private var lastReport: BlockReport = BlockReport()
     fun blockReport(): BlockReport = lastReport
 
-    private fun localPenalty(id: String): Int = when (localProbe[id]) {
-        null -> 0        // unproven: trust the server
-        -1L -> 1         // we tried and it did not answer from here
-        else -> 0
+    private fun localPenalty(id: String): Int {
+        val reachability = when (localProbe[id]) {
+            -1L -> 4     // a current-network failure outweighs an old success ratio
+            else -> 0
+        }
+        return reachability + health.penalty(id)
     }
 
     /**
@@ -569,9 +681,35 @@ class ServerFeedRepository(
      * inside Iran and ships it back. Cheap, batched, and never on the connect path.
      */
     fun reportResult(nodeId: String, ok: Boolean, latencyMs: Long, error: String? = null) {
-        if (!AppSettings.feedback) return
-        ensureReporting()                                       // a reporter that never starts loses the fleet's evidence
+        // Smart choice keeps its own private history even though there is no feed host to upload to.
+        if (AppSettings.feedback) {
+            health.record(nodeId, ok, latencyMs)
+            refreshHealthInMemory(nodeId)
+            appScope.launch {
+                healthWriteMutex.withLock {
+                    runCatching {
+                        val temp = File(filesDir, "node-health.tsv.tmp")
+                        temp.writeText(health.encode())
+                        if (!temp.renameTo(healthFile)) healthFile.writeText(temp.readText())
+                        temp.delete()
+                    }.onFailure { Log.d(TAG, "health history write skipped: ${it.message}") }
+                }
+            }
+        }
+
+        // Legacy feedback transport is intentionally unreachable in direct-only mode.
+        if (!AppSettings.feedback || AppSettings.feedMode == AppSettings.FEED_DIRECT) return
+        ensureReporting()
         reportChannel.trySend(Report(nodeId, ok, latencyMs, error))
+    }
+
+    private fun refreshHealthInMemory(nodeId: String) {
+        fun update(list: List<FeedNode>): List<FeedNode> =
+            list.map { if (it.id == nodeId) health.enrich(it) else it }
+        _vip.value = update(_vip.value)
+        _free.value = update(_free.value)
+        _proxies.value = update(_proxies.value)
+        index = (_vip.value + _free.value + _proxies.value).associateBy { it.id }
     }
 
     /** Kept for the wire-in call in [FeedHolder]: starting twice is safe and cheap. */
@@ -644,6 +782,24 @@ class ServerFeedRepository(
 
     /** A stricter-but-fairer readiness probe than "ping once, 200ms or fail". */
     suspend fun probe(node: FeedNode, timeoutMs: Long = 3000): ProbeResult = withContext(Dispatchers.IO) {
+        if (node.isRawProxy) {
+            val verdict = ProxyScanner.scan(
+                nodes = listOf(node),
+                limit = 1,
+                concurrency = 1,
+                timeoutMs = timeoutMs.toInt().coerceAtLeast(1_500),
+                protect = { socket -> MeelanoVpnService.protectFeedSocket(socket) },
+            )[node.id]
+            val ok = verdict?.usable == true
+            recordPlatformVerdict(node.id, verdict?.status ?: ProxyScanner.DEAD)
+            return@withContext ProbeResult(
+                node.id,
+                ok,
+                verdict?.latencyMs ?: timeoutMs,
+                if (ok) null else verdict?.reason ?: "proxy_scan_failed",
+            ).also { reportResult(node.id, it.ok, it.latencyMs, it.error) }
+        }
+
         val t0 = System.nanoTime()
         val ok = runCatching {
             java.net.Socket().use { s ->
@@ -704,9 +860,11 @@ data class FeedNode(
     val reliability: Float = 0f,
     val samples: Int = 0,
     val config: String? = null,
-    /** Backend/device deep-probe verdict: clean | blocked | unknown. */
+    /** Device deep-probe verdict: clean | robot_blocked | platform_blocked | dead | unknown. */
     val platformStatus: String = "unknown",
     val platformCheckedAt: Long = 0L,
+    /** Stable machine reason for a rejected proxy; UI translates the category, diagnostics keeps detail. */
+    val platformReason: String? = null,
     /**
      * The server's per-node transport patch (see net/Regime.kt). A *patch*, not a full config: absent
      * keys stay the client's decision. Default = empty, so an old feed payload still parses.
@@ -715,6 +873,8 @@ data class FeedNode(
 ) {
     val latencyLabel: String get() = latencyMs?.let { if (it < 1000) "$it" else String.format("%.1fs", it / 1000.0) } ?: "—"
     val isVip: Boolean get() = tier == "vip"
+    val isRawProxy: Boolean get() = proto.lowercase() in setOf("http", "socks", "socks5")
+    val isUsable: Boolean get() = !isRawProxy || platformStatus == ProxyScanner.CLEAN
 }
 
 data class ProbeResult(val nodeId: String, val ok: Boolean, val latencyMs: Long, val error: String?)

@@ -73,10 +73,12 @@ fun DiagnosticsSheet(
     val traffic by vm.traffic.collectAsState()
     val vip by vm.vip.collectAsState()
     val free by vm.free.collectAsState()
+    val proxies by vm.proxies.collectAsState()
+    val usableCount = vip.size + free.size + proxies.count { it.isUsable }
 
     val node = vm.activeNode ?: vm.bestAuto()
     val error = (phase as? ConnectPhase.Failed)?.reason ?: ""
-    val report = remember(error, traffic, node, vip.size + free.size, AppSettings.lastBlockReport,
+    val report = remember(error, traffic, node, usableCount, AppSettings.lastBlockReport,
         AppSettings.regime, AppSettings.mtu) {
         Diagnostics.render(
             Diagnostics.Input(
@@ -101,7 +103,7 @@ fun DiagnosticsSheet(
                 txBytes = traffic.tx,
                 error = error,
                 blockReport = AppSettings.lastBlockReport,
-                feedCount = vip.size + free.size,
+                feedCount = usableCount,
                 feedSource = vm.feedSourceLabel(),
                 coreBridge = ir.meelano.vpn.vpn.XrayBridge.describe(),
             )

@@ -84,6 +84,7 @@ fun HomeScreen(vm: VpnViewModel) {
     val trace by vm.trace.collectAsState()
     val vip by vm.vip.collectAsState()
     val free by vm.free.collectAsState()
+    val proxies by vm.proxies.collectAsState()
     val activeId by vm.activeId.collectAsState()
     val syncing by vm.syncing.collectAsState()
     val update by vm.updateState.collectAsState()
@@ -103,7 +104,7 @@ fun HomeScreen(vm: VpnViewModel) {
         }
     }
 
-    val node = (vip + free).firstOrNull { it.id == activeId } ?: vm.bestAuto()
+    val node = (vip + free + proxies).firstOrNull { it.id == activeId && it.isUsable } ?: vm.bestAuto()
     val connected = phase is ConnectPhase.Connected
     val busy = phase !is ConnectPhase.Idle && phase !is ConnectPhase.Connected && phase !is ConnectPhase.Failed
     val available = (update as? UpdateManager.State.Available)?.info
@@ -263,7 +264,7 @@ fun HomeScreen(vm: VpnViewModel) {
                 }
 
                 BottomRow(
-                    nodes = vip.size + free.size,
+                    nodes = vip.size + free.size + proxies.count { it.isUsable },
                     syncing = syncing,
                     onServers = { servers = true },
                     onSettings = { settings = true },
@@ -280,6 +281,7 @@ fun HomeScreen(vm: VpnViewModel) {
             vm = vm,
             vip = vip,
             free = free,
+            proxies = proxies,
             activeId = activeId,
             syncing = syncing,
             onDismiss = { servers = false },

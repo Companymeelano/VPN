@@ -39,6 +39,7 @@
     <string name="sheet_servers">انتخاب سرور</string>
     <string name="seg_vip">وی‌آی‌پی</string>
     <string name="seg_free">رایگان</string>
+    <string name="seg_proxy">پروکسی‌ها</string>
     <string name="seg_auto">خودکار</string>
     <string name="filter_all">همه</string>
     <string name="filter_near">نزدیک</string>
@@ -56,15 +57,27 @@
     <string name="row_copied">کانفیگ کپی شد</string>
     <string name="auto_desc">هر ۲۴ ساعت یک بار بهترین نود را انتخاب کن</string>
     <string name="empty_free_title">فعلاً نود آزادی نیست که تست را رد نکرده باشد</string>
-    <string name="empty_free_body">لیست رایگان هر چند دقیقه عوض می‌شود. «تست دوباره» را بزن تا فهرست تازه بگیریم.</string>
-    <string name="home_no_nodes_notice">لیست ویژه هنوز نرسیده — برای مشاهده و تلاش بزن</string>
-    <string name="empty_vip_title">لیست ویژه به اپ نرسید</string>
-    <string name="empty_vip_body">اینترنت را چک کن؛ اگر وصل است، از پشتیبانی بخواه فایل را دوباره بسازد.</string>
-    <string name="feed_err_net">به هاست دسترسی پیدا نشد — اگر هاست مرورگر وصل است، روش «آنبرد» را از تنظیمات بزن یا دوباره تلاش کن.</string>
-    <string name="feed_err_building">هاست در حال ساختن اولین لیست است؛ چند دقیقه‌ی دیگر خودش می‌آید.</string>
-    <string name="feed_err_payload">پاسخ هاست قابل فهم نبود — ساختار قدیمی روی هاست مانده؛ نسخه‌ی سرور را به‌روز کن.</string>
-    <string name="feed_err_http">خطای سرور (%1$s) — اگر 403 است کلید فید را هماهنگ کن، اگر 404 است آدرس /v/ را چک کن.</string>
-    <string name="feed_err_generic">دریافت لیست ناموفق بود (%1$s).</string>
+    <string name="empty_free_body">فهرست GitHub و آینه‌های عمومی آزمایش شدند. «تست دوباره» را بزن تا نسخهٔ تازه بررسی شود.</string>
+    <string name="empty_proxy_title">هنوز پروکسی سالمی پیدا نشد</string>
+    <string name="empty_proxy_body">HTTP و SOCKS5 مستقیم از همین گوشی روی Cloudflare، Google و Gstatic آزمایش می‌شوند؛ پروکسی‌های ربات‌خورده، مسدود و مرده وارد اتصال خودکار نمی‌شوند.</string>
+    <string name="home_no_nodes_notice">هنوز مسیر سالمی پیدا نشده — برای مشاهده و تلاش بزن</string>
+    <string name="empty_vip_title">پیکربندی شخصی وارد نشده</string>
+    <string name="empty_vip_body">در تنظیمات یک کانفیگ یا لینک اشتراک خودتان را وارد کنید؛ این بخش از هاست اختصاصی چیزی دریافت نمی‌کند.</string>
+    <string name="feed_err_net">منابع عمومی از این شبکه در دسترس نبودند؛ آینه‌ها هم آزمایش شدند.</string>
+    <string name="feed_err_building">فهرست عمومی هنوز آماده نشده؛ دوباره تلاش کنید.</string>
+    <string name="feed_err_payload">پاسخ منبع عمومی قابل فهم نبود.</string>
+    <string name="feed_err_http">منبع عمومی خطای HTTP %1$s داد.</string>
+    <string name="feed_err_public_empty">GitHub و آینه‌های عمومی پاسخی ندادند؛ اتصال شبکه را بررسی کنید و دوباره بزنید.</string>
+    <string name="feed_err_public_failed">ساخت و آزمون فهرست عمومی کامل نشد؛ فهرست سالم قبلی نگه داشته شد.</string>
+    <string name="feed_err_no_usable">منابع دریافت شدند، اما هیچ سرور یا پروکسی آزمون سلامت این گوشی را پاس نکرد.</string>
+    <string name="feed_err_generic">دریافت یا آزمون فهرست ناموفق بود (%1$s).</string>
+    <string name="proxy_status_clean">سالم</string>
+    <string name="proxy_status_robot">رد: ربات/کپچا</string>
+    <string name="proxy_status_platform">رد: پلتفرم مسدود</string>
+    <string name="proxy_status_auth">رد: احراز هویت</string>
+    <string name="proxy_status_timeout">رد: پروکسی نرسید</string>
+    <string name="proxy_status_not_exact">رد: پاسخ سالم نبود</string>
+    <string name="proxy_status_dead">رد: اتصال یا TLS</string>
     <string name="brand_credit">ساخته‌ی استودیوی میلانو · Meelano Studio Design</string>
     <string name="last_update">آخرین به‌روزرسانی فهرست: %1$s</string>
 
@@ -105,8 +118,8 @@
     <string name="theme_light">روشن</string>
     <string name="set_update">بروزرسانی خودکار</string>
     <string name="set_update_body">فایل نسخه را چک کن و موقع Wi‑Fi خودش نصب کند.</string>
-    <string name="set_feedback">ارسال گزارش وضعیت</string>
-    <string name="set_feedback_body">فقط نتیجه‌ی تست هر نود (موفق/ناموفق و زمان). بدون آی‌پی، بدون دستگاه.</string>
+    <string name="set_feedback">سابقهٔ سلامت روی گوشی</string>
+    <string name="set_feedback_body">فقط شمار موفق/ناموفق و میانگین زمان را برای انتخاب هوشمند نگه می‌دارد؛ نه آی‌پی و کانفیگ ذخیره می‌شود و نه چیزی ارسال می‌شود.</string>
     <string name="set_reset">پاک‌سازی تنظیمات و حافظه</string>
     <string name="set_version">نسخه %1$s (%2$d)</string>
     <string name="set_server_count">%1$d نود آماده</string>
@@ -179,14 +192,16 @@
     <string name="diag_lines">%1$d خط</string>
     <!-- ساخت فهرست سرور روی خود گوشی (بدون وابستگی به هاست) -->
     <string name="group_feed">فهرست سرورها</string>
-    <string name="feed_source">از کجا ساخته شود</string>
-    <string name="feed_source_host">هاست</string>
-    <string name="feed_source_auto">خودکار</string>
-    <string name="feed_source_direct">بدون هاست</string>
-    <string name="feed_source_body">«هاست» یعنی سرور نودها را از بیرون و از درون تست، و بر پایهٔ سابقهٔ چندروزه رتبه بدهد. «بدون هاست» برنامه خودش فهرست‌های عمومی را می‌خواند و فقط از همین گوشی تست می‌کند — برای روزهایی که هاست در دسترس نیست یا می‌خواهی بدون آن کار کنی. «خودکار» اول هاست را می‌آزماید و اگر نرسید، روی گوشی می‌سازد.</string>
+    <string name="feed_source">منبع فهرست</string>
+    <string name="feed_source_host">قدیمی</string>
+    <string name="feed_source_auto">قدیمی</string>
+    <string name="feed_source_direct">مستقیم</string>
+    <string name="feed_source_body">فهرست فقط روی گوشی و از منابع عمومی ساخته می‌شود.</string>
+    <string name="feed_source_direct_title">مستقیم از GitHub و منابع عمومی</string>
+    <string name="feed_source_direct_body">هیچ سرور یا پروکسی از هاست اختصاصی دریافت و روی آن آزمایش نمی‌شود. آینه‌های عمومی خودکار امتحان می‌شوند؛ سرورها روی همین شبکه و پروکسی‌ها با عبور واقعی HTTPS از خودشان سنجیده می‌شوند.</string>
     <string name="feed_now">فهرستِ امروز: %1$s</string>
     <string name="feed_vip_title">پیکربندیِ دستی (وی‌آی‌پی)</string>
-    <string name="feed_vip_body">هر خط یک vless:// یا vmess:// یا trojan:// یا ss:// یا لینکِ اشتراک. این‌ها فقط در همین گوشی می‌مانند و به هیچ سروری فرستاده نمی‌شوند؛ حتی در حالت «هاست» هم به‌عنوان نودِ محلی افزوده می‌شوند.</string>
+    <string name="feed_vip_body">هر خط یک vless:// یا vmess:// یا trojan:// یا ss:// یا لینکِ اشتراک. این‌ها فقط در همین گوشی می‌مانند، مستقیم خوانده می‌شوند و به هیچ سروری فرستاده نمی‌شوند.</string>
     <string name="feed_vip_placeholder">اینجا بچسبان…</string>
     <string name="feed_vip_save">ذخیره و ساخت فهرست</string>
     <string name="feed_vip_clear">پاک کردن</string>
@@ -195,6 +210,6 @@
     <string name="feed_sub_url">لینکِ اشتراک (اختیاری)</string>
     <string name="feed_sub_save">ذخیرهٔ لینک</string>
     <string name="feed_sub_update">به‌روزرسانی لینک</string>
-    <string name="feed_sub_url_body">در حالت «بدون هاست» همین لینک هم خوانده می‌شود؛ اگر لینکِ خودت را داری، فهرستِ وی‌آی‌پی کاملاً مستقل از سرور ساخته می‌شود.</string>
+    <string name="feed_sub_url_body">این لینک HTTPS مستقیم روی گوشی خوانده می‌شود؛ فهرست شخصی کاملاً مستقل از هاست اختصاصی می‌ماند.</string>
     <string name="diag_note">این گزارش آدرسِ سرور، IP، یا کانفیگ ندارد؛ برای پشتیبانی همین را بفرست. متن را می‌توانی با انگشت انتخاب هم بکنی.</string>
 </resources>

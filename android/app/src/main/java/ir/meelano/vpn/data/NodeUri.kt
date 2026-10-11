@@ -51,14 +51,23 @@ object NodeUri {
      * A blob of anything: pasted configs, a subscription link's body, an HTML page, a Telegram export,
      * or a JSON list. `tier` decides the label (and what the connect path is allowed to do with it).
      */
-    fun parseBlob(blob: String, tier: String, brand: String, proxyHint: String? = null): List<FeedNode> {
+    fun parseBlob(
+        blob: String,
+        tier: String,
+        brand: String,
+        proxyHint: String? = null,
+        maxNodes: Int = 240,
+    ): List<FeedNode> {
         val text = blob.trim()
-        if (text.isEmpty()) return emptyList()
+        if (text.isEmpty() || maxNodes <= 0) return emptyList()
         val out = LinkedHashMap<String, FeedNode>()
 
-        // 1) every scheme:// token, wherever it hides (works on HTML and exports, not just clean lists)
+        // 1) every scheme:// token, wherever it hides (works on HTML and exports, not just clean lists).
+        // Stop lazily: some public wiki files are tens of megabytes and parsing all rows only to keep
+        // the first few hundred caused long first-launch stalls and avoidable allocation spikes.
         for (m in URI_RE.findAll(text)) {
             parseUri(m.value.trim().trimEnd(',', ';', '"', '\'', ')', ']'))?.let { out.getOrPut(it.id) { it } }
+            if (out.size >= maxNodes) break
         }
 
         // 2) one base64 line with no visible scheme: a subscription string. Unwrap it and try again.
@@ -67,20 +76,24 @@ object NodeUri {
                 for (m in URI_RE.findAll(inner)) {
                     parseUri(m.value.trim().trimEnd(',', ';', '"', '\'', ')', ']'))
                         ?.let { out.getOrPut(it.id) { it } }
+                    if (out.size >= maxNodes) break
                 }
             }
         }
 
         // 3) bare proxy lines: ip:port, user:pass@ip:port, ip:port:user:pass
-        text.lineSequence().forEach { rawLine ->
-            val line = rawLine.trim().trim(',', ';', '"', '\'', '<', '>', '(', ')')
-            if (line.isEmpty() || line.startsWith("#") || line.contains("://")) return@forEach
-            parseProxyLine(line, proxyHint)?.let { out.getOrPut(it.id) { it } }
+        if (out.size < maxNodes) {
+            for (rawLine in text.lineSequence()) {
+                val line = rawLine.trim().trim(',', ';', '"', '\'', '<', '>', '(', ')')
+                if (line.isEmpty() || line.startsWith("#") || line.contains("://")) continue
+                parseProxyLine(line, proxyHint)?.let { out.getOrPut(it.id) { it } }
+                if (out.size >= maxNodes) break
+            }
         }
 
         // 4) a JSON list of {ip,port,proto,…} objects (monosans/jetkai shape - already geolocated upstream)
-        if (text[0] == '[' || text[0] == '{') {
-            jsonNodes(text)?.let { list -> list.forEach { out.getOrPut(it.id) { it } } }
+        if (out.size < maxNodes && (text[0] == '[' || text[0] == '{')) {
+            jsonNodes(text, maxNodes - out.size)?.let { list -> list.forEach { out.getOrPut(it.id) { it } } }
         }
 
         return out.values.map { mask(it.copy(tier = tier), brand) }
@@ -246,7 +259,7 @@ object NodeUri {
     }
 
     /** Free-list JSON (monosans/jetkai): `ip`+`port`, sometimes with `user`/`password` and a country. */
-    private fun jsonNodes(text: String): List<FeedNode>? {
+    private fun jsonNodes(text: String, maxNodes: Int): List<FeedNode>? {
         val root = runCatching { MiniJson.parse(text) }.getOrNull() ?: return null
         val arr = when (root) {
             is List<*> -> root
@@ -274,6 +287,7 @@ object NodeUri {
                 username = user, password = pass, network = "tcp", tls = null,
                 supportsUdp = false, raw = "$proto://$host:$port",
             )
+            if (out.size >= maxNodes) break
         }
         return out.ifEmpty { null }
     }
@@ -396,15 +410,24 @@ object NodeUri {
         return runCatching { String(java.util.Base64.getDecoder().decode(withPad), Charsets.UTF_8) }.getOrNull()
     }
 
-    /** Cap a list so one cold sync can never turn into a memory incident on a 2 GB phone. */
+    /**
+     * Cap a list without letting one duplicated endpoint dominate it. Two credentials/configs per
+     * endpoint are retained: collapsing solely by host:port discarded a working UUID whenever a stale
+     * UUID happened to occur one line earlier, while keeping every variant lets noisy subscription
+     * dumps starve every other server.
+     */
     fun dedupe(nodes: List<FeedNode>, max: Int = 120): List<FeedNode> {
-        val seen = HashSet<String>(nodes.size)
+        val seenIds = HashSet<String>(nodes.size)
+        val endpointCounts = HashMap<String, Int>()
         val out = ArrayList<FeedNode>(minOf(max, nodes.size))
         for (n in nodes) {
-            if (seen.add(n.proto + "|" + n.host + ":" + n.port)) {
-                out += n
-                if (out.size >= max) break
-            }
+            if (!seenIds.add(n.id)) continue
+            val endpoint = n.proto + "|" + n.host + ":" + n.port
+            val count = endpointCounts[endpoint] ?: 0
+            if (count >= 2) continue
+            endpointCounts[endpoint] = count + 1
+            out += n
+            if (out.size >= max) break
         }
         return out
     }

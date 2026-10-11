@@ -28,6 +28,18 @@ class DirectFeedTest {
         nodes.associate { it.id to 120L }
     }
 
+    private val deepProbe: suspend (List<FeedNode>) -> Map<String, ProxyScanner.Verdict> = { nodes ->
+        nodes.associate { node ->
+            node.id to ProxyScanner.Verdict(
+                ProxyScanner.CLEAN,
+                180L,
+                1f,
+                "exact_204_all",
+                ProxyScanner.ENDPOINTS.map { ProxyScanner.Check(it.id, 204, 180L) },
+            )
+        }
+    }
+
     private fun vless(host: String, port: Int = 443) =
         "vless://11111111-2222-3333-4444-555555555555@$host:$port?security=tls&type=tcp#$host"
 
@@ -94,7 +106,7 @@ class DirectFeedTest {
         assertEquals(listOf("https://raw.example/doc", "https://cdn.example/doc"), net.calls)
         assertEquals(1, res.nodes.size)
         assertEquals(1, res.sourcesOk)
-        assertTrue("mirror use must be announced in the notes", res.notes.any { it.contains("jsdelivr") })
+        assertTrue("mirror use must be announced in the notes", res.notes.any { it.contains("آینه") })
     }
 
     /* ------------------------------------------------------------------ protocol honesty */
@@ -113,6 +125,7 @@ class DirectFeedTest {
             fallbacks = emptyList(),
             fetch = net.fetch,
             probe = probe,
+            deepProbe = deepProbe,
         )
         assertEquals(2, res.nodes.size)
         assertEquals(setOf("vless", "socks5"), res.nodes.map { it.proto }.toSet())
@@ -135,9 +148,98 @@ class DirectFeedTest {
             fallbacks = emptyList(),
             fetch = net.fetch,
             probe = probe,
+            deepProbe = deepProbe,
         )
         assertEquals(2, res.nodes.size)
         assertTrue(res.nodes.all { it.proto == "socks5" && it.network == "tcp" && !it.supportsUdp })
+        assertTrue(res.nodes.all { it.platformStatus == ProxyScanner.CLEAN && it.isUsable })
+    }
+
+    @Test
+    fun proxyScanQuotaIsRoundRobinAcrossSources() = runBlocking {
+        val urls = (1..4).map { "https://proxy.example/$it" }
+        val sourceList = urls.mapIndexed { index, url ->
+            DirectFeed.Upstream("p$index", url, kind = DirectFeed.Kind.PROXY, protocolHint = "http")
+        }
+        val bodies = urls.mapIndexed { index, url ->
+            url to (1..6).joinToString("\n") { row -> "176.9.${index + 1}.${row}:8080" }
+        }.toMap()
+        var scanned: List<FeedNode> = emptyList()
+        DirectFeed.buildFree(
+            sources = sourceList,
+            lowWatermark = 0,
+            fallbacks = emptyList(),
+            proxyScanLimit = 4,
+            fetch = Net(bodies).fetch,
+            probe = probe,
+            deepProbe = { nodes -> scanned = nodes; this@DirectFeedTest.deepProbe(nodes) },
+        )
+        assertEquals(4, scanned.size)
+        assertEquals(setOf("176.9.1.1", "176.9.2.1", "176.9.3.1", "176.9.4.1"), scanned.map { it.host }.toSet())
+    }
+
+    @Test
+    fun proxyVerdictsStaySeparateAndOnlyCleanRowsAreUsable() = runBlocking {
+        val body = "176.9.10.11:8080\n176.9.10.12:8080\n176.9.10.13:8080\n176.9.10.14:8080"
+        val source = DirectFeed.Upstream(
+            "http", "https://proxy.example/list",
+            kind = DirectFeed.Kind.PROXY, protocolHint = "http",
+        )
+        val statuses = listOf(
+            ProxyScanner.CLEAN,
+            ProxyScanner.ROBOT_BLOCKED,
+            ProxyScanner.PLATFORM_BLOCKED,
+            ProxyScanner.DEAD,
+        )
+        val res = DirectFeed.buildFree(
+            sources = listOf(source),
+            lowWatermark = 0,
+            fallbacks = emptyList(),
+            fetch = Net(mapOf(source.url to body)).fetch,
+            probe = probe,
+            deepProbe = { nodes ->
+                nodes.mapIndexed { index, node ->
+                    val status = statuses[index]
+                    node.id to ProxyScanner.Verdict(
+                        status,
+                        if (status == ProxyScanner.DEAD) null else 200L,
+                        if (status == ProxyScanner.CLEAN) 1f else 1f / 3f,
+                        status,
+                        ProxyScanner.ENDPOINTS.mapIndexed { i, e ->
+                            ProxyScanner.Check(e.id, if (status == ProxyScanner.CLEAN || i == 0) 204 else null, 200L)
+                        },
+                    )
+                }.toMap()
+            },
+        )
+        assertEquals(4, res.nodes.size) // rejected rows remain visible in the dedicated diagnostics list
+        assertEquals(1, res.nodes.count { it.isUsable })
+        assertEquals(1, res.proxyClean)
+        assertEquals(1, res.proxyRobotBlocked)
+        assertEquals(1, res.proxyPlatformBlocked)
+        assertEquals(1, res.proxyDead)
+    }
+
+    @Test
+    fun parsedButDeadPrimaryStillEngagesAndPrioritisesFallback() = runBlocking {
+        val primaryUrl = "https://primary.example/list"
+        val fallbackUrl = "https://fallback.example/list"
+        val primaryBody = (1..20).joinToString("\n") { vless("203.0.113.${it + 20}") }
+        val fallbackBody = (1..3).joinToString("\n") { vless("198.51.100.${it + 20}") }
+        val net = Net(mapOf(primaryUrl to primaryBody, fallbackUrl to fallbackBody))
+        val res = DirectFeed.buildFree(
+            sources = listOf(DirectFeed.Upstream("primary", primaryUrl)),
+            lowWatermark = 2,
+            probeLimit = 4,
+            fallbacks = listOf(DirectFeed.Upstream("fallback", fallbackUrl)),
+            fetch = net.fetch,
+            probe = { nodes ->
+                nodes.associate { node -> node.id to if (node.host.startsWith("198.51.100.")) 90L else -1L }
+            },
+        )
+        assertTrue(net.calls.contains(fallbackUrl))
+        assertEquals(3, res.nodes.size)
+        assertTrue(res.nodes.all { it.host.startsWith("198.51.100.") })
     }
 
     /* ------------------------------------------------------------------ total failure */
@@ -156,6 +258,6 @@ class DirectFeedTest {
         assertEquals(0, res.sourcesOk)
         assertEquals(2, res.sourcesTotal)
         assertTrue(res.notes.any { it.contains("منابع جایگزین") })
-        assertTrue(res.notes.any { it.contains("اشتراک VIP") })
+        assertTrue(res.notes.any { it.contains("هیچ منبع عمومی") })
     }
 }

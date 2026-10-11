@@ -43,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
@@ -588,6 +589,7 @@ object Flags {
 fun ServerRow(
     node: FeedNode,
     selected: Boolean,
+    enabled: Boolean = true,
     onClick: () -> Unit,
     onTogglePin: () -> Unit,
 ) {
@@ -598,10 +600,25 @@ fun ServerRow(
         "C" -> p.warn
         else -> p.danger
     }
+    val rowSubtitle = if (node.isRawProxy) {
+        val status = when (node.platformStatus) {
+            ir.meelano.vpn.data.ProxyScanner.CLEAN -> stringResource(R.string.proxy_status_clean)
+            ir.meelano.vpn.data.ProxyScanner.ROBOT_BLOCKED -> stringResource(R.string.proxy_status_robot)
+            ir.meelano.vpn.data.ProxyScanner.PLATFORM_BLOCKED -> stringResource(R.string.proxy_status_platform)
+            else -> when {
+                node.platformReason?.contains("auth") == true -> stringResource(R.string.proxy_status_auth)
+                node.platformReason?.contains("unreachable") == true -> stringResource(R.string.proxy_status_timeout)
+                node.platformReason?.contains("exact_204") == true -> stringResource(R.string.proxy_status_not_exact)
+                else -> stringResource(R.string.proxy_status_dead)
+            }
+        }
+        node.subtitle + " · " + status + " · " + (node.reliability.coerceIn(0f, 1f) * 100).toInt() + "٪"
+    } else node.subtitle
     Row(
         Modifier
             .fillMaxWidth()
             .height(64.dp)
+            .alpha(if (enabled) 1f else 0.72f)
             // No wall here on purpose: eighty raised slabs in a scroll list is noise, and each one costs a
             // gradient. Depth is given to the two things that carry meaning - the selected row (it is the
             // one you are standing on) and the quality bar (it is the one you are reading).
@@ -622,7 +639,7 @@ fun ServerRow(
                 else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent)),
                 RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp),
             )
-            .combinedClickable(onClick = onClick, onLongClick = onTogglePin)
+            .combinedClickable(enabled = enabled, onClick = onClick, onLongClick = onTogglePin)
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -631,7 +648,7 @@ fun ServerRow(
         Column(Modifier.weight(1f)) {
             Text(node.name, color = p.text, fontSize = 14.sp)
             Text(
-                node.subtitle, color = p.muted, fontSize = 11.sp,
+                rowSubtitle, color = p.muted, fontSize = 11.sp, maxLines = 1,
                 style = TextStyle(fontFeatureSettings = "tnum"),
             )
         }

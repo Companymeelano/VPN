@@ -79,6 +79,7 @@ fun ServerListSheet(
     vm: VpnViewModel,
     vip: List<FeedNode>,
     free: List<FeedNode>,
+    proxies: List<FeedNode>,
     activeId: String?,
     syncing: Boolean,
     onDismiss: () -> Unit,
@@ -86,14 +87,27 @@ fun ServerListSheet(
     val p = LocalPalette.current
     val ctx = LocalContext.current
     val sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var seg by remember { mutableStateOf(if (vip.isEmpty() && free.isNotEmpty()) SEG_FREE else SEG_VIP) }
+    var seg by remember {
+        mutableStateOf(
+            when {
+                vip.isNotEmpty() -> SEG_VIP
+                free.isNotEmpty() -> SEG_FREE
+                proxies.isNotEmpty() -> SEG_PROXY
+                else -> SEG_FREE
+            }
+        )
+    }
     var filter by remember { mutableStateOf(FILTER_ALL) }
     var pinned by remember { mutableStateOf(Prefs.pinnedIds(ctx)) }
     // Which builder made this list, and what it had to throw away. Only interesting when the list looks
     // thin - which is precisely when a silent difference turns into a bug report.
     val feedNotes by vm.feedNotes.collectAsState()
 
-    val source = if (seg == SEG_FREE) free else vip
+    val source = when (seg) {
+        SEG_FREE -> free
+        SEG_PROXY -> proxies
+        else -> vip
+    }
     val rows = remember(source, filter, pinned) {
         val base = when (filter) {
             FILTER_NEAR -> source.filter { it.latencyMs != null }
@@ -103,7 +117,9 @@ fun ServerListSheet(
         }
         base.sortedWith(
             compareByDescending<FeedNode> { it.id in pinned }
+                .thenBy { if (it.isUsable) 0 else 1 }
                 .thenBy { gradeRank(it.grade) }
+                .thenByDescending { it.reliability }
                 .thenBy { it.latencyMs ?: 99_999L }
         )
     }
@@ -150,6 +166,7 @@ fun ServerListSheet(
                 items = listOf(
                     label(R.string.seg_vip, vip.size),
                     label(R.string.seg_free, free.size),
+                    proxyLabel(proxies.count { it.isUsable }, proxies.size),
                 ),
                 index = seg,
                 onIndex = { seg = it },
@@ -198,13 +215,14 @@ fun ServerListSheet(
                 }
                 rows.isEmpty() -> {
                     val err by vm.feedError.collectAsState()
-                    EmptyState(vip = seg == SEG_VIP, error = err, onRetry = { vm.refreshBoth() })
+                    EmptyState(segment = seg, error = err, onRetry = { vm.refreshBoth() })
                 }
                 else -> LazyColumn(Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
                     items(rows, key = { it.id }) { n ->
                         ServerRow(
                             node = n,
                             selected = n.id == activeId,
+                            enabled = n.isUsable,
                             onClick = {
                                 AppSettings.setAutoSelect(ctx, false)
                                 vm.select(n)
@@ -240,7 +258,10 @@ fun ServerListSheet(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                stringResource(R.string.last_update, relTime(vm.generatedAt(if (seg == SEG_FREE) "free" else "vip"))),
+                                stringResource(
+                                    R.string.last_update,
+                                    relTime(vm.generatedAt(if (seg == SEG_VIP) "vip" else if (seg == SEG_PROXY) "proxy" else "free")),
+                                ),
                                 fontSize = 11.sp, color = p.faint, maxLines = 1,
                             )
                             if (feedNotes.isNotEmpty()) {
@@ -290,6 +311,11 @@ fun ServerListSheet(
 @Composable
 private fun label(res: Int, count: Int): String =
     stringResource(res) + if (count > 0) "  ·  $count" else ""
+
+/** Proxy tab shows healthy/scanned, making rejected rows and scan progress explicit at a glance. */
+@Composable
+private fun proxyLabel(clean: Int, total: Int): String =
+    stringResource(R.string.seg_proxy) + if (total > 0) "  ·  $clean/$total" else ""
 
 /*
  * The two-choice control (وی‌آی‌پی / رایگان) is the kit's `MeelanoSegmented`: a carved well with one
@@ -341,25 +367,31 @@ private fun SkeletonRow() {
 }
 
 @Composable
-private fun EmptyState(vip: Boolean, error: String?, onRetry: () -> Unit) {
-    // Translate the repo's machine keys into a human sentence: "empty_after_host_fetch" was the exact
-    // string the user sent back as a bug report - machine codes must never be the entire message.
+private fun EmptyState(segment: Int, error: String?, onRetry: () -> Unit) {
     val humanError = error?.let {
         when {
-            it == "net_unreachable" -> stringResource(R.string.feed_err_net)
-            it == "host_building" -> stringResource(R.string.feed_err_building)
-            it == "payload_rejected" -> stringResource(R.string.feed_err_payload)
-            it == "empty_after_host_fetch" -> stringResource(R.string.feed_err_net)
-            it.startsWith("http_") -> stringResource(R.string.feed_err_http, it.removePrefix("http_"))
+            it == "public_sources_empty" -> stringResource(R.string.feed_err_public_empty)
+            it == "public_refresh_failed" -> stringResource(R.string.feed_err_public_failed)
+            it == "no_usable_paths" -> stringResource(R.string.feed_err_no_usable)
             else -> stringResource(R.string.feed_err_generic, it)
         }
     }
+    val title = when (segment) {
+        SEG_VIP -> R.string.empty_vip_title
+        SEG_PROXY -> R.string.empty_proxy_title
+        else -> R.string.empty_free_title
+    }
+    val body = when (segment) {
+        SEG_VIP -> R.string.empty_vip_body
+        SEG_PROXY -> R.string.empty_proxy_body
+        else -> R.string.empty_free_body
+    }
     MeelanoEmptyState(
-        title = stringResource(if (vip) R.string.empty_vip_title else R.string.empty_free_title),
-        body = stringResource(if (vip) R.string.empty_vip_body else R.string.empty_free_body),
+        title = stringResource(title),
+        body = stringResource(body),
         action = stringResource(R.string.retry),
         onAction = onRetry,
-        iconRes = if (vip) R.drawable.ic_shield else R.drawable.ic_bolt,
+        iconRes = if (segment == SEG_VIP) R.drawable.ic_shield else R.drawable.ic_bolt,
         error = humanError,
     )
 }
@@ -428,6 +460,7 @@ internal fun relTime(ts: Long): String {
 
 private const val SEG_VIP = 0
 private const val SEG_FREE = 1
+private const val SEG_PROXY = 2
 private const val FILTER_ALL = 0
 private const val FILTER_NEAR = 1
 private const val FILTER_FAST = 2

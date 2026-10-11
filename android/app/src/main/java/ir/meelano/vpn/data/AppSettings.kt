@@ -25,11 +25,8 @@ object AppSettings {
     const val THEME_LIGHT = 2
 
     /**
-     * Where the two lists come from. HOST is the intended mode (the /v/ build probes, gates, ranks and
-     * keeps a ban ledger a phone must not replicate); DIRECT makes the app read the public lists itself
-     * and use the user's own pasted VIP configs, so the product works with no host at all; AUTO tries
-     * the host and falls back when it is unreachable. Switching this never leaves a half-updated list:
-     * both paths write the same cache file and go through the same apply().
+     * Legacy numeric values are retained for preference/back-up compatibility. Current builds migrate
+     * every value to DIRECT at startup: server/config discovery and proxy testing are phone-side only.
      */
     const val FEED_HOST = 0
     const val FEED_AUTO = 1
@@ -45,8 +42,8 @@ object AppSettings {
         private set
     var autoUpdate by mutableStateOf(true)
         private set
-    /** One of FEED_HOST / FEED_AUTO / FEED_DIRECT. */
-    var feedMode by mutableStateOf(FEED_HOST)
+    /** Always FEED_DIRECT; public constants only exist to migrate older installs safely. */
+    var feedMode by mutableStateOf(FEED_DIRECT)
         private set
     /** Optional: the user's own subscription/list URL, read by the phone in DIRECT mode. */
     var feedExtraUrl by mutableStateOf("")
@@ -109,10 +106,12 @@ object AppSettings {
         lastBlockReport = p.getString("block_report", "") ?: ""
         detectedRegime = p.getString("detected_regime", "tight") ?: "tight"
         autoUpdate = p.getBoolean("auto_update", true)
-        // AUTO, not HOST: a user whose operator-host is unreachable must still leave the first
-        // launch with a working list (AUTO falls back to the on-device direct build). HOST is for
-        // controlled deployments; the setting itself flips it back in one tap.
-        feedMode = p.getInt("feed_mode", FEED_AUTO)
+        // One-way migration: old releases persisted HOST/AUTO. Merely changing the default would leave
+        // those users waiting on the private backend forever, so rewrite the stored value as well.
+        feedMode = FEED_DIRECT
+        if (p.getInt("feed_mode", FEED_DIRECT) != FEED_DIRECT) {
+            p.edit().putInt("feed_mode", FEED_DIRECT).apply()
+        }
         feedExtraUrl = p.getString("feed_extra_url", "") ?: ""
         feedback = p.getBoolean("feedback", true)
         themeMode = p.getInt("theme_mode", THEME_SYSTEM)
@@ -128,7 +127,9 @@ object AppSettings {
     fun setSecureDns(c: Context, v: Boolean) = write(c, "secure_dns", v) { secureDns = v }
     fun setReducedMotion(c: Context, v: Boolean) = write(c, "reduced_motion", v) { reducedMotion = v }
     fun setAutoUpdate(c: Context, v: Boolean) = write(c, "auto_update", v) { autoUpdate = v }
-    fun setFeedMode(c: Context, v: Int) = write(c, "feed_mode", v) { feedMode = v }
+    /** Legacy UI/API call: private-host modes are no longer selectable or reachable. */
+    fun setFeedMode(c: Context, @Suppress("UNUSED_PARAMETER") v: Int) =
+        write(c, "feed_mode", FEED_DIRECT) { feedMode = FEED_DIRECT }
     fun setFeedExtraUrl(c: Context, v: String) = write(c, "feed_extra_url", v.trim()) { feedExtraUrl = v.trim() }
     fun setFeedback(c: Context, v: Boolean) = write(c, "feedback", v) { feedback = v }
     fun setAutoSelect(c: Context, v: Boolean) = write(c, "auto_select", v) { autoSelect = v }

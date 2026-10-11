@@ -80,6 +80,7 @@ object FeedJson {
             config = s.optJSONObject("config")?.toString(),
             platformStatus = s.optString("platformStatus", "unknown"),
             platformCheckedAt = s.optLong("platformCheckedAt", 0L),
+            platformReason = s.optString("platformReason").ifBlank { null },
             // "tune" is either an object of patches or a preset name; both are clamped in TunePatch
             tune = ir.meelano.vpn.net.TunePatch.fromAny(s.opt("tune")),
         )
@@ -117,6 +118,7 @@ object FeedJson {
         .put("insecure", n.insecure).put("supportsUdp", n.supportsUdp)
         .put("raw", n.raw ?: "")
         .put("platformStatus", n.platformStatus).put("platformCheckedAt", n.platformCheckedAt)
+        .put("platformReason", n.platformReason ?: "")
         .apply {
             if (!n.tune.isEmpty) put("tune", n.tune.toJson())
             // These two used to be missing, so a cached payload came back without them: alterId fell to

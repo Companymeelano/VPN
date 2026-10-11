@@ -110,6 +110,14 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
         }
 
         fun isRunning(): Boolean = _phase.value is ConnectPhase.Connected && alive != null
+
+        /**
+         * Public-source proxy scans must bypass an already-running VPN or they only prove that a proxy
+         * works from the old exit server. No service exists during a normal cold scan, in which case a
+         * raw socket is already direct and needs no protection call.
+         */
+        fun protectFeedSocket(socket: java.net.Socket): Boolean =
+            alive?.let { service -> runCatching { service.protect(socket) }.getOrDefault(false) } ?: true
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

@@ -6,38 +6,23 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
 /**
- * Builds a free list **on the phone**, from public sources - so the app works with no host of yours at
- * all (the "I don't want to depend on shared hosting" mode). Everything is fetched, parsed, probed and
- * ranked by the app itself; no server, no shared host, nothing in the middle.
+ * Builds the public feed entirely on the phone. Built-in documents live on GitHub and each repository
+ * file has a jsDelivr/raw mirror chain where that is technically possible; no request in this builder
+ * goes to the product's private feed host.
  *
- * Survivability on a filtered path (the whole point of this file):
+ * Tunnel configs and raw proxies are intentionally separate pools:
  *
- *   - every upstream carries a `mirrors` chain: the same document on another domain, tried in order
- *     when the first URL answers nothing. `raw.githubusercontent.com` is SNI-blocked on many Iranian
- *     paths while `cdn.jsdelivr.net` usually is not, and jsDelivr can only mirror *repo* files - never
- *     wiki files - so the mirror-ready sources below are real repos, and the wiki lists stay
- *     primary-only on purpose;
- *   - if the primary tier comes home nearly empty, a second tier of daily-crawled repos (each with its
- *     own raw/jsdelivr chain) is fetched automatically, so "GitHub is filtered here" degrades into a
- *     mirror read instead of an empty screen.
+ *  - vless/vmess/trojan/ss candidates receive a bounded, fair TCP reachability pass. They still have
+ *    to pass the VPN service's exact-204 test after Xray establishes the complete tunnel;
+ *  - HTTP/SOCKS5 candidates never inherit a tunnel's grade. Every one shown in the proxy section is
+ *    connected through directly by [ProxyScanner] and classified as clean, robot-blocked,
+ *    platform-blocked, or dead.
  *
- * What it deliberately does NOT do, and why that is not a shortcut:
- *
- *   - every candidate is still verified through the established Android tunnel before it can turn the
- *     UI green; this builder only does the cheap source/TCP stage so a phone does not fan out hundreds
- *     of HTTPS handshakes at once;
- *   - no multi-day ledger, no ban timers: those only pay off when someone is around tomorrow, and the
- *     server keeps them;
- *   - no SOCKS4 rows: the pinned core only supports SOCKS5. HTTP and SOCKS5 lists are accepted and
- *     identified by an explicit per-source protocol hint (never guessed from a random port).
- *
- * Everything here is pure Kotlin and takes its IO as *lambdas*, so it runs in JVM unit tests with fake
- * fetchers. `ServerFeedRepository` supplies the real ones (OkHttp with the DoH fallback, and the same
- * TCP probe the "چرا وصل نشد" card uses).
+ * IO is injected, so mirror behavior, pool quotas and every rejection state run in JVM tests without
+ * requiring GitHub or a particular national network to be reachable from CI.
  */
 object DirectFeed {
 
-    /** CONFIG = a text file of `scheme://` lines. JSON = an array of objects with ip/port/user/pass. */
     enum class Kind { CONFIG, PROXY, JSON }
 
     data class Upstream(
@@ -45,32 +30,31 @@ object DirectFeed {
         val url: String,
         val kind: Kind = Kind.CONFIG,
         val maxBytes: Int = 1_400_000,
-        /** Required for bare host:port proxy files; prevents a SOCKS list being mislabeled HTTP. */
+        /** Required for bare host:port files; a SOCKS list must never silently become HTTP. */
         val protocolHint: String? = null,
-        /** Same document, other hosts. Tried in order after `url`; the first non-blank body wins. */
+        /** Same document through another public host; first non-blank response wins. */
         val mirrors: List<String> = emptyList(),
     )
 
-    /**
-     * Primary tier - the highest-quality free config lists. They live in a GitHub *wiki*, which no CDN
-     * mirrors, so on a path where raw.githubusercontent is poisoned they simply fail and the fallback
-     * tier below takes over. `hy2` is deliberately absent: `CoreProfiles` writes no hysteria2 outbound,
-     * so its rows could only ever be tapped into a guaranteed connect failure.
-     */
-    val DEFAULTS: List<Upstream> = listOf(
+    /** Config repositories. The gfp wiki is a git repository itself but cannot be mirrored by jsDelivr. */
+    val TUNNEL_SOURCES: List<Upstream> = listOf(
         Upstream("gfp-vless", "https://raw.githubusercontent.com/wiki/gfpcom/free-proxy-list/lists/vless.txt"),
         Upstream("gfp-trojan", "https://raw.githubusercontent.com/wiki/gfpcom/free-proxy-list/lists/trojan.txt"),
         Upstream("gfp-ss", "https://raw.githubusercontent.com/wiki/gfpcom/free-proxy-list/lists/ss.txt"),
         Upstream("gfp-vmess", "https://raw.githubusercontent.com/wiki/gfpcom/free-proxy-list/lists/vmess.txt"),
+    )
+
+    /** Raw proxy repositories. These are scanned independently; none is published as clean on parse alone. */
+    val PROXY_SOURCES: List<Upstream> = listOf(
         Upstream(
             "speedx-http", "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
             kind = Kind.PROXY, maxBytes = 500_000, protocolHint = "http",
             mirrors = listOf("https://cdn.jsdelivr.net/gh/TheSpeedX/PROXY-List@master/http.txt"),
         ),
         Upstream(
-            "speedx-socks5", "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt",
+            "speedx-socks5", "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt",
             kind = Kind.PROXY, maxBytes = 500_000, protocolHint = "socks5",
-            mirrors = listOf("https://cdn.jsdelivr.net/gh/TheSpeedX/SOCKS-List@master/socks5.txt"),
+            mirrors = listOf("https://cdn.jsdelivr.net/gh/TheSpeedX/PROXY-List@master/socks5.txt"),
         ),
         Upstream(
             "monosans-http", "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
@@ -84,12 +68,10 @@ object DirectFeed {
         ),
     )
 
-    /**
-     * Fallback tier - daily crawls of the free-node aggregator sites, kept in a *real* repo so jsDelivr
-     * can serve them when GitHub itself is filtered. Mirror order is jsdelivr-first: the only situation
-     * this tier is consulted in bulk is a path where raw.githubusercontent is already dead. The three
-     * files overlap heavily (they crawl the same sites) - `NodeUri.dedupe` collapses the overlap.
-     */
+    /** Kept as the public default API while exposing the two pools explicitly above. */
+    val DEFAULTS: List<Upstream> = TUNNEL_SOURCES + PROXY_SOURCES
+
+    /** Small daily repository files used when the *tested* primary tunnel pool is thin. */
     val FALLBACKS: List<Upstream> = listOf(
         Upstream(
             "fn-v2rayshare",
@@ -118,119 +100,236 @@ object DirectFeed {
         val parsed: Int,
         val probed: Int,
         val notes: List<String>,
+        val proxyScanned: Int = 0,
+        val proxyClean: Int = 0,
+        val proxyRobotBlocked: Int = 0,
+        val proxyPlatformBlocked: Int = 0,
+        val proxyDead: Int = 0,
     ) {
-        /** One line for the sheet footer; Persian because a person reads it. */
-        fun label(): String = "$sourcesOk/$sourcesTotal منبع · ${nodes.size} نود"
+        fun label(): String = "$sourcesOk/$sourcesTotal منبع · ${nodes.count { it.isUsable }} مسیر سالم"
     }
 
     /**
-     * @param fetch   gets one upstream's body (null = it failed; the caller owns timeouts and byte caps)
-     * @param probe   dials a batch and returns id -> RTT ms, -1 for "nothing answered"
-     * @param probeLimit how many of the head to actually dial (each one is a socket, not a free thing)
-     * @param lowWatermark below this many dialable nodes from the primary tier, the fallback tier is
-     *        fetched too (0 = never, Int.MAX_VALUE = always)
-     * @param fallbacks second-chance list; consulted only when the primary tier comes home thin
+     * [probe] is the cheap reachability stage for complete tunnel configs. [deepProbe] performs actual
+     * HTTPS requests through raw proxies and must return a verdict for every proxy it examined. Missing
+     * verdicts are dead, never optimistically grey/usable.
+     *
+     * Fallback activation is based on the count that answered the phone's probe, not the count of URI
+     * strings parsed from a giant repository. This distinction fixes the common "downloaded thousands,
+     * displayed none useful, therefore never opened fallback" failure mode.
      */
     suspend fun buildFree(
         sources: List<Upstream> = DEFAULTS,
         brand: String = "Free M•A",
-        maxNodes: Int = 80,
-        parseCap: Int = 160,
-        probeLimit: Int = 36,
-        lowWatermark: Int = 24,
+        maxNodes: Int = 64,
+        parseCap: Int = 192,
+        probeLimit: Int = 48,
+        proxyParseCap: Int = 144,
+        proxyScanLimit: Int = 48,
+        lowWatermark: Int = 16,
         fallbacks: List<Upstream> = FALLBACKS,
         extra: Upstream? = null,
         fetch: suspend (Upstream) -> String?,
         probe: suspend (List<FeedNode>) -> Map<String, Long>,
+        deepProbe: suspend (List<FeedNode>) -> Map<String, ProxyScanner.Verdict> = { emptyMap() },
+        /** Optional progressive delivery: verified tunnels can paint while the deeper proxy scan runs. */
+        onTunnelsReady: suspend (List<FeedNode>) -> Unit = {},
     ): Result = coroutineScope {
-        val notes = ArrayList<String>(6)
-        val all = ArrayList<FeedNode>(parseCap)
-        var ok = 0
-        var total = 0
-        var skippedProxies = 0
+        val notes = ArrayList<String>(10)
+        val tunnelPool = ArrayList<FeedNode>(parseCap)
+        val proxyPool = ArrayList<FeedNode>(proxyParseCap)
+        var sourcesOk = 0
+        var sourcesTotal = 0
+        var skipped = 0
         var mirrored = 0
 
-        // One batch of upstreams in parallel; each upstream walks its own url + mirrors chain
-        // sequentially and keeps the first body that comes back with anything in it.
+        /** Fetch one tier in parallel; each source's mirrors are tried sequentially. */
         suspend fun CoroutineScope.pull(batch: List<Upstream>) {
             if (batch.isEmpty()) return
-            val bodies = batch.map { u ->
+            val configCount = batch.count { it.kind != Kind.PROXY }.coerceAtLeast(1)
+            val proxyCount = batch.count { it.kind == Kind.PROXY }.coerceAtLeast(1)
+            val bodies = batch.map { upstream ->
                 async {
                     var body: String? = null
                     var via = 0
-                    for ((i, link) in (listOf(u.url) + u.mirrors).withIndex()) {
-                        body = runCatching { fetch(u.copy(url = link)) }.getOrNull()
-                        if (!body.isNullOrBlank()) { via = i; break }
+                    for ((index, link) in (listOf(upstream.url) + upstream.mirrors).withIndex()) {
+                        body = runCatching { fetch(upstream.copy(url = link)) }.getOrNull()
+                        if (!body.isNullOrBlank()) {
+                            via = index
+                            break
+                        }
                     }
-                    Triple(u, body, via)
+                    Triple(upstream, body, via)
                 }
             }.awaitAll()
-            for ((u, body, via) in bodies) {
-                total++
+            val tunnelBuckets = ArrayList<List<FeedNode>>()
+            val proxyBuckets = ArrayList<List<FeedNode>>()
+
+            for ((upstream, body, via) in bodies) {
+                sourcesTotal++
                 if (body.isNullOrBlank()) continue
-                ok++
+                sourcesOk++
                 if (via > 0) mirrored++
-                // The core dials vless/vmess/trojan/ss outbounds only - everything else is a row the
-                // user could tap and blame themselves for. Count them, don't list them.
-                val parsed = NodeUri.parseBlob(body, tier = "free", brand = brand, proxyHint = u.protocolHint)
-                val dialable = parsed.filter { it.proto in TUNNEL_PROTOS && !it.insecure }
-                skippedProxies += parsed.size - dialable.size
-                if (dialable.isEmpty()) {
-                    notes += "«${u.id}» پاسخ داد ولی نودِ قابل‌دیال نداشت"
+                val sourceLimit = if (upstream.kind == Kind.PROXY) {
+                    (proxyParseCap / proxyCount).coerceAtLeast(16)
                 } else {
-                    // Fair share per source: one huge VLESS file must not starve SOCKS/HTTP or every
-                    // other transport before ranking gets a chance to compare them.
-                    val share = (parseCap / batch.size.coerceAtLeast(1)).coerceAtLeast(12)
-                    all += dialable.take(share)
+                    (parseCap / configCount).coerceAtLeast(16)
+                }
+                val parsed = NodeUri.parseBlob(
+                    body,
+                    tier = "free",
+                    brand = brand,
+                    proxyHint = upstream.protocolHint,
+                    maxNodes = sourceLimit * 2,
+                )
+                val dialable = parsed.filter { it.proto in TUNNEL_PROTOS && !it.insecure }
+                skipped += parsed.size - dialable.size
+                val proxies = dialable.filter { it.isRawProxy }.take(sourceLimit)
+                val tunnels = dialable.filterNot { it.isRawProxy }.take(sourceLimit)
+                if (proxies.isNotEmpty()) proxyBuckets += proxies
+                if (tunnels.isNotEmpty()) tunnelBuckets += tunnels
+                if (dialable.isEmpty()) notes += "«${upstream.id}» پاسخ داد ولی مسیرِ قابل‌دیال نداشت"
+            }
+
+            // Round-robin by source. Appending whole files meant the first VLESS/HTTP repository spent
+            // the entire probe budget and SOCKS, SS and every mirror source were parsed but never tested.
+            fun interleave(buckets: List<List<FeedNode>>, target: MutableList<FeedNode>) {
+                var row = 0
+                while (buckets.any { row < it.size }) {
+                    buckets.forEach { bucket -> if (row < bucket.size) target += bucket[row] }
+                    row++
                 }
             }
+            interleave(tunnelBuckets, tunnelPool)
+            interleave(proxyBuckets, proxyPool)
         }
 
-        pull(if (extra == null) sources else sources + extra)
+        val primary = if (extra == null) sources else sources + extra
+        pull(primary)
 
-        if (all.size < lowWatermark && fallbacks.isNotEmpty()) {
-            notes += "فهرست‌های اصلی ناکافی بود؛ از منابع جایگزینِ به‌روزشوندهٔ روزانه خوانده شد"
+        // Probe primary tunnel candidates first. A huge parsed file no longer suppresses fallbacks when
+        // all of its endpoints are dead from this network.
+        val rtt = LinkedHashMap<String, Long>()
+        suspend fun probeFresh(candidates: List<FeedNode>, limit: Int) {
+            val fresh = candidates.filter { it.id !in rtt }.take(limit)
+            if (fresh.isEmpty()) return
+            val got = runCatching { probe(fresh) }.getOrDefault(emptyMap())
+            fresh.forEach { node -> rtt[node.id] = got[node.id] ?: -1L }
+        }
+
+        var tunnelCandidates = NodeUri.dedupe(tunnelPool, max = parseCap)
+        probeFresh(tunnelCandidates, probeLimit)
+        val primaryAlive = rtt.values.count { it >= 0 }
+        if (primaryAlive < lowWatermark && fallbacks.isNotEmpty()) {
+            notes += "فقط $primaryAlive سرورِ اصلی پاسخ داد؛ منابع جایگزینِ روزانه هم آزمایش شد"
+            val primaryIds = tunnelCandidates.mapTo(HashSet()) { it.id }
+            val beforeFallback = tunnelPool.size
             pull(fallbacks)
-        }
-        if (mirrored > 0) notes += "$mirrored منبع از مسیرِ جایگزین (آینهٔ jsdelivr) آورده شد"
-        if (skippedProxies > 0) notes += "$skippedProxies ردیف با پروتکل ناامن/پشتیبانی‌نشده حذف شد"
-        val failed = total - ok
-        if (failed > 0) notes += "$failed منبع از $total جواب نداد (فیلترینگِ GitHub روی این مسیر طبیعی است)"
-
-        val candidates = NodeUri.dedupe(all, max = parseCap)
-        if (candidates.isEmpty()) {
-            return@coroutineScope Result(
-                emptyList(), ok, total, 0, 0,
-                notes + "هیچ نودی از فهرست‌های عمومی ساخته نشد؛ اگر هاست یا اشتراک VIP دارید همان را وارد کنید",
+            val fallbackCandidates = NodeUri.dedupe(
+                tunnelPool.drop(beforeFallback),
+                max = (parseCap / 2).coerceAtLeast(probeLimit),
             )
+            tunnelCandidates = (tunnelCandidates + fallbackCandidates).distinctBy { it.id }
+            // A separate fallback quota prevents unprobed rows from the first giant source consuming
+            // every socket and starving the very tier intended to recover it.
+            val fallbackFirst = tunnelCandidates.filter { it.id !in primaryIds } +
+                tunnelCandidates.filter { it.id in primaryIds }
+            probeFresh(fallbackFirst, probeLimit)
         }
 
-        // Dial the head, in one batch (the repository runs this on its own dispatcher with a real
-        // timeout; here we only decide who gets a grade and in what order).
-        val head = candidates.take(probeLimit)
-        val rtt = runCatching { probe(head) }.getOrDefault(emptyMap())
-        val graded = head.map { n ->
-            val ms = rtt[n.id]
-            n.copy(latencyMs = if (ms != null && ms >= 0) ms else null, grade = NodeUri.grade(ms))
-        } + candidates.drop(probeLimit).map { it.copy(grade = "C") }   // unprobed: honest grey, never a lie
+        if (mirrored > 0) notes += "$mirrored منبع از آینهٔ عمومی جایگزین دریافت شد"
+        if (skipped > 0) notes += "$skipped ردیف با پروتکل پشتیبانی‌نشده یا ناامن حذف شد"
+        val failedSources = sourcesTotal - sourcesOk
+        if (failedSources > 0) notes += "$failedSources منبع از $sourcesTotal پاسخ نداد؛ آینه‌ها به‌صورت خودکار امتحان شدند"
 
-        val ordered = graded.sortedWith(
-            compareBy({ GRADE_RANK[it.grade] ?: 9 }, { it.latencyMs ?: Long.MAX_VALUE })
-        ).take(maxNodes)
-            .mapIndexed { i, n -> n.copy(slot = i + 1) }
+        val tunnelRows = tunnelCandidates.mapNotNull { node ->
+            val ms = rtt[node.id]
+            if (ms == null || ms < 0) null else node.copy(
+                latencyMs = ms,
+                grade = NodeUri.grade(ms),
+                reliability = 0.5f, // port reachable; complete exact-204 proof happens in the service
+                samples = 1,
+                platformStatus = "unknown",
+            )
+        }.sortedWith(compareBy({ GRADE_RANK[it.grade] ?: 9 }, { it.latencyMs ?: Long.MAX_VALUE }))
+            .take(maxNodes)
+            .mapIndexed { index, node -> node.copy(slot = index + 1) }
 
-        val alive = graded.count { (it.latencyMs ?: -1L) >= 0 }
-        if (alive == 0) notes += "هیچ‌کدام از نودها از همین‌جا پاسخ نداد؛ فهرست برای پروکسی‌کردنِ تونل ساخته می‌شود، نه برای تستِ شبکه"
+        if (tunnelRows.isNotEmpty()) runCatching { onTunnelsReady(tunnelRows) }
 
-        Result(ordered, ok, total, all.size, head.size, notes)
+        val proxyCandidates = NodeUri.dedupe(proxyPool, max = proxyParseCap).take(proxyScanLimit)
+        val verdicts = if (proxyCandidates.isEmpty()) emptyMap() else {
+            runCatching { deepProbe(proxyCandidates) }.getOrDefault(emptyMap())
+        }
+        val checkedAt = System.currentTimeMillis() / 1000L
+        val proxyRows = proxyCandidates.mapIndexed { index, node ->
+            val verdict = verdicts[node.id] ?: ProxyScanner.Verdict(
+                status = ProxyScanner.DEAD,
+                latencyMs = null,
+                reliability = 0f,
+                reason = "scan_not_completed",
+                checks = emptyList(),
+            )
+            node.copy(
+                slot = index + 1,
+                latencyMs = verdict.latencyMs,
+                grade = if (verdict.usable) NodeUri.grade(verdict.latencyMs) else "D",
+                reliability = verdict.reliability,
+                samples = verdict.checks.size,
+                platformStatus = verdict.status,
+                platformCheckedAt = checkedAt,
+                platformReason = verdict.reason,
+            )
+        }.sortedWith(
+            compareBy<FeedNode>(
+                { PROXY_STATUS_RANK[it.platformStatus] ?: 9 },
+                { GRADE_RANK[it.grade] ?: 9 },
+                { it.latencyMs ?: Long.MAX_VALUE },
+            )
+        ).mapIndexed { index, node -> node.copy(slot = index + 1) }
+
+        val clean = proxyRows.count { it.platformStatus == ProxyScanner.CLEAN }
+        val robots = proxyRows.count { it.platformStatus == ProxyScanner.ROBOT_BLOCKED }
+        val platform = proxyRows.count { it.platformStatus == ProxyScanner.PLATFORM_BLOCKED }
+        val dead = proxyRows.count { it.platformStatus == ProxyScanner.DEAD }
+        if (proxyRows.isNotEmpty()) {
+            notes += "پروکسی: $clean سالم · $robots ربات/کپچا · $platform مسدود برای پلتفرم · $dead مرده"
+            notes += "فقط پروکسیِ سالم وارد انتخاب هوشمند و تعویض خودکار می‌شود"
+        }
+
+        if (tunnelCandidates.isNotEmpty() && tunnelRows.isEmpty()) {
+            notes += "سرورهای دریافت‌شده از همین شبکه به TCP پاسخ ندادند و از خروجیِ قابل اتصال کنار رفتند"
+        }
+        if (tunnelRows.isEmpty() && proxyRows.none { it.isUsable } && sourcesOk > 0) {
+            notes += "هیچ مسیر سالمی در آزمون این گوشی پیدا نشد؛ دوباره‌سازی بعدی منابع تازه را می‌سنجد"
+        }
+        if (sourcesOk == 0) {
+            notes += "هیچ منبع عمومی در دسترس نبود؛ اتصال شبکه یا لینک شخصی را بررسی کنید"
+        }
+
+        Result(
+            nodes = tunnelRows + proxyRows,
+            sourcesOk = sourcesOk,
+            sourcesTotal = sourcesTotal,
+            parsed = tunnelPool.size + proxyPool.size,
+            probed = rtt.size,
+            notes = notes,
+            proxyScanned = proxyRows.size,
+            proxyClean = clean,
+            proxyRobotBlocked = robots,
+            proxyPlatformBlocked = platform,
+            proxyDead = dead,
+        )
     }
 
-    /**
-     * What `CoreApi`/`CoreProfiles` can turn into a working Xray outbound. Anything else - `hy2`
-     * included, until a sing-box-style writer for it exists - never reaches the list, because a row
-     * that can only fail at connect time reads as the app's fault, not the source's.
-     */
+    /** Protocols that [CoreProfiles] can turn into a real Xray outbound. */
     val TUNNEL_PROTOS = setOf("vless", "vmess", "trojan", "ss", "shadowsocks", "http", "socks5", "socks")
 
     private val GRADE_RANK = mapOf("A" to 0, "B" to 1, "C" to 2, "D" to 3)
+    private val PROXY_STATUS_RANK = mapOf(
+        ProxyScanner.CLEAN to 0,
+        ProxyScanner.ROBOT_BLOCKED to 1,
+        ProxyScanner.PLATFORM_BLOCKED to 2,
+        ProxyScanner.DEAD to 3,
+    )
 }

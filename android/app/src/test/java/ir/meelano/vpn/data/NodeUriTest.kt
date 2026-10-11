@@ -221,14 +221,22 @@ class NodeUriTest {
     }
 
     @Test
-    fun dedupeCapsByHostPortNotByLine() {
+    fun dedupeKeepsTwoCredentialsPerEndpointThenCaps() {
         val nodes = listOf(
             NodeUri.parseUri("vless://a@1.1.1.1:443?security=tls")!!,
             NodeUri.parseUri("vless://b@1.1.1.1:443?security=tls")!!,     // same endpoint, other uuid
             NodeUri.parseUri("vless://c@2.2.2.2:443?security=tls")!!,
         )
-        assertEquals(2, NodeUri.dedupe(nodes, max = 10).size)
+        assertEquals(3, NodeUri.dedupe(nodes, max = 10).size)
         assertEquals(1, NodeUri.dedupe(nodes, max = 1).size)
+    }
+
+    @Test
+    fun hugeTextStopsAtTheRequestedParseCap() {
+        val body = (1..500).joinToString("\n") {
+            "vless://11111111-2222-3333-4444-${it.toString().padStart(12, '0')}@203.0.113.${(it % 200) + 1}:443?security=tls"
+        }
+        assertEquals(17, NodeUri.parseBlob(body, "free", "Free M•A", maxNodes = 17).size)
     }
 
     /* ------------------------------------------------------------------ tiny JSON reader */

@@ -36,12 +36,8 @@ class MeelanoApp : Application() {
         FeedHolder.init(this)
         updates = UpdateManager(this, BuildConfig.FEED_BASE_URL)
 
-        appScope.launch {
-            // 1) the feeds are what the whole first screen depends on: start them before the UI asks
-            runCatching { FeedHolder.repo.refresh(ServerFeedKinds.VIP) }
-            delay(120)                       // let the VIP list land first: it is small and it is the one that unlocks connect
-            runCatching { FeedHolder.repo.refresh(ServerFeedKinds.FREE) }
-        }
+        // FeedHolder's repository paints its cache and starts one coalesced direct refresh. Starting a
+        // second copy here used to download every source and deep-scan every proxy twice on cold launch.
         appScope.launch {
             delay(3_000)                     // never race the cold start with a network check
             // BuildConfig.SELF_UPDATE is the compile-time kill switch (a debug or a Play-bound
@@ -55,11 +51,6 @@ class MeelanoApp : Application() {
     companion object {
         @Volatile lateinit var instance: MeelanoApp private set
     }
-}
-
-private object ServerFeedKinds {
-    const val VIP = "vip"
-    const val FREE = "free"
 }
 
 fun onUnmetered(context: Context): Boolean {
