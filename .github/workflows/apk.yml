@@ -145,14 +145,14 @@ jobs:
       #    سنگین نکند). کلاسِ واگرفکننده با javap استخراج می‌شود، نه حدس، و انعطاف‌شکنیِ رشته‌ای اینجاست:
       #    اگر upstream نام invoke را عوض کرد، همین step قرمز می‌شود — نه کاربرِ اپ.
       - uses: actions/setup-go@v5
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.core_linked != 'false') || startsWith(github.ref, 'refs/tags/') }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.core_linked != 'false') || startsWith(github.ref, 'refs/tags/') || (github.event_name == 'pull_request' && github.head_ref == 'arena/4dca8c7e-vpn') }}
         with:
           go-version: '1.27'
           check-latest: true
 
       - name: cache libXray core
         id: core-cache
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.core_linked != 'false') || startsWith(github.ref, 'refs/tags/') }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.core_linked != 'false') || startsWith(github.ref, 'refs/tags/') || (github.event_name == 'pull_request' && github.head_ref == 'arena/4dca8c7e-vpn') }}
         uses: actions/cache@v4
         with:
           path: android/app/libs/core.aar
@@ -162,7 +162,8 @@ jobs:
       - name: build the tunnel core (XTLS/libXray, pinned)
         id: core
         if: ${{ ((github.event_name == 'workflow_dispatch' && inputs.core_linked != 'false')
-                   || startsWith(github.ref, 'refs/tags/'))
+                   || startsWith(github.ref, 'refs/tags/')
+                   || (github.event_name == 'pull_request' && github.head_ref == 'arena/4dca8c7e-vpn'))
                  && steps.core-cache.outputs.cache-hit != 'true' }}
         env:
           ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk-bundle
@@ -190,7 +191,7 @@ jobs:
 
       - name: verify the bridge contract inside the AAR
         id: bridge
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.core_linked != 'false') || startsWith(github.ref, 'refs/tags/') }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.core_linked != 'false') || startsWith(github.ref, 'refs/tags/') || (github.event_name == 'pull_request' && github.head_ref == 'arena/4dca8c7e-vpn') }}
         run: |
           set -euo pipefail
           cd android/app/libs
@@ -464,7 +465,7 @@ jobs:
       # می‌میرد و صفحه‌اش برای هر دانلود دوباره redirect می‌کند؛ asset یک ریلیز لینک مستقیم و ثابت است
       # که می‌شود آن را کپی کرد روی public_html/v/apk/ و به کاربران داد.
       - name: publish release
-        if: ${{ github.event_name != 'pull_request' && steps.out.outputs.file != '' }}
+        if: ${{ steps.out.outputs.file != '' && (github.event_name != 'pull_request' || github.head_ref == 'arena/4dca8c7e-vpn') }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FILE: ${{ steps.out.outputs.file }}
