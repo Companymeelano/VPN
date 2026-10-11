@@ -287,16 +287,23 @@ class NodeUriTest {
                     }
                 }
             },
+            deepProbe = { list ->
+                list.associate { n ->
+                    n.id to ProxyScanner.Verdict(
+                        ProxyScanner.CLEAN, 240L, 1f, "exact_204_all",
+                        ProxyScanner.ENDPOINTS.map { ProxyScanner.Check(it.id, 204, 240L) },
+                    )
+                }
+            },
         )
         assertEquals(1, r.sourcesOk)
-        assertEquals(4, r.nodes.size)
+        assertEquals(3, r.nodes.size) // dead tunnel is removed; the independently verified proxy remains
         assertTrue(r.nodes.all { it.proto in DirectFeed.TUNNEL_PROTOS })
-        assertEquals("fast", r.nodes.first().userId)             // A beats C beats D
-        assertEquals("A", r.nodes[0].grade)
-        assertEquals("C", r.nodes[1].grade)
-        assertEquals(listOf("D", "D"), r.nodes.drop(2).map { it.grade })
-        assertEquals(listOf(1, 2, 3, 4), r.nodes.map { it.slot })
-        assertTrue(r.nodes.any { it.proto == "http" })
+        val tunnels = r.nodes.filterNot { it.isRawProxy }
+        assertEquals("fast", tunnels.first().userId)
+        assertEquals(listOf("A", "C"), tunnels.map { it.grade })
+        assertTrue(r.nodes.none { it.userId == "dead" })
+        assertTrue(r.nodes.single { it.isRawProxy }.isUsable)
     }
 
     @Test
@@ -309,7 +316,7 @@ class NodeUriTest {
             // per-source death is what is asserted here; a fallback tier would change sourcesTotal
             fallbacks = emptyList(),
             fetch = { u -> if (u.id == "a") "vless://u@203.0.113.30:443?security=tls" else null },
-            probe = { emptyMap() },
+            probe = { nodes -> nodes.associate { it.id to 110L } },
         )
         assertEquals(1, r.sourcesOk)
         assertEquals(2, r.sourcesTotal)
