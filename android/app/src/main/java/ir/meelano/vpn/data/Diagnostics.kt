@@ -49,6 +49,11 @@ object Diagnostics {
         /** which builder made today's list - "هاست" or "آنبرد". Useful because a thin list has two very
          *  different explanations, and this line is the one that tells support which one it is. */
         val feedSource: String = "",
+        /** URL-free counters and stable source/route categories from the public feed pipeline. */
+        val feedStages: String = "",
+        val feedRoutes: String = "",
+        val feedError: String = "",
+        val feedNotes: String = "",
         /** XrayBridge.describe(): one line that proves whether the wrapper class + invoke entry are
          *  discoverable on THIS device, not merely "was linked at build time". */
         val coreBridge: String = "",
@@ -81,6 +86,10 @@ object Diagnostics {
         line(sb, "Kill-switch", onOff(i.killSwitch))
         line(sb, "DNS امن", onOff(i.secureDns))
         line(sb, "فید", "${i.feedCount} گره" + if (i.feedSource.isNotBlank()) " · ${i.feedSource}" else "")
+        if (i.feedStages.isNotBlank()) line(sb, "مراحل فید", redact(i.feedStages))
+        if (i.feedRoutes.isNotBlank()) line(sb, "مسیرهای دریافت", redact(i.feedRoutes))
+        if (i.feedError.isNotBlank()) line(sb, "خطای فید", redact(i.feedError))
+        if (i.feedNotes.isNotBlank()) line(sb, "یادداشت فید", redact(i.feedNotes))
         val node = listOf(i.nodeLabel, i.nodeGrade, if (i.nodeLatencyMs >= 0) "${i.nodeLatencyMs}ms" else "")
             .filter { it.isNotBlank() }
             .joinToString(" · ")

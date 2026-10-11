@@ -140,6 +140,50 @@ jobs:
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "### نسخه: $name ($code)" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: bundle a verified public bootstrap snapshot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p android/app/src/main/assets
+          src="$RUNNER_TEMP/public-bootstrap-source.txt"
+          # This is a safety net, not a private feed: the same MIT-licensed public document is fetched
+          # live by DirectFeed. Embedding a small build-time sample means DNS/CDN filtering cannot turn
+          # a brand-new install into an unexplained zero-node screen before the first mirror succeeds.
+          if ! gh api -H 'Accept: application/vnd.github.raw+json' \
+              'repos/0xRadikal/Free-v2ray-Configs/contents/verified/configs.txt?ref=main' > "$src"; then
+            echo '::warning::verified bootstrap source unavailable; building with live public mirrors only'
+            exit 0
+          fi
+          python3 - "$src" android/app/src/main/assets/public-bootstrap.txt <<'PY'
+          import collections, pathlib, sys
+          source, target = map(pathlib.Path, sys.argv[1:])
+          schemes = ('vless', 'vmess', 'trojan', 'ss')
+          buckets = collections.OrderedDict((s, []) for s in schemes)
+          seen = set()
+          for raw in source.read_text('utf-8', errors='ignore').splitlines():
+              line = raw.strip()
+              scheme = line.partition('://')[0].lower()
+              if scheme not in buckets or line in seen:
+                  continue
+              seen.add(line)
+              if len(buckets[scheme]) < 24:
+                  buckets[scheme].append(line)
+          rows = []
+          for index in range(24):
+              for scheme in schemes:
+                  if index < len(buckets[scheme]):
+                      rows.append(buckets[scheme][index])
+          if len(rows) < 16:
+              raise SystemExit('verified bootstrap unexpectedly contained fewer than 16 supported configs')
+          target.write_text(
+              '# Generated at APK build time from 0xRadikal/Free-v2ray-Configs verified/configs.txt\n' +
+              '\n'.join(rows) + '\n', encoding='utf-8'
+          )
+          print('bundled', len(rows), 'verified public configs:',
+                ', '.join(f'{name}={len(values)}' for name, values in buckets.items()))
+          PY
+
       # ── هسته‌ی تونل: XTLS/libXray را در تگ سنجیده‌شده می‌سازیم و AAR را در app/libs می‌گذاریم.
       #    روی تگ همیشه (آن چیزی است که کاربر نصب می‌کند) و روی dispatch — نه روی PRها (رانر ۹۰ ثانیه‌ای را
       #    سنگین نکند). کلاسِ واگرفکننده با javap استخراج می‌شود، نه حدس، و انعطاف‌شکنیِ رشته‌ای اینجاست:

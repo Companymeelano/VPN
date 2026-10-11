@@ -81,6 +81,22 @@ class NodeUriTest {
     }
 
     @Test
+    fun shadowsocks2022MethodsAndColonSeparatedUserKeysAreAccepted() {
+        val password = "server-key-base64:user-key-base64"
+        val raw = "2022-blake3-aes-256-gcm:$password"
+        val cred = java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(raw.toByteArray(Charsets.UTF_8))
+        val n = NodeUri.parseUri("ss://$cred@51.38.71.51:2083#modern-2022")
+        checkNotNull(n)
+        assertEquals("2022-blake3-aes-256-gcm", n.method)
+        assertEquals(password, n.password)
+
+        val chacha = NodeUri.ssCredentials("2022-blake3-chacha20-poly1305:key")
+        assertEquals("2022-blake3-chacha20-poly1305", chacha?.first)
+        assertEquals("key", chacha?.second)
+    }
+
+    @Test
     fun uuidStyleSsUserinfoIsRejected() {
         // The exact class of garbage that reads as a live node and dies on handshake. It decodes to bytes,
         // so the cipher test is what saves us - not the length.
@@ -297,12 +313,12 @@ class NodeUriTest {
             },
         )
         assertEquals(1, r.sourcesOk)
-        assertEquals(3, r.nodes.size) // dead tunnel is removed; the independently verified proxy remains
+        assertEquals(4, r.nodes.size) // inconclusive TCP stays visible for the authoritative Xray probe
         assertTrue(r.nodes.all { it.proto in DirectFeed.TUNNEL_PROTOS })
         val tunnels = r.nodes.filterNot { it.isRawProxy }
         assertEquals("fast", tunnels.first().userId)
-        assertEquals(listOf("A", "C"), tunnels.map { it.grade })
-        assertTrue(r.nodes.none { it.userId == "dead" })
+        assertEquals(listOf("A", "C", "D"), tunnels.map { it.grade })
+        assertEquals("tcp_inconclusive", r.nodes.single { it.userId == "dead" }.platformStatus)
         assertTrue(r.nodes.single { it.isRawProxy }.isUsable)
     }
 

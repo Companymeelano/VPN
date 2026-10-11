@@ -8,6 +8,11 @@ import org.junit.Test
 
 class ProxyScannerTest {
 
+    @Test
+    fun scannerUsesTheCanonicalAndroidGstatic204Endpoint() {
+        assertEquals("connectivitycheck.gstatic.com", ProxyScanner.ENDPOINTS.single { it.id == "gstatic" }.host)
+    }
+
     private fun checks(vararg codes: Int?): List<ProxyScanner.Check> =
         ProxyScanner.ENDPOINTS.mapIndexed { index, endpoint ->
             val code = codes.getOrNull(index)

@@ -47,6 +47,61 @@ import ir.meelano.vpn.vpn.MeelanoVpnService
  * Nothing here touches the main thread, and nothing here parses the raw proxy lists:
  * the server did that already, which is the whole point of moving the work to /v/.
  */
+/**
+ * Sanitised runtime telemetry for the public feed. It intentionally cannot hold a URL, endpoint,
+ * config or server address, so the diagnostics sheet can share it without publishing a node.
+ */
+data class FeedDiagnostics(
+    val sourcesOk: Int = 0,
+    val sourcesTotal: Int = 0,
+    val fetchBytes: Long = 0,
+    val parsedTunnels: Int = 0,
+    val parsedProxies: Int = 0,
+    val tcpAttempted: Int = 0,
+    val tcpOk: Int = 0,
+    val deepScanned: Int = 0,
+    val proxyClean: Int = 0,
+    val proxyRobotBlocked: Int = 0,
+    val proxyPlatformBlocked: Int = 0,
+    val proxyDead: Int = 0,
+    val outcomes: List<DirectFeed.FetchOutcome> = emptyList(),
+) {
+    fun stages(): String =
+        "fetch $sourcesOk/$sourcesTotal (${fetchBytes}B) · parse tunnel=$parsedTunnels proxy=$parsedProxies · " +
+            "TCP $tcpOk/$tcpAttempted · deep $deepScanned (clean=$proxyClean robot=$proxyRobotBlocked " +
+            "platform=$proxyPlatformBlocked dead=$proxyDead)"
+
+    fun routes(limit: Int = 24): String {
+        if (outcomes.isEmpty()) return "—"
+        val shown = outcomes.take(limit).joinToString("; ") { outcome ->
+            buildString {
+                append(outcome.sourceId).append('/').append(outcome.route).append('=').append(outcome.category)
+                if (outcome.bytes > 0) append('(').append(outcome.bytes).append("B)")
+            }
+        }
+        val hidden = outcomes.size - limit
+        return shown + if (hidden > 0) "; +$hidden" else ""
+    }
+
+    companion object {
+        fun from(result: DirectFeed.Result): FeedDiagnostics = FeedDiagnostics(
+            sourcesOk = result.sourcesOk,
+            sourcesTotal = result.sourcesTotal,
+            fetchBytes = result.fetchBytes,
+            parsedTunnels = result.parsedTunnels,
+            parsedProxies = result.parsedProxies,
+            tcpAttempted = result.probed,
+            tcpOk = result.tunnelTcpOk,
+            deepScanned = result.proxyScanned,
+            proxyClean = result.proxyClean,
+            proxyRobotBlocked = result.proxyRobotBlocked,
+            proxyPlatformBlocked = result.proxyPlatformBlocked,
+            proxyDead = result.proxyDead,
+            outcomes = result.fetchOutcomes,
+        )
+    }
+}
+
 class ServerFeedRepository(
     private val context: Context,
     private val baseUrl: String = BuildConfig.FEED_BASE_URL,
@@ -302,6 +357,10 @@ class ServerFeedRepository(
     /** Why a device-built list looks the way it does - shown in the sheet footer, never as an error. */
     val directNotes: StateFlow<List<String>> = _directNotes
 
+    private val _feedDiagnostics = MutableStateFlow(FeedDiagnostics())
+    /** Stage-by-stage, URL-free telemetry used by the copyable diagnostics report. */
+    val feedDiagnostics: StateFlow<FeedDiagnostics> = _feedDiagnostics
+
     /** One line for Settings, so the user always knows where today's list came from. */
     fun sourceLabel(): String = "GitHub و منابع عمومی · آزمون روی گوشی"
 
@@ -328,7 +387,7 @@ class ServerFeedRepository(
                     // The optional URL is the user's private subscription and belongs only to VIP;
                     // public free servers continue to come exclusively from the audited source set.
                     extra = null,
-                    fetch = { u -> fetchText(u.url, u.maxBytes) },
+                    fetch = { u -> fetchPublicText(u.url, u.maxBytes) },
                     probe = { nodes -> probeBatch(nodes) },
                     deepProbe = { nodes ->
                         ProxyScanner.scan(
@@ -350,6 +409,7 @@ class ServerFeedRepository(
                 )
             }
             _directNotes.value = res.notes
+            if (kind == KIND_FREE) _feedDiagnostics.value = FeedDiagnostics.from(res)
             if (res.nodes.isEmpty()) {
                 // Nothing fetched this time: keep the last good cache but make the cause visible.
                 Log.w(TAG, "direct $kind produced nothing")
@@ -386,7 +446,7 @@ class ServerFeedRepository(
             ?.let { blob.append(it).append('\n') }
         var sources = 0
         if (extra != null) {
-            fetchText(extra.url, extra.maxBytes)?.let {
+            runCatching { fetchText(extra.url, extra.maxBytes) }.getOrNull()?.let {
                 sources++
                 blob.append(it)
             }
@@ -475,29 +535,107 @@ class ServerFeedRepository(
      * No Accept-Encoding header on purpose: OkHttp only *transparently* inflates gzip when it added the
      * header itself; a hand-written one means we would be reading compressed bytes as text.
      */
-    private suspend fun fetchText(url: String, maxBytes: Int): String? = withContext(Dispatchers.IO) {
+    private suspend fun fetchPublicText(url: String, maxBytes: Int): String = withContext(Dispatchers.IO) {
+        if (!url.startsWith("asset://")) return@withContext fetchText(url, maxBytes)
+        val name = url.removePrefix("asset://")
+        try {
+            context.assets.open(name).use { input ->
+                val out = java.io.ByteArrayOutputStream(minOf(maxBytes, 32 * 1024))
+                val chunk = ByteArray(16 * 1024)
+                var remaining = maxBytes + 1
+                while (remaining > 0) {
+                    val count = input.read(chunk, 0, minOf(chunk.size, remaining))
+                    if (count <= 0) break
+                    out.write(chunk, 0, count)
+                    remaining -= count
+                }
+                if (out.size() > maxBytes) throw DirectFeed.FetchFailure("asset_too_large")
+                out.toString("UTF-8").takeIf { it.isNotBlank() }
+                    ?: throw DirectFeed.FetchFailure("asset_empty")
+            }
+        } catch (error: DirectFeed.FetchFailure) {
+            throw error
+        } catch (_: java.io.FileNotFoundException) {
+            throw DirectFeed.FetchFailure("asset_missing")
+        } catch (error: Throwable) {
+            throw DirectFeed.FetchFailure(publicFetchCategory(error))
+        }
+    }
+
+    private suspend fun fetchText(url: String, maxBytes: Int): String = withContext(Dispatchers.IO) {
+        val isGithubApi = url.startsWith("https://api.github.com/")
         val req = Request.Builder().url(url)
             .header("User-Agent", "M\u2022A-VPN/${BuildConfig.VERSION_NAME}")
+            .apply {
+                if (isGithubApi) {
+                    header("Accept", "application/vnd.github.raw+json")
+                    header("X-GitHub-Api-Version", "2022-11-28")
+                }
+            }
             .build()
-        // Do not run the old host-oriented DoH+pinned retry here: each public repository already has
-        // an independent mirror chain, and spending another ~20s on a poisoned raw GitHub hostname
-        // before trying jsDelivr recreated the minute-long "nothing downloads" first launch.
-        runCatching { httpPublic.newCall(req).execute() }.getOrNull()?.use { resp ->
-            if (!resp.isSuccessful) return@use null
-            val src = resp.body?.byteStream() ?: return@use null
-            val out = java.io.ByteArrayOutputStream(32 * 1024)
+        // Do not use the old private-host DoH/pinned retry here. DirectFeed owns several independent
+        // GitHub/jsDelivr routes and needs an explicit category for each failure before moving on.
+        val response = try {
+            httpPublic.newCall(req).execute()
+        } catch (error: Throwable) {
+            throw DirectFeed.FetchFailure(publicFetchCategory(error))
+        }
+        response.use { resp ->
+            if (!resp.isSuccessful) throw DirectFeed.FetchFailure("http_${resp.code}")
+            val src = resp.body?.byteStream() ?: throw DirectFeed.FetchFailure("body_missing")
+            val out = java.io.ByteArrayOutputStream(minOf(maxBytes, 32 * 1024))
             val chunk = ByteArray(32 * 1024)
-            var read = 0
-            while (read < maxBytes) {
-                val n = src.read(chunk, 0, minOf(chunk.size, maxBytes - read))
+            var remaining = maxBytes + 1 // one extra byte proves whether the bounded body was truncated
+            while (remaining > 0) {
+                val n = try {
+                    src.read(chunk, 0, minOf(chunk.size, remaining))
+                } catch (error: Throwable) {
+                    throw DirectFeed.FetchFailure(publicFetchCategory(error))
+                }
                 if (n <= 0) break
                 out.write(chunk, 0, n)
-                read += n
+                remaining -= n
             }
-            // Truncating mid-line can cut a UTF-8 sequence in half; drop the partial tail before parsing.
-            val text = out.toString("UTF-8")
-            if (read >= maxBytes) text.substringBeforeLast('\n') else text
+            val bytes = out.toByteArray()
+            val truncated = bytes.size > maxBytes
+            val bounded = if (truncated) bytes.copyOf(maxBytes) else bytes
+            var text = String(bounded, Charsets.UTF_8)
+            if (truncated) {
+                // Raw URI lists remain useful as a bounded prefix. JSON/base64 subscriptions are one
+                // giant line and cannot be safely cut, so let DirectFeed try the next public route.
+                val lastLine = text.lastIndexOf('\n')
+                if (lastLine <= 0) throw DirectFeed.FetchFailure("body_too_large")
+                text = text.substring(0, lastLine)
+            }
+            if (text.isBlank()) throw DirectFeed.FetchFailure("body_empty")
+
+            // GitHub may return the requested bytes directly for the raw media type, or a normal
+            // Contents API envelope (notably through caches). Decode both. Files above the API limit
+            // have no `content`; that is a categorised miss and jsDelivr/raw handles the fallback.
+            if (isGithubApi && text.trimStart().startsWith('{')) {
+                val json = runCatching { JSONObject(text) }
+                    .getOrElse { throw DirectFeed.FetchFailure("github_json_invalid") }
+                val encoded = json.optString("content", "").filterNot(Char::isWhitespace)
+                if (encoded.isBlank()) throw DirectFeed.FetchFailure("github_content_unavailable")
+                val decoded = runCatching {
+                    String(java.util.Base64.getDecoder().decode(encoded), Charsets.UTF_8)
+                }.getOrElse { throw DirectFeed.FetchFailure("github_base64_invalid") }
+                if (decoded.isBlank()) throw DirectFeed.FetchFailure("body_empty")
+                return@withContext decoded
+            }
+            text
         }
+    }
+
+    /** Stable categories only: exception messages can contain a public URL or a resolved IP. */
+    private fun publicFetchCategory(error: Throwable): String = when (error) {
+        is DirectFeed.FetchFailure -> error.category
+        is java.net.UnknownHostException -> "dns"
+        is java.net.SocketTimeoutException -> "timeout"
+        is javax.net.ssl.SSLException -> "tls"
+        is java.net.ConnectException -> "connect"
+        is java.io.IOException -> "io"
+        else -> "exception_${error.javaClass.simpleName.lowercase().take(32)}"
     }
 
     /**

@@ -41,6 +41,24 @@ class DiagnosticsTest {
     }
 
     @Test
+    fun feedPipelineDiagnosticsAreVisibleAndStillRedacted() {
+        val text = Diagnostics.render(
+            Diagnostics.Input(
+                feedStages = "fetch 2/4 · parse tunnel=20 proxy=10 · TCP 0/20 · deep 10",
+                feedRoutes = "source/primary=timeout; source/mirror_1=ok(123B)",
+                feedError = "failed at https://raw.example.net/list from 185.1.2.3",
+                feedNotes = "full Xray probe pending",
+            )
+        )
+        assertTrue(text.contains("مراحل فید"))
+        assertTrue(text.contains("TCP 0/20"))
+        assertTrue(text.contains("source/mirror_1=ok(123B)"))
+        assertFalse(ipShape.containsMatchIn(text))
+        assertFalse(scheme.containsMatchIn(text))
+        assertFalse(domain.containsMatchIn(text))
+    }
+
+    @Test
     fun anEmptyReportIsStillLegibleAndHonestAboutTheCore() {
         val t = Diagnostics.render(Diagnostics.Input())
         assertTrue(t.startsWith("M•A VPN"))

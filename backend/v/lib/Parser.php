@@ -554,6 +554,7 @@ final class Parser
         'aes-128-gcm', 'aes-192-gcm', 'aes-256-gcm', 'aes-128-cfb', 'aes-192-cfb', 'aes-256-cfb',
         'aes-128-ctr', 'aes-192-ctr', 'aes-256-ctr', 'chacha20-ietf', 'chacha20-ietf-poly1305',
         'xchacha20-ietf-poly1305', 'sodium:chacha20-ietf-poly1305', 'sodium:aes-256-gcm',
+        '2022-blake3-aes-128-gcm', '2022-blake3-aes-256-gcm', '2022-blake3-chacha20-poly1305',
         'rc4-md5', 'bf-cfb', 'cast5-cfb', 'idea-cfb', 'rc2-cfb', 'seed-cfb',
     ];
 

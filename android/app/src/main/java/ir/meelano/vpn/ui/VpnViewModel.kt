@@ -194,6 +194,9 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
     /** When the feed is empty this says why, so the empty card can name the failure instead of 0 نود. */
     val feedError: StateFlow<String?> = repo.feedError
 
+    /** Sanitised fetch/parse/TCP/deep-scan counters for the copyable diagnostics report. */
+    val feedDiagnostics: StateFlow<ir.meelano.vpn.data.FeedDiagnostics> = repo.feedDiagnostics
+
     /** The sheet's footer: which builder produced today's list. */
     fun feedSourceLabel(): String = repo.sourceLabel()
 

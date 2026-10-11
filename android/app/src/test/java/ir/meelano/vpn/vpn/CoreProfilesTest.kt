@@ -248,6 +248,11 @@ class CoreProfilesTest {
         assertEquals("secret", ss.path("settings", "password"))
         assertEquals("chacha20-ietf-poly1305", ss.path("settings", "method"))
 
+        val modern = outbound(profile(node(proto = "ss", tls = null, pbk = null, sid = null,
+            password = "server-key:user-key", method = "2022-blake3-aes-256-gcm")))
+        assertEquals("2022-blake3-aes-256-gcm", modern.path("settings", "method"))
+        assertEquals("server-key:user-key", modern.path("settings", "password"))
+
         val http = outbound(profile(node(proto = "http", tls = null, pbk = null, sid = null,
             supportsUdp = false, username = "alice", password = "pw")))
         assertEquals("http", http["protocol"])

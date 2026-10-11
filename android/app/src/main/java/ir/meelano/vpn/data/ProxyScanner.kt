@@ -68,7 +68,9 @@ object ProxyScanner {
     val ENDPOINTS: List<Endpoint> = listOf(
         Endpoint("cloudflare", "cp.cloudflare.com"),
         Endpoint("google", "www.google.com"),
-        Endpoint("gstatic", "www.gstatic.com"),
+        // Android's canonical connectivity endpoint. www.gstatic.com/generate_204 is not the
+        // documented captive-portal target and can answer differently across Google edges.
+        Endpoint("gstatic", "connectivitycheck.gstatic.com"),
     )
 
     /**

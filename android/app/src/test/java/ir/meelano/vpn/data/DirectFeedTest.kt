@@ -43,6 +43,25 @@ class DirectFeedTest {
     private fun vless(host: String, port: Int = 443) =
         "vless://11111111-2222-3333-4444-555555555555@$host:$port?security=tls&type=tcp#$host"
 
+    /* ------------------------------------------------------------------ audited defaults */
+
+    @Test
+    fun builtInDiscoveryUsesOnlyPublicGithubCdnOrBuildSnapshotRoutes() {
+        val all = DirectFeed.DEFAULTS + DirectFeed.FALLBACKS
+        assertTrue(all.size >= 12)
+        assertTrue(all.all { source ->
+            source.url.startsWith("https://api.github.com/") || source.url.startsWith("asset://")
+        })
+        assertTrue(all.flatMap { it.mirrors }.all { route ->
+            route.startsWith("https://cdn.jsdelivr.net/") ||
+                route.startsWith("https://fastly.jsdelivr.net/") ||
+                route.startsWith("https://gcore.jsdelivr.net/") ||
+                route.startsWith("https://raw.githubusercontent.com/")
+        })
+        assertTrue(DirectFeed.TUNNEL_SOURCES.any { it.id == "radikal-verified" })
+        assertTrue(DirectFeed.PROXY_SOURCES.mapNotNull { it.protocolHint }.toSet().containsAll(setOf("http", "socks5")))
+    }
+
     /* ------------------------------------------------------------------ tiers */
 
     @Test
@@ -221,7 +240,7 @@ class DirectFeedTest {
     }
 
     @Test
-    fun parsedButDeadPrimaryStillEngagesAndPrioritisesFallback() = runBlocking {
+    fun parsedButTcpInconclusivePrimaryIsRetainedAndFallbackIsPrioritised() = runBlocking {
         val primaryUrl = "https://primary.example/list"
         val fallbackUrl = "https://fallback.example/list"
         val primaryBody = (1..20).joinToString("\n") { vless("203.0.113.${it + 20}") }
@@ -238,8 +257,80 @@ class DirectFeedTest {
             },
         )
         assertTrue(net.calls.contains(fallbackUrl))
-        assertEquals(3, res.nodes.size)
-        assertTrue(res.nodes.all { it.host.startsWith("198.51.100.") })
+        assertEquals(8, res.nodes.size) // four primary + one extra primary probe, plus all three fallback rows
+        assertEquals(3, res.nodes.count { it.host.startsWith("198.51.100.") })
+        assertEquals(5, res.nodes.count { it.platformStatus == "tcp_inconclusive" })
+        assertTrue("TCP-positive fallback rows sort ahead of inconclusive primaries", res.nodes.take(3).all {
+            it.host.startsWith("198.51.100.") && it.platformStatus == "tcp_reachable"
+        })
+    }
+
+    @Test
+    fun allMinusOneTcpHintsStillPublishCandidatesForTheFullXrayProbe() = runBlocking {
+        val source = DirectFeed.Upstream("verified", "https://primary.example/list")
+        val body = (1..6).joinToString("\n") { vless("203.0.113.${it + 70}") }
+        val res = DirectFeed.buildFree(
+            sources = listOf(source),
+            fallbacks = emptyList(),
+            lowWatermark = 0,
+            fetch = Net(mapOf(source.url to body)).fetch,
+            probe = { nodes -> nodes.associate { it.id to -1L } },
+        )
+        assertEquals(6, res.nodes.size)
+        assertEquals(6, res.probed)
+        assertEquals(0, res.tunnelTcpOk)
+        assertTrue(res.nodes.all {
+            it.grade == "D" && it.latencyMs == null && it.platformStatus == "tcp_inconclusive" && it.isUsable
+        })
+        assertTrue(res.notes.any { it.contains("Xray") })
+    }
+
+    @Test
+    fun fetchTelemetryNamesSourceRouteCategoryAndBytesWithoutUrls() = runBlocking {
+        val source = DirectFeed.Upstream(
+            "source-id", "https://api.example/list", mirrors = listOf("https://mirror.example/list")
+        )
+        val net = Net(mapOf("https://mirror.example/list" to vless("203.0.113.99")))
+        val res = DirectFeed.buildFree(
+            sources = listOf(source),
+            fallbacks = emptyList(),
+            lowWatermark = 0,
+            fetch = net.fetch,
+            probe = probe,
+        )
+        assertEquals(2, res.fetchOutcomes.size)
+        assertEquals("primary", res.fetchOutcomes[0].route)
+        assertTrue(res.fetchOutcomes[0].category.startsWith("exception_"))
+        assertEquals("mirror_1", res.fetchOutcomes[1].route)
+        assertEquals("ok", res.fetchOutcomes[1].category)
+        assertTrue(res.fetchOutcomes[1].bytes > 0)
+        assertTrue(res.fetchOutcomes.none { it.sourceId.contains("://") || it.route.contains("://") })
+    }
+
+    @Test
+    fun veryLargeSourceIsBoundedByParseCapAndDoesNotStarveOtherSources() = runBlocking {
+        val largeUrl = "https://large.example/list"
+        val smallUrl = "https://small.example/list"
+        val large = (1..5_000).joinToString("\n") { row ->
+            vless("203.0.${(row / 250) + 1}.${(row % 250) + 1}", 443)
+        }
+        val smallNode = vless("198.51.100.222")
+        val res = DirectFeed.buildFree(
+            sources = listOf(
+                DirectFeed.Upstream("large", largeUrl),
+                DirectFeed.Upstream("small", smallUrl),
+            ),
+            parseCap = 32,
+            probeLimit = 8,
+            maxNodes = 8,
+            lowWatermark = 0,
+            fallbacks = emptyList(),
+            fetch = Net(mapOf(largeUrl to large, smallUrl to smallNode)).fetch,
+            probe = probe,
+        )
+        assertEquals(8, res.nodes.size)
+        assertTrue(res.nodes.any { it.host == "198.51.100.222" })
+        assertTrue(res.parsedTunnels <= 32)
     }
 
     /* ------------------------------------------------------------------ total failure */
