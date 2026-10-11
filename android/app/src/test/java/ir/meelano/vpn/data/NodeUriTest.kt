@@ -262,7 +262,7 @@ class NodeUriTest {
             "vless://slow@203.0.113.20:443?security=tls",
             "vless://fast@203.0.113.21:443?security=tls",
             "vless://dead@203.0.113.22:443?security=tls",
-            "176.9.10.11:8080:user:pass",                       // an HTTP proxy: not dialable by the core
+            "176.9.10.11:8080:user:pass",                       // HTTP is a supported Xray outbound
         ).joinToString("\n")
         val r = DirectFeed.buildFree(
             sources = listOf(DirectFeed.Upstream("t", "https://example.invalid/l.txt")),
@@ -281,14 +281,14 @@ class NodeUriTest {
             },
         )
         assertEquals(1, r.sourcesOk)
-        assertEquals(3, r.nodes.size)
+        assertEquals(4, r.nodes.size)
         assertTrue(r.nodes.all { it.proto in DirectFeed.TUNNEL_PROTOS })
         assertEquals("fast", r.nodes.first().userId)             // A beats C beats D
         assertEquals("A", r.nodes[0].grade)
         assertEquals("C", r.nodes[1].grade)
-        assertEquals("D", r.nodes[2].grade)
-        assertEquals(listOf(1, 2, 3), r.nodes.map { it.slot })
-        assertTrue(r.notes.any { it.contains("پروکسی") })
+        assertEquals(listOf("D", "D"), r.nodes.drop(2).map { it.grade })
+        assertEquals(listOf(1, 2, 3, 4), r.nodes.map { it.slot })
+        assertTrue(r.nodes.any { it.proto == "http" })
     }
 
     @Test

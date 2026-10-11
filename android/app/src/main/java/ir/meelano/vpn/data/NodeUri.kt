@@ -158,7 +158,7 @@ object NodeUri {
                 // None of these dial without their secret - trojan/hy2 need the password, vless the uuid.
                 // A half-built row is worse than no row: the user taps it, it fails, and the app is to blame.
                 if (secret == null) return null
-                if (q["allowInsecure"] == "1" || q["allowInsecure"]?.equals("true", true) == true ||
+                if (q["allowinsecure"] == "1" || q["allowinsecure"]?.equals("true", true) == true ||
                     q["insecure"] == "1" || q["insecure"]?.equals("true", true) == true) return null
                 base.copy(
                     id = id(scheme, host, port, secret ?: q["pbk"], q["sid"]),
@@ -167,14 +167,14 @@ object NodeUri {
                     tls = when {
                         q["security"] == "reality" -> "reality"
                         q["security"]?.isNotBlank() == true -> q["security"]
-                        q["allowInsecure"] != null || q["insecure"] != null -> "tls"
+                        q["allowinsecure"] != null || q["insecure"] != null -> "tls"
                         else -> null
                     },
                     network = q["type"]?.ifBlank { null },
                     sni = q["sni"] ?: q["peer"],
                     path = q["path"]?.ifBlank { null }?.let { unescape(it) },
                     hostHeader = q["host"]?.ifBlank { null },
-                    serviceName = q["serviceName"]?.ifBlank { null } ?: q["service_name"]?.ifBlank { null },
+                    serviceName = q["servicename"]?.ifBlank { null } ?: q["service_name"]?.ifBlank { null },
                     alpn = q["alpn"]?.ifBlank { null },
                     flow = q["flow"]?.ifBlank { null },
                     pbk = q["pbk"]?.ifBlank { null },
@@ -183,7 +183,7 @@ object NodeUri {
                     // All three mean the same thing, and Reality without it is just a plain TLS dial.
                     fingerprint = q["fp"]?.ifBlank { null } ?: q["fingerprint"]?.ifBlank { null }
                         ?: q["sfp"]?.ifBlank { null },
-                    insecure = q["allowInsecure"] == "1" || q["insecure"] == "1",
+                    insecure = q["allowinsecure"] == "1" || q["insecure"] == "1",
                 )
             }
         }
