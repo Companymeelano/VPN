@@ -34,7 +34,7 @@ class TunnelProbeTest {
     }
 
     @Test
-    funRedirectOrPortalIsNeverCountedAsHealthy() {
+    fun redirectOrPortalIsNeverCountedAsHealthy() {
         val r = result(302, 200, 200)
         assertFalse(r.clean)
         assertFalse(r.platformBlocked)
@@ -42,7 +42,7 @@ class TunnelProbeTest {
     }
 
     @Test
-    funNoResponsesMeansNoTunnelInternet() {
+    fun noResponsesMeansNoTunnelInternet() {
         val r = result(null, null, null)
         assertFalse(r.clean)
         assertFalse(r.internet)
