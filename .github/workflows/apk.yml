@@ -62,6 +62,11 @@ on:
   # تا آن زمان، همین workflow روی PR اجرا می‌شود و همان APK را می‌دهد.
   pull_request:
     branches: [main]
+    # `labeled` عمداً در لیست است: تمرینِ release با گذاشتنِ برچسب شروع می‌شود و رویدادهای
+    # pull_request به‌صورت پیش‌فرض فقط opened/synchronize/reopenedاند — یعنی بدون این خط،
+    # `gh pr edit --add-label release-dry-run` هیچ رانی نمی‌ساخت و برچسب بی‌اثر می‌ماند.
+    # (هر برچسبِ دیگری هم یک رانِ معمولیِ debug می‌سازد؛ برای مخزنی با چند برچسب، بهای قابل‌قبول.)
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - 'android/**'
       - '.github/workflows/apk.yml'

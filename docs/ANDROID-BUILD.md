@@ -49,9 +49,11 @@ gh run list --limit 1 && gh run download <run-id> -n meelano-apk-debug
 همان مسیر کامل release اجرا می‌شود (R8/minify + امضا + `apksigner verify`) و APK **امضاشده** را
 به‌عنوان artifact می‌دهد، ولی از PR هیچ‌وقت ریلیز منتشر نمی‌شود:
 ```bash
-gh pr edit <pr> --add-label release-dry-run     # لیبل را بساز: gh label create release-dry-run
+gh label create release-dry-run                 # یک‌بار
+gh pr edit <pr> --add-label release-dry-run     # همین لحظه یک ران می‌سازد (types شامل labeled است)
 gh run watch && gh run download <run-id> -n meelano-apk-release
 ```
+اگر برچسب را بعد از شروعِ ران گذاشتی، push بعدی روی همان شاخه (رویداد `synchronize`) کافی است.
 وضعیت `variant/core/dry-run` تصمیم‌گیری‌شده در اولین step، در summary همان run چاپ می‌شود.
 
 `gh workflow run "build apk" --ref <branch> -f variant=debug -f core_linked=false` هم هست، ولی
