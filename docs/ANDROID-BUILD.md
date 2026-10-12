@@ -99,13 +99,18 @@ SDK لازم: `platform-tools`, `platforms;android-35`, `build-tools;35.0.0`.
 ## ۷) لینک‌های نسخه‌ی فعلی
 | مورد | مقدار |
 |---|---|
-| Release | `https://github.com/Companymeelano/VPN/releases/tag/v2.3.2-beta.2` |
-| APK (asset) | `https://github.com/Companymeelano/VPN/releases/download/v2.3.2-beta.2/meelano-2.3.2-203002.apk` |
-| حجم / sha256 | ۱۲٬۹۸۴٬۳۵۸ بایت · `8bc9bd9bb4e1b102b248f38880fe6ee1b0bc44fe731cbb734c8eca6cef07f949` |
-| کنارش | `…meelano-2.3.2-203002.apk.sha256` (۶۵ بایت = ۶۴ هگز + newline — همان چیزی که `Version.php::checksum()` می‌خواند) |
-| نام روی هاست | همان فایل، بدون تغییرنام: `public_html/v/apk/meelano-2.3.2-203002.apk` |
-| چه چیزی نسبت به ۲٫۳٫۱ فرق کرد | سرعتِ زندهٔ داخل اپ واقعاً کار می‌کند (تیکِر ۱Hz از `onCreate`، نه فقط بعد از swipe-kill؛ و نرخ روی بازهٔ نمونه‌بندی تقسیم می‌شود نه عمرِ سشن)، نوتیفیکیشن با آستانهٔ «۸٪ یا ۸ مگ یا تغییر سشن» تازه می‌شود، پنج حلقهٔ انیمیشن با «حذف انیمیشن‌ها»ی سیستم **ساخته نمی‌شوند**، جاروبِ «در حال اتصال» دیگر حلقهٔ داغ نیست، و `Ai::safeSubstr` روی هاستِ بدون mbstring نمی‌میرد. سمت سرور: `lib/Ai.php` |
-| وضعیت هسته | `CORE_LINKED=false` — تونل وصل نیست؛ برای ریلیز کاربران `core_linked=true` لازم است (`docs/CORE-INTEGRATION.md` §۵) |
+| Release | `https://github.com/Companymeelano/VPN/releases/tag/v2.5.0-beta.1` |
+| APK (asset) | `https://github.com/Companymeelano/VPN/releases/download/v2.5.0-beta.1/meelano-2.5.0-205000.apk` |
+| حجم / sha256 | ۶۴٬۰۹۴٬۴۶۶ بایت · `51a5da161865d4966b862b198cdec486a5da75a95fa6a56b4470b979cb34534f` |
+| کنارش | `…meelano-2.5.0-205000.apk.sha256` (۶۵ بایت = ۶۴ هگز + newline — همان چیزی که `Version.php::checksum()` می‌خواند) |
+| universal (arm64 + v7a) | `…meelano-2.5.0-205000-universal.apk` · ۱۳۰٬۹۵۲٬۰۲۱ بایت · `de1fb48ff1907f3f89a0c0c5a3485f25b5bd069223c016b13ba053a9c796e20a` |
+| نام روی هاست | همان فایل، بدون تغییرنام: `public_html/v/apk/meelano-2.5.0-205000.apk` |
+| چه چیزی نسبت به ۲٫۳٫۲ فرق کرد | هسته‌ی تونل واقعاً وصل شد (libXray v26.9.9 + تپِ اتصال با نردبان تا برقراری)، پروکسی‌ها end-to-end تأیید و فِیل‌اُور خودکار می‌شوند، تقسیم مسیر برنامه‌ها (اسنپ/دیوار/بانک‌ها بیرون از تونل — `docs/APP-ROUTING.md`)، و بیلدِ نصب‌شده با `BUILD_ID` در دیباگ/تنظیمات شناسایی می‌شود |
+| وضعیت هسته | `CORE_LINKED=true` — bridge `libXray.LibXray` · core.aar sha256 `7ac5db44426e1d7c4570d408355aa0a7a93e224e198331cc23af82a7ebfe2911` (`docs/CORE-INTEGRATION.md` §۵) |
+
+بیلد `v2.5.0-beta.1` روی کامیت `443c941` است (`release: v2.5.0 (versionCode 205000)`) و چون تگش
+`beta` دارد، خودکار `--prerelease` منتشر شده. نسخه‌ی قبلی هسته‌وصل: `v2.4.5` →
+`meelano-2.4.5-204005.apk` (۶۴٬۰۵۶٬۲۳۶ بایت · `d03198925ff3ad57f436fb4670467e261256a84530197f772df46ebcde4e4d08`).
 
 نسخه‌های قبلی (برای QA مقایسه‌ای): `v2.3.1-beta.1` → `meelano-2.3.1-203001.apk`
 (۱۲٬۹۶۷٬۹۷۴ بایت · `47530774d7ab1315cbfc3ca5975f6bdc9ae2ca46e233e6ef24a9d6c875683d6b`) —
