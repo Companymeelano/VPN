@@ -18,8 +18,15 @@ class PerAppRoutingTest {
     @Test
     fun `banking apps are recognised by bank token`() {
         assertEquals(RouteClass.BANKING, RoutingPolicy.classify("ir.bankmellat.mobilebank"))
-        assertEquals(RouteClass.BANKING, RoutingPolicy.classify("com.bmi.bam"))
+        assertEquals(RouteClass.BANKING, RoutingPolicy.classify("ir.mbank.hamrah"))
         assertEquals(RouteClass.BANKING, RoutingPolicy.classify("ir.bpm.payment"))
+    }
+
+    @Test
+    fun `bank melli family rides the ir prefix as iranian`() {
+        // no "bank" token in the package id, but the .ir reverse domain still lands it
+        // outside the tunnel - the chip says ایرانی, the effect is the same
+        assertEquals(RouteClass.IRANIAN, RoutingPolicy.classify("ir.bmi.bamiaran"))
     }
 
     @Test
