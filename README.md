@@ -78,9 +78,9 @@ curl 'http://localhost/v/?action=selftest&key=<toolKey>'
 > نسخه‌ی universal با `v7a`: `meelano-2.5.0-205000-universal.apk`).
 > این بیلد `core_linked=true` است — هسته‌ی تونل (libXray v26.9.9، bridge `libXray.LibXray`) واقعاً
 > کامپایل و به `CoreApi` وصل شده، پس تونل برقرار می‌شود؛ بیلدهای `push` روی `main` عمداً بدونِ هسته‌اند
-> (فقط UI/فید/آپدیت) و تنها `v*` (تگ) هسته را می‌سازد. امضایش **کلید debug** است (بیلد کاربران با
-> keystore خودت: §۳ همان سند) و چون APK دیباگ هر رانر امضای متفاوتی می‌گیرد، روی گوشیِ دارای نسخه‌ی
-> قبلی اول حذف کن بعد نصب. مسیر ساخت: [docs/ANDROID-BUILD.md](docs/ANDROID-BUILD.md).
+> (فقط UI/فید/آپدیت) و تنها `v*` (تگ) هسته را می‌سازد. چون پسوند تگش `beta` است، با **کلید debug**
+> امضا شده (applicationId پسوند `.debug` می‌گیرد)؛ نسخه‌ی **نهایی** از تگ تمیزِ `v2.5.0` می‌آید و با
+> keystore پروژه امضا می‌شود — §۱ و §۳-ب همان سند. مسیر ساخت: [docs/ANDROID-BUILD.md](docs/ANDROID-BUILD.md).
 > هویت بصری و آیکن: [docs/BRAND.md](docs/BRAND.md) — نشان، یک `M` با دهانه‌ی تونل.
 
 

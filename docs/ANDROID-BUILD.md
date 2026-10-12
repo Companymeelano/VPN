@@ -23,20 +23,42 @@ sha256 `819a69be…3b5b1f80`). پس کد واقعاً با AGP 8.6.1 + Kotlin 2.
 
 ## ۱) APK گرفتن — دو راه
 **راه اول: تگ بزن (ریلیز خودکار، لینک ثابت).** هر `v*` که پوش کنی، بیلد گرفته و یک Release با
-سه asset ساخته می‌شود: APK، `.sha256` کنارش، و آیکون ۵۱. تگ‌های `alpha/beta/rc` خودکار
-`--prerelease` می‌شوند.
+سه asset ساخته می‌شود: APK، `.sha256` کنارش، و آیکون ۵۱۲. **variant از خودِ نام تگ استنتاج می‌شود**
+(چون dispatch به اجازه‌ی `actions:write` نیاز دارد و push تگ نه):
+
+| تگ | variant | امضا | ریلیز |
+|---|---|---|---|
+| `v2.5.0-beta.1` / `-rc.1` / `-alpha` | `debug` | کلید debug (applicationId با پسوند `.debug`) | `--prerelease` |
+| `v2.5.0` (تمیز، بدون پسوند) | `release` | **keystore پروژه** (secretهای `MEELANO_*`) | ریلیز عمومی، `Latest` |
+
+یعنی «تگ تمیز = انتشار نهایی» و «تگ با پسوند = پیش‌انتشار آزمایشی». برای همین اگر
+`MEELANO_KEYSTORE_B64` ست نشده باشد، push یک تگ تمیز **می‌شکند** (با پیامِ روشن) — بهتر از این‌که
+بی‌صدا یک APK دیباگ را به‌جای نسخه‌ی نهایی منتشر کند. ساخت keystore در §۳-ب.
+
 ```bash
-git tag -a v2.0.0-beta.2 -m "…" && git push origin v2.0.0-beta.2
-gh release view v2.0.0-beta.2 --web        # یا: curl -L -o app.apk <download-url>
+git tag -a v2.5.0 -m "M•A VPN v2.5.0" && git push origin v2.5.0
+gh release view v2.5.0 --web               # یا: curl -L -o app.apk <download-url>
 adb install -r app.apk
 ```
 **راه دوم: Artifact از همان Run** (بدون ریلیز؛ برای تست‌های زودگذر):
 ```bash
 gh run list --limit 1 && gh run download <run-id> -n meelano-apk-debug
 ```
+
+**تمرینِ release بدون انتشار.** قبل از سوزاندنِ یک تگ، برچسب `release-dry-run` را روی PR بگذار:
+همان مسیر کامل release اجرا می‌شود (R8/minify + امضا + `apksigner verify`) و APK **امضاشده** را
+به‌عنوان artifact می‌دهد، ولی از PR هیچ‌وقت ریلیز منتشر نمی‌شود:
+```bash
+gh pr edit <pr> --add-label release-dry-run     # لیبل را بساز: gh label create release-dry-run
+gh run watch && gh run download <run-id> -n meelano-apk-release
+```
+وضعیت `variant/core/dry-run` تصمیم‌گیری‌شده در اولین step، در summary همان run چاپ می‌شود.
+
 `gh workflow run "build apk" --ref <branch> -f variant=debug -f core_linked=false` هم هست، ولی
 dispatch کردن به اجازه‌ی `actions: write` نیاز دارد که توکن ربات‌های محیط توسعه معمولاً ندارند؛
-push تگ همان کار را با اجازه‌ی push معمولی می‌کند — برای همین ماشه‌ی اصلی تگ است.
+push تگ همان کار را با اجازه‌ی push معمولی می‌کند — برای همین ماشه‌ی اصلی تگ است. (اگر dispatch
+کنی، ورودیِ دستی همیشه برنده است؛ `variant=release` با `core_linked=false` عمداً رد می‌شود، چون
+بیلد بی‌هسته VPN نیست.)
 
 خطاهای build را workflow به‌صورت **کامنت روی PR** برمی‌گرداند (با لیست نامزدهای اورلود، چون لاگ
 Actions از همه‌جا قابل دانلود نیست). اگر فقط workflow را ویرایش می‌کنی: **کلید تکراری در YAML**
@@ -46,10 +68,10 @@ Actions از همه‌جا قابل دانلود نیست). اگر فقط workfl
 ## ۲) ورودی‌های workflow
 | ورودی | پیش‌فرض | معنا |
 |---|---|---|
-| `variant` | `debug` | `debug` با کلید دیباگ امضا می‌شود (روی گوشی تست نصب می‌شود)؛ `release` به `MEELANO_KEYSTORE_B64` و سه secret دیگر نیاز دارد |
+| `variant` | خالی | خالی = از نام تگ استنتاج شود (جدول §۱). `release` به `MEELANO_KEYSTORE_B64` و سه secret دیگر نیاز دارد |
 | `feed_base` | `https://ainetmee.ir/v` | همان `MEELANO_FEED_BASE` |
 | `feed_key` | خالی | هدر `X-Meelano-Key` برای فید VIP |
-| `core_linked` | `false` | **مهم‌ترین**: آیا هسته‌ی تونل به این بیلد وصل شده؟ |
+| `core_linked` | `false` | **مهم‌ترین**: آیا هسته‌ی تونل به این بیلد وصل شده؟ (روی تگ همیشه وصل است) |
 | `self_update` | `true` | آپدیت خودکار در این بیلد فعال باشد؟ |
 
 ### `core_linked=false` یعنی چه (و چرا عمداً ساخته شده)
@@ -68,6 +90,38 @@ Actions از همه‌جا قابل دانلود نیست). اگر فقط workfl
 4. `protectOutbound(fd)` را روی سوکتِ خروجیِ خودِ هسته صدا بزن (نه `addRoute` برای IP سرور —
    توضیح کامل در `vpn/VpnOrchestrator.kt`؛ این همان اشتباهی است که «حلقه‌ی تونل» و یخ‌زدگی می‌سازد).
 5. بیلد با `-PMEELANO_CORE_LINKED=true`.
+
+### ۳-ب) keystore برای نسخه‌ی نهایی (یک‌بار برای همیشه)
+بدون این چهار secret، تگ تمیز (`v2.5.0`) عمداً می‌شکند؛ با آن‌ها همان تگ یک ریلیز **امضاشده**
+می‌سازد. کلید را روی همان ماشینی بساز که به آن دسترسی داری و **فایلش را برای همیشه نگه دار**
+(اگر گم شود یا عوض شود، هر نصبِ قبلی فقط با حذف/نصب دوباره آپدیت می‌شود):
+
+```bash
+STORE_PASS='یک-رمز-قوی'          # و KEY_PASS و FEED_SECRET هم همین‌جا تعریف کن
+KEY_PASS='یک-رمز-قوی-دیگر'
+# ۱) کلید (JDK 17؛ خروجی پیش‌فرضِ keytool در نسخه‌های جدید PKCS12 است و Gradle همان را می‌خواند)
+keytool -genkeypair -v -keystore meelano.keystore -alias meelano \
+  -keyalg RSA -keysize 4096 -validity 10950 \
+  -storepass "$STORE_PASS" -keypass "$KEY_PASS" \
+  -dname "CN=M•A VPN, O=Meelano, C=IR"
+# ۲) چهار secret
+base64 -w0 meelano.keystore | gh secret set MEELANO_KEYSTORE_B64
+gh secret set MEELANO_STORE_PASS --body "$STORE_PASS"
+gh secret set MEELANO_KEY_PASS   --body "$KEY_PASS"
+gh secret set MEELANO_KEY_ALIAS  --body meelano
+# ۳) (اختیاری ولی توصیه‌شده) کلید HMAC برای امضای version.json
+gh secret set MEELANO_FEED_SECRET --body "$FEED_SECRET"
+```
+چند نکته‌ی عملی:
+- `-validity 10950` ≈ ۳۰ سال: Google Play نمی‌خواهد ولی توزیع مستقیم نباید وسط راه منقضی شود.
+- رمزها را در `android/local.properties` یا password manager بگذار — **نه** در گیت (فایل
+  `.gitignore` مخزن دقیقاً برای همین گذاشته شده).
+- اثر گواهی (SHA-256) در یادداشت هر ریلیز چاپ می‌شود؛ ریلیز بعدی باید همان اثر را بدهد، وگرنه
+  آپدیت روی نصب قبلی رد می‌شود. برای تبدیل keystore قدیمی `.jks` به PKCS12:
+  `keytool -importkeystore -srckeystore old.jks -destkeystore meelano.keystore -deststoretype pkcs12`.
+- اگر APK نهایی با کلید debug در بیاید (مثلاً `keystore.properties` ساخته نشده)، CI **قرمز
+  می‌شود**: `collect + hash` اثر گواهی APK را با کلید debug مقایسه می‌کند. این عمدی است — بهتر
+  از این‌که کاربر «به‌روزرسانی نصب نشد» ببیند و ما حدس بزنیم چرا.
 
 ## ۴) ساخت محلی (اگر Android Studio داری)
 ```bash
