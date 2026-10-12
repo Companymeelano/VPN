@@ -91,9 +91,9 @@ android/
   app/src/main/java/ir/meelano/vpn/
     MeelanoApp.kt  MainActivity.kt
     vpn/      MeelanoVpnService · VpnOrchestrator · CoreApi (TunnelEngine = نقطه‌ی اتصال به هسته)
-    data/     ServerFeedRepository · FeedJson · FeedHolder · TunnelSpec · AppSettings
+    data/     ServerFeedRepository · FeedJson · FeedHolder · TunnelSpec · AppSettings · PerAppRouting
     ui/       Controls (دکمه/چیپ/segmented/سوییچ/پنل — چهار قاعده، docs/DESIGN-SYSTEM.md §۱۳)
-              HomeScreen · VpnControlPanel · ServerListSheet · SettingsSheet · UpdateSheet · OnboardingScreen
+              HomeScreen · VpnControlPanel · ServerListSheet · SettingsSheet · AppRoutingSheet · UpdateSheet · OnboardingScreen
     ui/theme/ Color (اشیاء Meelano) · Type · Shape · Motion · Theme
     keepalive/KeepAlive · qs/MeelanoTileService · update/UpdateManager
   app/src/main/res/
@@ -108,6 +108,10 @@ android/
 [`docs/ANDROID-INTEGRATION.md`](docs/ANDROID-INTEGRATION.md)؛ وصل‌کردن AAR: [`docs/CORE-INTEGRATION.md`](docs/CORE-INTEGRATION.md).
 توکن‌ها/حرکت/دسترس‌پذیری: [`docs/DESIGN-SYSTEM.md`](docs/DESIGN-SYSTEM.md) — و همان توکن‌ها در
 پروتوتایپ زنده: [`docs/PROTOTYPE.md`](docs/PROTOTYPE.md). برند و آیکون: [`docs/BRAND.md`](docs/BRAND.md).
+
+**مسیریابی برنامه‌ها** — اپ‌های بانکی/پرداخت و سرویس‌های ایرانی (اسنپ، دیوار و…) به‌صورت خودکار شناسایی
+و از تونل خارج می‌شوند (`addDisallowedApplication`)؛ برای پرداخت نیازی به قطع فیلترشکن نیست و آن برنامه‌ها
+صفر سربار تونل دارند. فهرست قابل ویرایش/افزودن/حذف است: [`docs/APP-ROUTING.md`](docs/APP-ROUTING.md).
 
 ## ساخت APK
 APK واقعی در CI ساخته می‌شود (این محیط Android SDK ندارد): `.github/workflows/apk.yml` → Artifact.

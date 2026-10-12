@@ -112,6 +112,26 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
         fun isRunning(): Boolean = _phase.value is ConnectPhase.Connected && alive != null
 
         /**
+         * The user edited the per-app routing rules while a tunnel was up. Interface rules are baked
+         * at establish() time - nothing short of rebuilding the TUN applies them - so restart the
+         * connection on the CURRENT node with reorder=false: the node itself is fine, only the
+         * disallowed-app list changed, and re-probing the whole pool would punish the edit with a
+         * ten-second re-race. No-op unless the user actually wants the tunnel on.
+         */
+        fun reapplyRouting(context: Context) {
+            if (!Prefs.vpnDesired(context)) return
+            val id = Prefs.activeId(context) ?: return
+            runCatching {
+                context.startService(
+                    Intent(context, MeelanoVpnService::class.java)
+                        .setAction(ACTION_CONNECT)
+                        .putExtra(EXTRA_NODE_ID, id)
+                        .putExtra(EXTRA_REORDER, false)
+                )
+            }
+        }
+
+        /**
          * Public-source proxy scans must bypass an already-running VPN or they only prove that a proxy
          * works from the old exit server. No service exists during a normal cold scan, in which case a
          * raw socket is already direct and needs no protection call.
