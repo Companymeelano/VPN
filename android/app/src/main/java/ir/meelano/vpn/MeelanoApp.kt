@@ -33,6 +33,7 @@ class MeelanoApp : Application() {
         super.onCreate()
         instance = this
         AppSettings.load(this)
+        ir.meelano.vpn.data.PerAppRouting.load(this)
         FeedHolder.init(this)
         updates = UpdateManager(this, BuildConfig.FEED_BASE_URL)
 
@@ -45,6 +46,13 @@ class MeelanoApp : Application() {
             if (BuildConfig.SELF_UPDATE && AppSettings.autoUpdate && onUnmetered(this@MeelanoApp)) {
                 updates.checkAsync()
             }
+        }
+        appScope.launch {
+            delay(4_000)
+            // Warm the installed-app scan (data/PerAppRouting.kt) off the hot paths: the first tunnel
+            // establish() and the first routing-sheet open both read this cache, and doing the binder
+            // walk over every installed app right there is a hesitation you can feel on a slow phone.
+            runCatching { ir.meelano.vpn.data.PerAppRouting.scan(this@MeelanoApp) }
         }
     }
 

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Brand control icon: stroke-only on the 24 grid, 2.1 weight, round caps. The bin for a routing
+     override: "forget what I forced, return this app to auto-detection". Tinted by the caller. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path
+        android:pathData="M5,7.2 L19,7.2"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.1"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+    />
+    <path
+        android:pathData="M9.7,7.2 L9.7,4.8 L14.3,4.8 L14.3,7.2"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.1"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+    />
+    <path
+        android:pathData="M7.2,7.2 L8,19.4 L16,19.4 L16.8,7.2"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.1"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+    />
+    <path
+        android:pathData="M10.4,10.6 L10.7,16.2 M13.6,10.6 L13.3,16.2"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.9"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+    />
+</vector>

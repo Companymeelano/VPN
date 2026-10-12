@@ -221,6 +221,20 @@ class VpnOrchestrator(
                 // resolves over DoH tagged to the selected proxy, including for TCP-only HTTP proxies.
                 DNS_VIRTUAL.forEach { addDnsServer(it) }
             }
+            .apply {
+                // Per-app routing: Iranian/banking apps (banks, payment, Snapp, Divar…) stay outside
+                // the tunnel entirely, so card entry and local services never touch the proxy - also
+                // the speed win of zero tunnel overhead for those apps. The set is user-editable
+                // (ui/AppRoutingSheet.kt) and resolved here, at establish() time, because "installed
+                // at scan time" must become "disallowed at tunnel time" in one place only. Each call
+                // is wrapped: a package uninstalled between scan and establish() must not sink the
+                // whole connection. Even under the kill switch these apps remain direct - that is the
+                // point of the feature, and the settings copy says so.
+                val bypass = runCatching {
+                    ir.meelano.vpn.data.PerAppRouting.effectiveBypassFor(context, context.packageName)
+                }.getOrDefault(emptySet())
+                bypass.forEach { pkg -> runCatching { addDisallowedApplication(pkg) } }
+            }
     }
 
     fun protectOutbound(fd: Int): Boolean =

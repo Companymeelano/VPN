@@ -53,7 +53,9 @@ import androidx.compose.ui.unit.sp
 import ir.meelano.vpn.BuildConfig
 import ir.meelano.vpn.R
 import ir.meelano.vpn.data.AppSettings
+import ir.meelano.vpn.data.PerAppRouting
 import ir.meelano.vpn.keepalive.KeepAlive
+import ir.meelano.vpn.vpn.MeelanoVpnService
 import kotlinx.coroutines.launch
 
 /**
@@ -74,6 +76,7 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var confirmReset by remember { mutableStateOf(false) }
     var diagnostics by remember { mutableStateOf(false) }
+    var routing by remember { mutableStateOf(false) }
     // The on-device list has no host to ask "what happened", so the sheet carries the answer: which
     // sources answered, and what was thrown away. Local state only - nothing here survives the sheet.
     val feedNotes by vm.feedNotes.collectAsState()
@@ -166,6 +169,62 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                     )
                 }
 
+            }
+
+            // Per-app routing: the Iranian/banking apps that must never enter the tunnel. Interface
+            // rules are baked at establish() time, so flipping either switch while connected rebuilds
+            // the tunnel on the same node - otherwise the change would wait for the next connect and
+            // read as "the switch does nothing".
+            item {
+                MeelanoPanel(title = stringResource(R.string.group_routing)) {
+                    SwitchRow(
+                        title = stringResource(R.string.set_routing_enabled),
+                        body = stringResource(R.string.set_routing_enabled_body),
+                        on = PerAppRouting.enabled,
+                        onChange = {
+                            PerAppRouting.setEnabled(ctx, it)
+                            if (MeelanoVpnService.isRunning()) MeelanoVpnService.reapplyRouting(ctx)
+                        },
+                    )
+                    PanelDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.set_routing_auto),
+                        body = stringResource(R.string.set_routing_auto_body),
+                        on = PerAppRouting.autoBypass,
+                        onChange = {
+                            PerAppRouting.setAutoBypass(ctx, it)
+                            if (MeelanoVpnService.isRunning()) MeelanoVpnService.reapplyRouting(ctx)
+                        },
+                    )
+                    PanelDivider()
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { routing = true }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                stringResource(R.string.routing_manage),
+                                fontSize = 14.sp, color = p.text, fontWeight = FontWeight.Medium,
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                stringResource(R.string.routing_manage_body),
+                                fontSize = 11.sp, color = p.faint, lineHeight = 16.sp,
+                            )
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        MeelanoIconButton(
+                            iconRes = R.drawable.ic_apps,
+                            contentDescription = stringResource(R.string.routing_manage),
+                            onClick = { routing = true },
+                            sizeDp = 38.dp,
+                            corner = 12.dp,
+                        )
+                    }
+                }
             }
 
             // The resistance panel is a first-class group, not a debug drawer: in this country "the VPN
@@ -483,6 +542,7 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                     fill = true,
                 )
                 if (diagnostics) DiagnosticsSheet(vm = vm, onDismiss = { diagnostics = false })
+                if (routing) AppRoutingSheet(onDismiss = { routing = false })
             }
 
             // Version + the watchdog state dot.

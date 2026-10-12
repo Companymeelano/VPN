@@ -28,6 +28,11 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Per-app routing (data/PerAppRouting.kt): enumerating installed apps is how the app finds the
+         Iranian/banking apps (Snapp, Divar, banks…) that must bypass the tunnel. This app is
+         sideloaded, not Play-distributed, so the broad visibility is the right trade for the job. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
     <!-- self-update: the system only allows this after the user grants it in the installer prompt -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Android 11+ needs this declared before we can launch the "install unknown apps" screen -->

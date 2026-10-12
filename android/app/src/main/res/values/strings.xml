@@ -212,4 +212,29 @@
     <string name="feed_sub_update">به‌روزرسانی لینک</string>
     <string name="feed_sub_url_body">این لینک HTTPS مستقیم روی گوشی خوانده می‌شود؛ فهرست شخصی کاملاً مستقل از هاست اختصاصی می‌ماند.</string>
     <string name="diag_note">این گزارش آدرسِ سرور، IP، یا کانفیگ ندارد؛ برای پشتیبانی همین را بفرست. متن را می‌توانی با انگشت انتخاب هم بکنی.</string>
+
+    <!-- مسیریابی برنامه‌ها: برنامه‌های ایرانی و بانکی خارج از تونل -->
+    <string name="group_routing">مسیریابی برنامه‌ها</string>
+    <string name="set_routing_enabled">مسیریابی هوشمند برنامه‌ها</string>
+    <string name="set_routing_enabled_body">برنامه‌های ایرانی و بانکی (اسنپ، دیوار، بانک‌ها…) خارج از تونل می‌مانند؛ برای پرداخت و سرویس‌های داخلی نیازی به قطع فیلترشکن نیست</string>
+    <string name="set_routing_auto">شناسایی خودکار برنامه‌های ایرانی</string>
+    <string name="set_routing_auto_body">برنامه‌های نصب‌شده با نشانی ایرانی یا نام بانکی به‌صورت خودکار از تونل جدا می‌شوند؛ فهرست را می‌توانی ویرایش کنی</string>
+    <string name="routing_manage">مدیریت برنامه‌ها</string>
+    <string name="routing_manage_body">ویرایش، افزودن یا حذف برنامه‌های خارج از تونل</string>
+    <string name="routing_sheet_title">مسیریابی برنامه‌ها</string>
+    <string name="routing_bank_note">برنامه‌های بانک و پرداخت برای امنیت تراکنش‌ها همیشه خارج از تونل می‌مانند — حتی وقتی تونل قطع است یا کلید قفل فعال است. اسنپ، دیوار و بقیهٔ سرویس‌های ایرانی هم بدون فیلترشکن کار می‌کنند و سرعتشان بیشتر است.</string>
+    <string name="routing_search">جست‌وجوی برنامه…</string>
+    <string name="routing_add_hint">نام بسته (مثل com.example.app)</string>
+    <string name="routing_add">افزودن</string>
+    <string name="routing_add_bad">نام بسته درست نیست؛ نمونهٔ درست: com.example.app</string>
+    <string name="routing_rescan">اسکن مجدد برنامه‌های نصب‌شده</string>
+    <string name="routing_chip_bank">بانک و پرداخت</string>
+    <string name="routing_chip_iranian">ایرانی</string>
+    <string name="routing_chip_custom">دستی</string>
+    <string name="routing_chip_foreign">خارجی</string>
+    <string name="routing_empty">برنامه‌ای مطابق جست‌وجو پیدا نشد؛ می‌توانی نام بسته‌اش را دستی اضافه کنی</string>
+    <string name="routing_count">%1$d برنامه خارج از تونل</string>
+    <string name="routing_apply_connected">تغییرها هنگام بستن این صفحه با اتصالِ مجددِ همان نود اعمال می‌شود</string>
+    <string name="routing_apply_next">تغییرها در اتصال بعدی اعمال می‌شود</string>
+    <string name="routing_reset_override">بازگردانی به تشخیص خودکار</string>
 </resources>

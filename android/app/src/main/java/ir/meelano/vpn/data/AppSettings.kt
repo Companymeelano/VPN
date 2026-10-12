@@ -154,6 +154,9 @@ object AppSettings {
     fun reset(context: Context) {
         sp(context).edit().clear().apply()
         load(context)
+        // same prefs file: a factory reset must also return the routing rules to defaults, and the
+        // in-memory mirror does not notice the disk was cleared under it unless reloaded.
+        ir.meelano.vpn.data.PerAppRouting.load(context)
     }
 
     private inline fun write(c: Context, key: String, v: Any, crossinline apply: () -> Unit) {
