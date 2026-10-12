@@ -98,6 +98,16 @@ Actions از همه‌جا قابل دانلود نیست). اگر فقط workfl
 می‌سازد. کلید را روی همان ماشینی بساز که به آن دسترسی داری و **فایلش را برای همیشه نگه دار**
 (اگر گم شود یا عوض شود، هر نصبِ قبلی فقط با حذف/نصب دوباره آپدیت می‌شود):
 
+**راه کوتاه (اسکریپت، پیشنهادی):** کلید و رمزها را یک‌جا برایت می‌سازد، در پوشه‌ای **بیرون از
+مخزن** می‌گذارد (تا اشتباهی کامیت نشوند)، فایل اعاده‌ی رمز می‌نویسد و چهار secret را ست می‌کند:
+```bash
+./tools/make-signing-key.sh
+# اختیاری: MEELANO_FEED_SECRET='…' ./tools/make-signing-key.sh   # مرحله‌ی ۴
+```
+اگر کلیدِ موجودی داری (JKS یا PKCS12)، فقط مرحله‌ی ۳ را دستی بزن: CI نوع keystore را از جادوی
+فایل تشخیص می‌دهد، پس `.jks` قدیمی هم کار می‌کند.
+
+**راه دستی** (همان کارها، اگر ترجیح می‌دهی خودت کنترل کنی):
 ```bash
 STORE_PASS='یک-رمز-قوی'          # و KEY_PASS و FEED_SECRET هم همین‌جا تعریف کن
 KEY_PASS='یک-رمز-قوی-دیگر'
@@ -106,14 +116,16 @@ keytool -genkeypair -v -keystore meelano.keystore -alias meelano \
   -keyalg RSA -keysize 4096 -validity 10950 \
   -storepass "$STORE_PASS" -keypass "$KEY_PASS" \
   -dname "CN=M•A VPN, O=Meelano, C=IR"
-# ۲) چهار secret
-base64 -w0 meelano.keystore | gh secret set MEELANO_KEYSTORE_B64
-gh secret set MEELANO_STORE_PASS --body "$STORE_PASS"
-gh secret set MEELANO_KEY_PASS   --body "$KEY_PASS"
-gh secret set MEELANO_KEY_ALIAS  --body meelano
+# ۲) چهار secret (رمز از stdin می‌رود، نه در argv — در `ps` دیده نمی‌شود)
+openssl base64 -A -in meelano.keystore > ks.b64 && gh secret set MEELANO_KEYSTORE_B64 < ks.b64 && rm ks.b64
+printf '%s' "$STORE_PASS" | gh secret set MEELANO_STORE_PASS
+printf '%s' "$KEY_PASS"   | gh secret set MEELANO_KEY_PASS
+printf '%s' meelano       | gh secret set MEELANO_KEY_ALIAS
 # ۳) (اختیاری ولی توصیه‌شده) کلید HMAC برای امضای version.json
-gh secret set MEELANO_FEED_SECRET --body "$FEED_SECRET"
+printf '%s' "$FEED_SECRET" | gh secret set MEELANO_FEED_SECRET
 ```
+> نکته‌ی دسترسی: ست‌کردن secret از API دسترسیِ **admin** روی مخزن می‌خواهد. توکن‌های رباتِ محیط
+> توسعه‌ی معمول `actions:secrets` ندارند (۴۰۳) — این کار باید با حسابِ خودت انجام شود.
 چند نکته‌ی عملی:
 - `-validity 10950` ≈ ۳۰ سال: Google Play نمی‌خواهد ولی توزیع مستقیم نباید وسط راه منقضی شود.
 - رمزها را در `android/local.properties` یا password manager بگذار — **نه** در گیت (فایل
