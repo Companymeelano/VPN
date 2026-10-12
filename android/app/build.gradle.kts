@@ -131,6 +131,13 @@ android {
                 storePassword = keystoreProps.getProperty("storePassword")
                 keyAlias = keystoreProps.getProperty("keyAlias")
                 keyPassword = keystoreProps.getProperty("keyPassword")
+                // `storeType` اختیاری است و فقط وقتی لازم می‌شود که keystore از نوع JKS باشد:
+                // پیش‌فرضِ JVM از JDK 9 به بعد PKCS12 است و keytool هم همان را می‌سازد، پس یک
+                // keystore تازه بدون این خط کار می‌کند. CI نوع را از خودِ فایل تشخیص می‌دهد و
+                // همین‌جا می‌نویسد (JKS جادوی FE ED FE ED دارد) — چون «password was incorrect»
+                // یا «Unsupported keystore» وقتی می‌آید که نوع اشتباه فرض شده باشد.
+                storeType = keystoreProps.getProperty("storeType")?.takeIf { it.isNotBlank() }
+                    ?: storeType
                 // v2/v3 are on by default in AGP 8 and minSdk 24 means v1 is never required
                 // (APK signature scheme v2 is supported from API 24), so nothing is configured here.
                 // Setting enableV1Signing/enableV2Signing explicitly is a removed API in some AGP versions.

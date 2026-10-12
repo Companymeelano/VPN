@@ -175,11 +175,22 @@ jobs:
             exit 1
           fi
           printf '%s' "$KS_B64" | base64 -d > "$GITHUB_WORKSPACE/meelano.keystore"
+          # نوع keystore را از خودِ فایل تشخیص بده: JKS با جادوی FE ED FE ED شروع می‌شود (در hex
+          # می‌شود `feedfeed`)، بقیه PKCS12. چرا اصلاً مهم است: پیش‌فرضِ JVM از JDK 9 به بعد PKCS12
+          # است، پس یک .jks قدیمی بدون این خط با «password was incorrect» می‌شکند — پیامی که هیچ
+          # ربطی به رمز ندارد.
+          magic=$(head -c 4 "$GITHUB_WORKSPACE/meelano.keystore" | od -An -tx1 | tr -d ' \n')
+          case "$magic" in
+            feedfeed) ks_type=JKS ;;
+            *)        ks_type=PKCS12 ;;
+          esac
+          echo "keystore type: $ks_type (magic $magic)"
           cat > android/keystore.properties <<EOF
           storeFile=$GITHUB_WORKSPACE/meelano.keystore
           storePassword=$STORE_PASS
           keyAlias=$ALIAS
           keyPassword=$KEY_PASS
+          storeType=$ks_type
           EOF
 
       - name: version from gradle
