@@ -1,0 +1,109 @@
+name: checks
+
+# چیزی که بیلد اندروید *نمی‌گیرد*: پس‌اند (PHPUnit‌نداشت، ولی آزمون ۸۰ ادعایی خودمان را دارد)،
+# هم‌خوانی سه آینه‌ی پالت، و سالم‌بودن XML منبع. این‌جا همه‌ی این‌ها در ۳۰ ثانیه سبز/قرمز می‌شوند؛
+# برای همین این workflow جدا از build apk است (آن یکی فقط با android/** و تگ اجرا می‌شود و ۳ دقیقه طول می‌کشد).
+#
+# چرا php -l به‌علاوه‌ی آزمون‌ها: آزمون‌ها رفتار را می‌گیرند، ولی یک فایلِ نیمه‌باز در admin/ می‌تواند
+# در آزمون اجرا نشود و روی هاست ۵۰۰ بدهد. lint همه‌ی فایل‌ها را می‌بیند.
+
+on:
+  push:
+    branches: [main]
+    # no YAML anchors here on purpose: GitHub Actions does not expand them (a long-standing
+    # limitation), so the path list is written twice. Divergence is a nuisance; a workflow that is
+    # silently never triggered is worse.
+    paths:
+      - 'backend/**'
+      - 'tools/**'
+      - 'docs/**'
+      - 'design/preview/**'
+      - 'android/app/src/main/res/**'
+      - 'android/app/src/main/java/ir/meelano/vpn/ui/theme/**'
+      - '.github/workflows/checks.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'tools/**'
+      - 'docs/**'
+      - 'design/preview/**'
+      - 'android/app/src/main/res/**'
+      - 'android/app/src/main/java/ir/meelano/vpn/ui/theme/**'
+      - '.github/workflows/checks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  php:
+    name: backend (php ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 7.4 = کفِ supports‌ها روی هاست‌های اشتراکی ایرانی؛ 8.3 = چیزِ امروز. 8.5 هم در لیست است
+        # چون deprecated-warningها دقیقاً روی همین نسخه‌ها ظاهر می‌شوند.
+        php: ['7.4', '8.3']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          extensions: json, mbstring, curl, zlib
+      - name: lint every php file
+        run: |
+          fail=0
+          while IFS= read -r -d '' f; do
+            if ! out=$(php -l "$f" 2>&1); then echo "$out"; fail=1; fi
+          done < <(find backend/v -name '*.php' -print0)
+          [ "$fail" = 0 ] && echo "lint OK ($(find backend/v -name '*.php' | wc -l) files)"
+          exit $fail
+      - name: run the feed test suite
+        # the suite prints "N failed" plus one line per failing assertion; those lines become
+        # annotations because step logs are not readable from every tooling path (and a red X with no
+        # message is how a backend test rots for a week)
+        run: |
+          set +e
+          out=$(php backend/v/tests/run.php 2>&1)
+          rc=$?
+          set -e
+          echo "$out" | tail -40
+          if [ "$rc" != 0 ]; then
+            echo '```' >> "$GITHUB_STEP_SUMMARY"; echo "$out" | tail -60 >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "$out" | grep -E "^  FAIL|^PHP (Parse|Fatal) error" | sed 's/^ *//' | head -20 | while IFS= read -r line; do
+              echo "::error::php ${{ matrix.php }}: $line"
+            done
+            echo "::error::php ${{ matrix.php }}: suite exit $rc"
+          fi
+          exit $rc
+
+  theme:
+    name: palette mirrors + resources
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: three mirrors must agree
+        run: |
+          if ! python3 tools/check-theme.py; then
+            echo '::error::palette mirrors disagree - see tools/check-theme.py (Color.kt vs values(-night)/colors.xml vs design/preview CSS)'
+            exit 1
+          fi
+      - name: every res XML must parse
+        run: |
+          python3 - <<'PY'
+          import glob, sys, xml.dom.minidom as m
+          bad = 0
+          for f in glob.glob('android/app/src/main/res/**/*.xml', recursive=True):
+              try:
+                  m.parse(f)
+              except Exception as e:
+                  print('XML FAIL', f, e); bad += 1
+          n = len(glob.glob('android/app/src/main/res/**/*.xml', recursive=True))
+          print('parsed %d res xml files' % n)
+          sys.exit(1 if bad else 0)
+          PY

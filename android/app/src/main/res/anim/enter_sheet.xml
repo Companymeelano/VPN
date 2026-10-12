@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:interpolator/decelerate_quint">
+    <!-- 200 ms, 6% rise: enough to feel physical, short enough to never look like loading -->
+    <alpha android:fromAlpha="0" android:toAlpha="1" android:duration="200" />
+    <translate android:fromYDelta="6%p" android:toYDelta="0" android:duration="200" />
+</set>

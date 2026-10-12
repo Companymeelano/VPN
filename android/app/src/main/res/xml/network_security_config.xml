@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+      Default: TLS only, no user CAs (a rooted phone with a stolen CA must not be able to MITM the
+      feed — the feed is what hands out tunnel endpoints and APK URLs).
+      The pin set is deliberately NOT filled in here: a wrong pin bricks updates for existing users
+      and cannot be undone without a new release. Fill it only when you control both certificates and
+      have a backup key, then ship the *pre* next release.
+    -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- ainetmee.ir on shared hosting may still be plain HTTP for you: single-host exception,
+         scoped to exactly one domain and documented. Turn it off the day HTTPS is on. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">ainetmee.ir</domain>
+    </domain-config>
+</network-security-config>

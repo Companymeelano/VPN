@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!--
+      Deliberately tiny. A backup of a VPN app should carry preferences, nothing else:
+      no tokens, no downloaded APK, no cache, and no server list (the feed is the source of truth,
+      restoring a stale one is exactly the "free proxies not applied correctly" bug in a new costume).
+    -->
+    <include domain="sharedpref" path="meelano_prefs.xml" />
+    <exclude domain="sharedpref" path="meelano_internal.xml" />
+    <exclude domain="file" path="feed" />
+    <exclude domain="cache" path="." />
+    <exclude domain="database" path="." />
+</full-backup-content>
