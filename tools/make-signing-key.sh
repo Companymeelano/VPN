@@ -8,7 +8,10 @@
 # کنارشان یک فایل اعاده‌ی رمز نوشته می‌شود.
 #
 # اجرا:  ./tools/make-signing-key.sh
-# پیش‌نیاز:  JDK (keytool)، gh، openssl — و ورود با حسابی که روی مخزن دسترسی admin دارد.
+# اجرای دوباره وقتی کلید از قبل هست: بازتولید نمی‌کند و فقط secretها را ست می‌کند
+# (رمزها را از فایلِ اعاده می‌خواند) — مسیرِ ترمیم وقتی secretها جای اشتباه رفته‌اند.
+#
+# پیش‌نیاز:  JDK (keytool)، gh، openssl — و gh با حسابی که روی مخزن دسترسی admin دارد.
 #
 # ⚠️ فایلِ meelano.keystore و رمزهایش هویتِ انتشار توست. اگر گم شود، کاربرانِ نسخه‌ی
 #    قبلی فقط با حذف و نصب دوباره می‌توانند آپدیت کنند. از پوشه‌ی خروجی بکاپ بگیر.
@@ -34,32 +37,54 @@ KS="$OUT/meelano.keystore"
 CRED="$OUT/keystore-credentials.txt"
 mkdir -p "$OUT"
 chmod 700 "$OUT"
-# محافظِ بازنویسی: کلید یک‌بار ساخته می‌شود و برای همیشه می‌ماند، پس پیش‌فرض «توقف» است
-# و تعویضِ عمدی باید صریح باشد (FORCE=1) — نه نتیجه‌ی یک اجرای دوباره‌ی سهوی.
+
+cred_get() { [ -f "$CRED" ] && sed -n "s/^$1 *: *//p" "$CRED" | head -1 || true; }
+
+REUSE=0
+FINGERPRINT=""
 if [ -e "$KS" ]; then
   if [ "${FORCE:-0}" = "1" ]; then
     echo "FORCE=1 → کلیدِ موجود بازنویسی می‌شود: $KS"
     rm -f "$KS"
   else
-    die "$KS از قبل وجود دارد — پاکش نکن.
-  اگر واقعاً می‌خواهی کلید را عوض کنی (هر نصبِ قبلی فقط با حذف/نصب دوباره آپدیت می‌شود):
-    OUT=$OUT ALIAS=$ALIAS FORCE=1 $0"
+    # مسیر دوباره‌اجرا: کلید را دست نزن، اما secretها را (دوباره) ست کن. رمزها از فایلِ
+    # اعاده می‌آیند؛ اگر نبود، از محیط یا پرسشِ تعاملی. بدون هیچ‌کدام، توقف — چون رمزِ
+    # اشتباهی که بی‌صدا ست شود، دقیقاً همان چیزی است که «بیلد امضاشده» را بی‌صدا می‌شکند.
+    REUSE=1
+    [ -n "${STORE_PASS:-}" ] || STORE_PASS="$(cred_get storePass || true)"
+    [ -n "${KEY_PASS:-}" ]   || KEY_PASS="$(cred_get keyPass || true)"
+    cred_alias="$(cred_get alias || true)"; [ -n "$cred_alias" ] && ALIAS="$cred_alias"
+    FINGERPRINT="$(cred_get SHA-256 || true)"
+    if [ -z "${STORE_PASS:-}" ] && [ -t 0 ]; then
+      printf 'storePass (کلیدِ موجود در %s): ' "$KS"; read -r -s STORE_PASS; echo
+    fi
+    if [ -z "${KEY_PASS:-}" ] && [ -t 0 ]; then
+      printf 'keyPass: '; read -r -s KEY_PASS; echo
+    fi
+    [ -n "${STORE_PASS:-}" ] || die "کلید موجود است ولی رمزش را ندارم.
+  یا فایلِ اعاده ($CRED) را برگردان، یا رمز را در محیط بده: STORE_PASS='…' KEY_PASS='…' $0"
+    [ -n "${KEY_PASS:-}" ] || die "keyPass را ندارم — همان بالا (STORE_PASS/KEY_PASS در محیط)."
+    echo "کلیدِ موجود استفاده می‌شود (بدون بازتولید): $KS"
   fi
 fi
 
-umask 077
-step "۱) ساختِ کلید (RSA 4096، معتبر ${DAYS} روز)"
-STORE_PASS="$(openssl rand -hex 24)"
-KEY_PASS="$(openssl rand -hex 24)"
-# نوع پیش‌فرضِ keytool در JDK 9+ مخزنِ PKCS12 است؛ CI خودش نوع را از جادوی فایل تشخیص
-# می‌دهد، پس نیازی به -storetype نیست (و JKS هم اگر بدهی کار می‌کند).
-"$KEYTOOL" -genkeypair -v -keystore "$KS" -alias "$ALIAS" \
-  -keyalg RSA -keysize 4096 -validity "$DAYS" \
-  -storepass "$STORE_PASS" -keypass "$KEY_PASS" \
-  -dname "CN=M•A VPN, O=Meelano, C=IR" >/dev/null
+if [ "$REUSE" = 0 ]; then
+  umask 077
+  step "۱) ساختِ کلید (RSA 4096، معتبر ${DAYS} روز)"
+  STORE_PASS="$(openssl rand -hex 24)"
+  KEY_PASS="$(openssl rand -hex 24)"
+  # نوع پیش‌فرضِ keytool در JDK 9+ مخزنِ PKCS12 است؛ CI خودش نوع را از جادوی فایل تشخیص
+  # می‌دهد، پس نیازی به -storetype نیست (و JKS هم اگر بدهی کار می‌کند).
+  "$KEYTOOL" -genkeypair -v -keystore "$KS" -alias "$ALIAS" \
+    -keyalg RSA -keysize 4096 -validity "$DAYS" \
+    -storepass "$STORE_PASS" -keypass "$KEY_PASS" \
+    -dname "CN=M•A VPN, O=Meelano, C=IR" >/dev/null
+fi
 
-FINGERPRINT="$("$KEYTOOL" -list -v -keystore "$KS" -storepass "$STORE_PASS" -alias "$ALIAS" 2>/dev/null \
-  | sed -n 's/.*SHA256: *//p' | head -1 | tr -d '\r')" || true
+if [ -z "$FINGERPRINT" ]; then
+  FINGERPRINT="$("$KEYTOOL" -list -v -keystore "$KS" -storepass "$STORE_PASS" -alias "$ALIAS" 2>/dev/null \
+    | sed -n 's/.*SHA256: *//p' | head -1 | tr -d '\r')" || true
+fi
 [ -n "$FINGERPRINT" ] || FINGERPRINT="(نامشخص — با 'keytool -list -v' ببین)"
 
 step "۲) نوشتنِ فایلِ اعاده‌ی رمزها (فقط روی همین ماشین)"
@@ -93,6 +118,8 @@ printf '%s' "$STORE_PASS" | "$GH" secret set MEELANO_STORE_PASS --repo "$REPO" |
 printf '%s' "$KEY_PASS"   | "$GH" secret set MEELANO_KEY_PASS   --repo "$REPO" || die "MEELANO_KEY_PASS ست نشد"
 printf '%s' "$ALIAS"      | "$GH" secret set MEELANO_KEY_ALIAS  --repo "$REPO" || die "MEELANO_KEY_ALIAS ست نشد"
 echo "  ✔ MEELANO_KEYSTORE_B64 / MEELANO_STORE_PASS / MEELANO_KEY_PASS / MEELANO_KEY_ALIAS"
+echo "  اثر گواهی: $FINGERPRINT"
+echo "  تأیید از سمت خودت:  gh secret list --repo $REPO"
 
 if [ -n "${MEELANO_FEED_SECRET:-}" ]; then
   step "۴) ست‌کردنِ کلید HMAC امضای فید"

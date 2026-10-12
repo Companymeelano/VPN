@@ -166,12 +166,20 @@ jobs:
           ALIAS: ${{ secrets.MEELANO_KEY_ALIAS }}
         run: |
           set -euo pipefail
-          if [ -z "${KS_B64:-}" ]; then
-            echo "::error::MEELANO_KEYSTORE_B64 تنظیم نشده — نسخه‌ی نهایی بدون keystore امضا نمی‌شود."
-            echo "::error::یک‌بار keystore بساز و هر چهار secret را ست کن (این فایل را برای همیشه نگه دار؛ کلید عوض شود، آپدیت کاربران می‌شکند):"
-            echo "::error::  keytool -genkeypair -v -keystore meelano.keystore -alias meelano -keyalg RSA -keysize 4096 -validity 10950 -storepass <STORE> -keypass <KEY> -dname 'CN=M•A VPN, O=Meelano, C=IR'"
-            echo "::error::  base64 -w0 meelano.keystore | gh secret set MEELANO_KEYSTORE_B64"
-            echo "::error::  gh secret set MEELANO_STORE_PASS / MEELANO_KEY_PASS / MEELANO_KEY_ALIAS"
+          # چرا چهار بررسی جدا و نه یک `[ -z "$KS_B64" ]`: تجربه‌ی واقعیِ همین مخزن — وقتی
+          # secretها نامرئی‌اند، «می‌گوید تنظیم نشده» کافی نیست؛ باید بگوید *کدام‌ها* و *چرا*.
+          # سه علتِ رایج، به‌ترتیبِ احتمال: تب Variables به‌جای Secrets، مخزن/فورکِ دیگر، و
+          # secretهای Organization بدون دسترسیِ این مخزن.
+          missing=""
+          if [ -z "${KS_B64:-}" ];     then missing="$missing MEELANO_KEYSTORE_B64"; fi
+          if [ -z "${STORE_PASS:-}" ]; then missing="$missing MEELANO_STORE_PASS"; fi
+          if [ -z "${KEY_PASS:-}" ];   then missing="$missing MEELANO_KEY_PASS"; fi
+          if [ -z "${ALIAS:-}" ];      then missing="$missing MEELANO_KEY_ALIAS"; fi
+          if [ -n "$missing" ]; then
+            echo "::error::این secretها برای این run قابل‌دیدن نیستند:$missing"
+            echo "::error::الف) در Actions ▸ Secrets ست شده باشند، نه Variables (این‌ها رمزند). ب) روی همین مخزن $GITHUB_REPOSITORY باشند، نه فورک/مخزنِ دیگر."
+            echo "::error::ج) اگر Organization secret است، دسترسیِ همین مخزن باید تیک داشته باشد. تأیید: 'gh secret list --repo $GITHUB_REPOSITORY'"
+            echo "::error::ساختِ دوباره: ./tools/make-signing-key.sh  (کلید را بازنویسی نمی‌کند مگر FORCE=1)"
             exit 1
           fi
           printf '%s' "$KS_B64" | base64 -d > "$GITHUB_WORKSPACE/meelano.keystore"
