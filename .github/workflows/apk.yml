@@ -54,7 +54,10 @@ on:
     # ولی push تگ با همان اجازه‌ی push کار می‌کند. برای tag، فیلتر paths روی تغییرات
     # کامیتِ تگ اعمال می‌شود — و تگ همیشه روی کامیتی می‌خورد که android/** را لمس کرده.
     branches: [main]
-    tags: ['v*']
+    # `bootstrap-key-*` مسیرِ صریحِ بوت‌استرپ است (کلید روی رانر ساخته و در draft تحویل می‌شود).
+    # عمداً از `v` شروع نمی‌شود تا با تگ‌های نسخه اشتباه گرفته نشود و ورک‌فلوی variant آن را
+    # «release معمولی» فرض نکند.
+    tags: ['v*', 'bootstrap-key-*']
     paths:
       - 'android/**'
       - '.github/workflows/apk.yml'
@@ -62,6 +65,11 @@ on:
   # تا آن زمان، همین workflow روی PR اجرا می‌شود و همان APK را می‌دهد.
   pull_request:
     branches: [main]
+    # `labeled` عمداً در لیست است: تمرینِ release با گذاشتنِ برچسب شروع می‌شود و رویدادهای
+    # pull_request به‌صورت پیش‌فرض فقط opened/synchronize/reopenedاند — یعنی بدون این خط،
+    # `gh pr edit --add-label release-dry-run` هیچ رانی نمی‌ساخت و برچسب بی‌اثر می‌ماند.
+    # (هر برچسبِ دیگری هم یک رانِ معمولیِ debug می‌سازد؛ برای مخزنی با چند برچسب، بهای قابل‌قبول.)
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - 'android/**'
       - '.github/workflows/apk.yml'
@@ -100,6 +108,62 @@ jobs:
           packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
           log-accepted-android-sdk-licenses: 'false'
 
+      # ── دو تصمیمِ کلیدیِ این workflow، یک‌جا و یک‌بار: (variant) و (آیا هسته ساخته شود).
+      #    چرا variant از نام تگ استنتاج می‌شود: dispatch نیاز به actions:write دارد که توکن‌های
+      #    معمولی ندارند، ولی push تگ همان کار را با اجازه‌ی push می‌کند — پس اگر variant فقط
+      #    ورودیِ dispatch بود، «تگ = انتشار» یعنی همیشه debug (و تا v2.5.0-beta.1 همین‌طور بود).
+      #    قاعده: تگ دارای alpha/beta/rc = پیش‌انتشار (debug، برای تست روی گوشی)؛ تگ تمیزِ
+      #    vX.Y.Z = نسخه‌ی نهایی (release، امضاشده با keystore پروژه). ورودیِ dispatch برنده است.
+      #    چرا «هسته» هم این‌جاست: قبلاً همین شرطِ بلند در چهار step تکرار شده بود و هر ویرایشِ
+      #    یکی، بقیه را جا می‌گذاشت (تفاوت = بیلد core-linked که خودش را بی‌هسته می‌داند).
+      #    و چرا PRِ برچسب‌خورده‌ی `release-dry-run`: راهی برای تمرینِ کل مسیر release (R8 + امضا +
+      #    apksigner) و گرفتنِ APKِ امضاشده به‌عنوان artifact، *بدون* منتشرکردنِ چیزی.
+      - name: resolve variant + core
+        id: vr
+        run: |
+          set -euo pipefail
+          # کاما در دو طرف الزامی است: `,release-dry-run` (بدون کامای آخر) با الگوی
+          # `*,release-dry-run,*)` جور نمی‌شود و برچسب بی‌صدا نادیده می‌ماند
+          labels=",${{ join(github.event.pull_request.labels.*.name, ',') }},"
+          dry=false
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            case "$labels" in *,release-dry-run,*) dry=true ;; esac
+          fi
+          v="${{ inputs.variant }}"
+          if [ -z "$v" ]; then
+            case "${GITHUB_REF_NAME:-}" in
+              *alpha*|*beta*|*rc*) v=debug ;;
+              v[0-9]*)             v=release ;;
+              *)                   v=debug ;;
+            esac
+          fi
+          [ "$dry" = true ] && v=release
+          # ── مسیرِ بوت‌استرپِ کلید: وقتی secretها به هر دلیلی به run نمی‌رسند، تنها راهِ رسیدن به
+          #    یک APK *امضاشده* این است که کلید را همین‌جا (روی رانر) بسازیم. عمداً با یک پیشوندِ
+          #    صریح و نامتعارف (`bootstrap-key-*`) فعال می‌شود تا هیچ تگِ معمولی — و هیچ فراموشیِ
+          #    secret — بی‌صدا به «کلیدِ یک‌بارمصرف» تبدیل نشود (خطِ پایین همان تگ را سخت رد می‌کند).
+          #    کلید و رمزهایش به‌صورت draft release برمی‌گردند (draft برای عموم نامرئی است) تا
+          #    صاحبِ مخزن آن را بردارد و برای همیشه نگه دارد؛ ریلیزِ عمومی فقط APK را دارد.
+          bootstrap=false
+          case "${GITHUB_REF_NAME:-}" in bootstrap-key-*) bootstrap=true ;; esac
+          [ "$bootstrap" = true ] && v=release
+          core=false
+          if [ "${{ github.event_name }}" = workflow_dispatch ] && [ "${{ inputs.core_linked }}" != "false" ]; then core=true; fi
+          if [ "$dry" = true ]; then core=true; fi
+          if [ "$bootstrap" = true ]; then core=true; fi
+          case "${GITHUB_REF:-}" in refs/tags/*) core=true ;; esac
+          # بیلد بدونِ هسته، VPN نیست: اگر release خواسته شده و هیچ‌چیز هسته را نمی‌سازد،
+          # همین‌جا با پیامِ روشن بایست — نه اینکه gradle وسط build با GradleException بترکد
+          if [ "$v" = release ] && [ "$core" != true ]; then
+            echo "::error::variant=release یعنی تونل باید باشد، ولی هیچ شرطی هسته را نمی‌سازد (core_linked=false در dispatch؟)"
+            exit 1
+          fi
+          echo "variant=$v" >> "$GITHUB_OUTPUT"
+          echo "core=$core" >> "$GITHUB_OUTPUT"
+          echo "dry_run=$dry" >> "$GITHUB_OUTPUT"
+          echo "bootstrap=$bootstrap" >> "$GITHUB_OUTPUT"
+          echo "### variant: $v · core: $core · bootstrap-key: $bootstrap$( [ "$dry" = true ] && echo ' · **dry-run** (هیچ ریلیزی منتشر نمی‌شود)' )" >> "$GITHUB_STEP_SUMMARY"
+
       # gradle بدون wrapper: مخزن عمداً gradle-wrapper.jar (باینری) را نگه نمی‌دارد؛
       # این اکشن توزیع را نصب می‌کند و کش می‌کند. نسخه با AGP 8.6 هماهنگ است.
       - uses: gradle/actions/setup-gradle@v4
@@ -108,27 +172,98 @@ jobs:
           cache-read-only: false
 
       - name: keystore (release only)
-        if: ${{ inputs.variant == 'release' }}
+        id: ks
+        if: ${{ steps.vr.outputs.variant == 'release' }}
         env:
           KS_B64: ${{ secrets.MEELANO_KEYSTORE_B64 }}
-          STORE_PASS: ${{ secrets.MEELANO_STORE_PASS }}
-          KEY_PASS: ${{ secrets.MEELANO_KEY_PASS }}
-          ALIAS: ${{ secrets.MEELANO_KEY_ALIAS }}
+          STORE_PASS_IN: ${{ secrets.MEELANO_STORE_PASS }}
+          KEY_PASS_IN: ${{ secrets.MEELANO_KEY_PASS }}
+          ALIAS_IN: ${{ secrets.MEELANO_KEY_ALIAS }}
+          BOOTSTRAP: ${{ steps.vr.outputs.bootstrap }}
         run: |
           set -euo pipefail
-          if [ -z "${KS_B64:-}" ]; then
-            echo "::error::MEELANO_KEYSTORE_B64 تنظیم نشده. با 'openssl genrsa'/'keytool' یک keystore بساز و:"
-            echo "  base64 -w0 meelano.keystore | gh secret set MEELANO_KEYSTORE_B64"
+          # چرا چهار بررسی جدا و نه یک `[ -z "$KS_B64" ]`: تجربه‌ی واقعیِ همین مخزن — وقتی
+          # secretها نامرئی‌اند، «می‌گوید تنظیم نشده» کافی نیست؛ باید بگوید *کدام‌ها* و *چرا*.
+          # سه علتِ رایج، به‌ترتیبِ احتمال: تب Variables به‌جای Secrets، مخزن/فورکِ دیگر، و
+          # secretهای Organization بدون دسترسیِ این مخزن.
+          ALIAS="${ALIAS_IN:-meelano}"
+          missing=""
+          if [ -z "${KS_B64:-}" ];      then missing="$missing MEELANO_KEYSTORE_B64"; fi
+          if [ -z "${STORE_PASS_IN:-}" ]; then missing="$missing MEELANO_STORE_PASS"; fi
+          if [ -z "${KEY_PASS_IN:-}" ]; then missing="$missing MEELANO_KEY_PASS"; fi
+          if [ -z "${ALIAS_IN:-}" ];    then missing="$missing MEELANO_KEY_ALIAS"; fi
+          KS="$GITHUB_WORKSPACE/meelano.keystore"
+          if [ -z "$missing" ]; then
+            # مسیر عادی: کلید از secretها می‌آید
+            STORE_PASS="$STORE_PASS_IN"; KEY_PASS="$KEY_PASS_IN"
+            printf '%s' "$KS_B64" | base64 -d > "$KS"
+          elif [ "$BOOTSTRAP" = "true" ]; then
+            # ── بوت‌استرپِ کلید (فقط با تگِ صریحِ `bootstrap-key-*`): کلید را روی همین رانر
+            #    می‌سازیم تا راهی برای رسیدن به یک APK *امضاشده* بماند وقتی secretها نمی‌رسند.
+            #    کلید + رمزها به‌صورت draft release برمی‌گردند (draft برای عموم نامرئی است) و
+            #    ریلیزِ عمومی فقط APK را دارد. امضا با signTool خودِ Gradle انجام می‌شود که
+            #    همان apksig رسمی است — نه ابزار دست‌ساز.
+            echo "::warning::بوت‌استرپِ کلید فعال شد؛ secretهای نامرئی:$missing"
+            STORE_PASS="$(openssl rand -hex 24)"
+            KEY_PASS="$(openssl rand -hex 24)"
+            keytool -genkeypair -v -keystore "$KS" -alias "$ALIAS" \
+              -keyalg RSA -keysize 4096 -validity 10950 \
+              -storepass "$STORE_PASS" -keypass "$KEY_PASS" \
+              -dname "CN=M•A VPN, O=Meelano, C=IR" >/dev/null
+            {
+              echo "M•A VPN — کلید امضای انتشار (بوت‌استرپِ CI)"
+              echo "ساخته‌شده: $(date -u '+%Y-%m-%d %H:%M UTC')"
+              echo
+              echo "alias    : $ALIAS"
+              echo "storePass: $STORE_PASS"
+              echo "keyPass  : $KEY_PASS"
+              echo
+              echo "این فایل را نگه دار؛ برای اینکه انتشارهای بعدی با همین کلید امضا شوند:"
+              echo "  openssl base64 -A -in meelano.keystore > ks.b64"
+              echo "  gh secret set MEELANO_KEYSTORE_B64 --repo $GITHUB_REPOSITORY < ks.b64 && rm ks.b64"
+              echo "  printf '%s' '<storePass>' | gh secret set MEELANO_STORE_PASS --repo $GITHUB_REPOSITORY"
+              echo "  printf '%s' '<keyPass>'   | gh secret set MEELANO_KEY_PASS   --repo $GITHUB_REPOSITORY"
+              echo "  printf '%s' '$ALIAS'      | gh secret set MEELANO_KEY_ALIAS  --repo $GITHUB_REPOSITORY"
+              echo "بعد این draft release را پاک کن (تنها نسخه‌ی کلید همین فایل است)."
+            } > "$GITHUB_WORKSPACE/keystore-credentials.txt"
+            echo "bootstrap_key=1" >> "$GITHUB_OUTPUT"
+          else
+            # دو حالتِ متفاوت، دو رفتارِ متفاوت:
+            #  • روی PR (تمرینِ release): بدون کلید هم بیلد می‌گیریم تا R8/منابع/تست‌ها سنجیده
+            #    شوند، ولی خروجی «unsigned» مهر می‌شود و از PR هیچ ریلیزی منتشر نمی‌شود. همین APK
+            #    را می‌توان بیرون از CI امضا و منتشر کرد (tools/sign-apk.sh).
+            #  • روی تگِ معمولی: سخت‌گیر. انتشار یک APK بی‌امضا بدتر از منتشر نکردن است، و
+            #    «موفقِ بی‌صدا» بدترین حالت: کاربر فایل را می‌گیرد و نصب نمی‌شود.
+            if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+              echo "::warning::بدونِ کلید امضا اجرا می‌شود (unsigned dry-run):$missing"
+              echo "signing=unsigned" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::این secretها برای این run قابل‌دیدن نیستند:$missing"
+            echo "::error::الف) در Actions ▸ Secrets ست شده باشند، نه Variables (این‌ها رمزند). ب) روی همین مخزن $GITHUB_REPOSITORY باشند، نه فورک/مخزنِ دیگر."
+            echo "::error::ج) اگر Organization secret است، دسترسیِ همین مخزن باید تیک داشته باشد. تأیید: 'gh secret list --repo $GITHUB_REPOSITORY'"
+            echo "::error::د) یا با تگِ صریحِ «bootstrap-key-vX.Y.Z» یک کلیدِ تازه بساز (تحویل در draft release)."
+            echo "::error::ساختِ دوباره: ./tools/make-signing-key.sh  (کلید را بازنویسی نمی‌کند مگر FORCE=1)"
             exit 1
           fi
-          printf '%s' "$KS_B64" | base64 -d > "$GITHUB_WORKSPACE/meelano.keystore"
+          # نوع keystore را از خودِ فایل تشخیص بده: JKS با جادوی FE ED FE ED شروع می‌شود (در hex
+          # می‌شود `feedfeed`)، بقیه PKCS12. چرا اصلاً مهم است: پیش‌فرضِ JVM از JDK 9 به بعد PKCS12
+          # است، پس یک .jks قدیمی بدون این خط با «password was incorrect» می‌شکند — پیامی که هیچ
+          # ربطی به رمز ندارد.
+          magic=$(head -c 4 "$KS" | od -An -tx1 | tr -d ' \n')
+          case "$magic" in
+            feedfeed) ks_type=JKS ;;
+            *)        ks_type=PKCS12 ;;
+          esac
+          echo "keystore type: $ks_type (magic $magic)"
           cat > android/keystore.properties <<EOF
-          storeFile=$GITHUB_WORKSPACE/meelano.keystore
+          storeFile=$KS
           storePassword=$STORE_PASS
           keyAlias=$ALIAS
           keyPassword=$KEY_PASS
+          storeType=$ks_type
           EOF
-
+          echo "signing=signed" >> "$GITHUB_OUTPUT"
       - name: version from gradle
         id: ver
         working-directory: android
@@ -189,14 +324,14 @@ jobs:
       #    سنگین نکند). کلاسِ واگرفکننده با javap استخراج می‌شود، نه حدس، و انعطاف‌شکنیِ رشته‌ای اینجاست:
       #    اگر upstream نام invoke را عوض کرد، همین step قرمز می‌شود — نه کاربرِ اپ.
       - uses: actions/setup-go@v5
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.core_linked != 'false') || startsWith(github.ref, 'refs/tags/') || (github.event_name == 'pull_request' && github.head_ref == 'arena/4dca8c7e-vpn') }}
+        if: ${{ steps.vr.outputs.core == 'true' }}
         with:
           go-version: '1.27'
           check-latest: true
 
       - name: cache libXray core
         id: core-cache
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.core_linked != 'false') || startsWith(github.ref, 'refs/tags/') || (github.event_name == 'pull_request' && github.head_ref == 'arena/4dca8c7e-vpn') }}
+        if: ${{ steps.vr.outputs.core == 'true' }}
         uses: actions/cache@v4
         with:
           path: android/app/libs/core.aar
@@ -205,10 +340,7 @@ jobs:
 
       - name: build the tunnel core (XTLS/libXray, pinned)
         id: core
-        if: ${{ ((github.event_name == 'workflow_dispatch' && inputs.core_linked != 'false')
-                   || startsWith(github.ref, 'refs/tags/')
-                   || (github.event_name == 'pull_request' && github.head_ref == 'arena/4dca8c7e-vpn'))
-                 && steps.core-cache.outputs.cache-hit != 'true' }}
+        if: ${{ steps.vr.outputs.core == 'true' && steps.core-cache.outputs.cache-hit != 'true' }}
         env:
           ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk-bundle
         run: |
@@ -235,7 +367,7 @@ jobs:
 
       - name: verify the bridge contract inside the AAR
         id: bridge
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.core_linked != 'false') || startsWith(github.ref, 'refs/tags/') || (github.event_name == 'pull_request' && github.head_ref == 'arena/4dca8c7e-vpn') }}
+        if: ${{ steps.vr.outputs.core == 'true' }}
         run: |
           set -euo pipefail
           cd android/app/libs
@@ -306,8 +438,9 @@ jobs:
           MEELANO_FEED_KEY_IN: ${{ inputs.feed_key }}
           MEELANO_FEED_SECRET: ${{ secrets.MEELANO_FEED_SECRET }}
           SELF_UPDATE: ${{ inputs.self_update || 'true' }}
-          CORE_LINKED: ${{ inputs.core_linked || 'false' }}
-          VARIANT: ${{ inputs.variant || 'debug' }}
+          # از تصمیمِ تک‌نقطه‌ایِ بالا؛ نه از ورودیِ dispatch که در رویدادِ تگ اصلاً وجود ندارد
+          CORE_LINKED: ${{ steps.vr.outputs.core }}
+          VARIANT: ${{ steps.vr.outputs.variant }}
         run: |
           set -euo pipefail
           task=":app:assemble${VARIANT^}"
@@ -471,7 +604,7 @@ jobs:
         if: steps.build.outcome == 'success'
         run: |
           set -euo pipefail
-          variant="${{ inputs.variant || 'debug' }}"
+          variant="${{ steps.vr.outputs.variant }}"
           dir="android/app/build/outputs/apk/$variant"
           arm64=$(find "$dir" -type f -name '*arm64-v8a*.apk' | head -1)
           universal=$(find "$dir" -type f -name '*universal*.apk' | head -1)
@@ -479,10 +612,62 @@ jobs:
           [ -n "$universal" ] || { echo "::error::universal APK تولید نشد"; exit 1; }
           # The canonical backend-scannable name is intentionally the arm64 APK: that is the primary
           # Android-phone deliverable. Universal stays a separately named CI/Release fallback.
-          out="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}.apk"
-          uout="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}-universal.apk"
+          signing="${{ steps.ks.outputs.signing }}"
+          [ -n "$signing" ] || signing=signed     # بیلدهای debug این step را رد می‌کنند
+          # نامِ فایلِ بی‌امضا صریحاً `-unsigned` می‌گیرد: هیچ راهی نباید باشد که کسی این را با
+          # نسخه‌ی نهایی اشتباه بگیرد (Version.php هم چنین نامی را رد می‌کند، پس بی‌صدا به فید نمی‌رود).
+          if [ "$signing" = unsigned ]; then
+            out="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}-unsigned.apk"
+            uout="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}-unsigned-universal.apk"
+          else
+            out="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}.apk"
+            uout="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}-universal.apk"
+          fi
           cp "$arm64" "./$out"
           cp "$universal" "./$uout"
+
+          # امضا را *می‌سنجیم*، فرض نمی‌کنیم. اگر کسی روی تگ نهایی بیلد debug بدهد (یا keystore در
+          # واقع اعمال نشود)، این‌جا قرمز می‌شود — نه روی گوشیِ کاربر که «به‌روزرسانی نصب نشد» می‌بیند
+          # ولی دلیلش را نمی‌داند. اثر گواهی در یادداشت ریلیز می‌رود تا ریلیز بعدی قابل‌مقایسه باشد.
+          norm() { tr 'A-Z' 'a-z' < /dev/stdin | tr -d ':\r '; }
+          # apksigner روی PATH نیست؛ داخل build-tools هر SDK است. اول PATH، بعد ANDROID_HOME،
+          # بعد مسیر پیش‌فرضِ رانرها — و اگر هیچ‌کدام نبود، release قرمز می‌شود (نه اینکه با
+          # خیالِ خوشِ «حتماً امضا شده» منتشر شود). `head -1` داخل || true: sed با بستنِ pipe
+          # سیگنال SIGPIPE می‌گیرد و با pipefail کلِ step می‌مرد.
+          if ! command -v apksigner >/dev/null 2>&1; then
+            for sdk in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" /usr/local/lib/android/sdk; do
+              [ -n "$sdk" ] && [ -d "$sdk/build-tools" ] || continue
+              bt=$(ls -d "$sdk"/build-tools/* 2>/dev/null | sort -V | tail -1 || true)
+              if [ -n "${bt:-}" ] && [ -x "$bt/apksigner" ]; then export PATH="$bt:$PATH"; break; fi
+            done
+            unset sdk bt 2>/dev/null || true
+          fi
+          echo "apksigner: $(command -v apksigner || echo 'not found')"
+          signer=""
+          if command -v apksigner >/dev/null 2>&1; then
+            signer=$( (apksigner verify --print-certs "$out" 2>/dev/null \
+              | sed -n 's/.*certificate SHA-256 digest: *//p' | head -1 | norm) || true)
+          fi
+          debug_signer=""
+          if [ -f "$HOME/.android/debug.keystore" ] && command -v keytool >/dev/null 2>&1; then
+            debug_signer=$( (keytool -list -v -keystore "$HOME/.android/debug.keystore" \
+              -alias androiddebugkey -storepass android -keypass android 2>/dev/null \
+              | sed -n 's/.*SHA256: *//p' | head -1 | norm) || true)
+          fi
+          echo "signer=${signer:-unknown} debug_signer=${debug_signer:-absent} signing=$signing"
+          if [ "$signing" = unsigned ]; then
+            echo "::warning::$out بدون امضا است (تمرینِ release بدون keystore). برای انتشار، با keystore پروژه امضا کن: tools/sign-apk.sh"
+          elif [ "${{ steps.vr.outputs.variant }}" = "release" ]; then
+            if [ -z "$signer" ]; then
+              echo "::error::apksigner در دسترس نبود — نمی‌توان تأیید کرد APK نهایی با keystore پروژه امضا شده است"
+              exit 1
+            fi
+            if [ -n "$debug_signer" ] && [ "$signer" = "$debug_signer" ]; then
+              echo "::error::APK نهایی با کلید debug امضا شده، نه با keystore پروژه (secretها/keystore.properties را چک کن)"
+              exit 1
+            fi
+          fi
+
           sha=$(sha256sum "$out" | cut -d' ' -f1)
           usha=$(sha256sum "$uout" | cut -d' ' -f1)
           size=$(stat -c%s "$out")
@@ -504,12 +689,18 @@ jobs:
           echo "universal_file=$uout" >> "$GITHUB_OUTPUT"
           echo "universal_sha256=$usha" >> "$GITHUB_OUTPUT"
           echo "universal_size=$usize" >> "$GITHUB_OUTPUT"
+          echo "signer_sha256=$signer" >> "$GITHUB_OUTPUT"
 
       # Release با APK + sha256 + آیکون ۵۱۲. چرا Release و نه Artifact: artifact بعد از ۹۰ روز
       # می‌میرد و صفحه‌اش برای هر دانلود دوباره redirect می‌کند؛ asset یک ریلیز لینک مستقیم و ثابت است
       # که می‌شود آن را کپی کرد روی public_html/v/apk/ و به کاربران داد.
+      # از PR هیچ‌وقت ریلیز منتشر نمی‌شود — نه از این شاخه و نه از آن یکی. تمرینِ release مسیرش
+      # جداست: برچسبِ release-dry-run بیلدِ release می‌سازد و APK امضاشده را به‌عنوان artifact
+      # می‌دهد (`gh run download <run> -n meelano-apk-release`) بی آنکه چیزی عمومی شود. تا پیش از
+      # این، شرط به نامِ یک شاخه‌ی ادغام‌شده‌ی قدیمی گره خورده بود؛ یعنی «انتشار از PR» فقط برای
+      # همان یک شاخه ممکن بود و برای بقیه بی‌صدا رد می‌شد.
       - name: publish release
-        if: ${{ steps.out.outputs.file != '' && (github.event_name != 'pull_request' || github.head_ref == 'arena/4dca8c7e-vpn') }}
+        if: ${{ steps.out.outputs.file != '' && github.event_name != 'pull_request' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FILE: ${{ steps.out.outputs.file }}
@@ -518,13 +709,25 @@ jobs:
           UFILE: ${{ steps.out.outputs.universal_file }}
           USHA: ${{ steps.out.outputs.universal_sha256 }}
           USIZE: ${{ steps.out.outputs.universal_size }}
-          VARIANT: ${{ inputs.variant || 'debug' }}
+          SIGNER: ${{ steps.out.outputs.signer_sha256 }}
+          VARIANT: ${{ steps.vr.outputs.variant }}
+          BOOTSTRAP: ${{ steps.vr.outputs.bootstrap }}
+          VNAME: ${{ steps.ver.outputs.name }}
         run: |
           set -uo pipefail
-          case "$GITHUB_REF" in
-            refs/tags/*) tag="${GITHUB_REF_NAME}" ;;
-            *) tag="apk-$(date -u +%Y%m%d-%H%M)-${VARIANT}" ;;
-          esac
+          target=""
+          if [ "$BOOTSTRAP" = "true" ]; then
+            # تگِ بوت‌استرپ (`bootstrap-key-*`) اسمِ انتشار نیست؛ نامِ انتشار همان نسخه‌ی خودِ
+            # بیلد است (`v2.5.0`) و تگ را همین‌جا با --target می‌سازیم (ساختِ تگ از API رویدادِ
+            # push تولید نمی‌کند، پس run دوباره‌ای شروع نمی‌شود).
+            tag="v${VNAME}"
+            target="$GITHUB_SHA"
+          else
+            case "$GITHUB_REF" in
+              refs/tags/*) tag="${GITHUB_REF_NAME}" ;;
+              *) tag="apk-$(date -u +%Y%m%d-%H%M)-${VARIANT}" ;;
+            esac
+          fi
           # فقط ۶۴ هگز، نه قالبِ sha256sum: Version.php::checksum() همین را می‌خواهد (هرچند از
           # نسخه‌ی تازه، قالبِ sha256sum را هم می‌خواند)
           printf '%s\n' "$SHA" > "$FILE.sha256"
@@ -538,14 +741,26 @@ jobs:
             echo "- APK universal (arm64 + v7a): \`$UFILE\` · $USIZE بایت · sha256: \`$USHA\`"
             echo "- نصب روی گوشی: \`adb install -r $FILE\`"
             echo "- برای آپدیت خودکار: \`$FILE\` و \`$FILE.sha256\` را در \`public_html/v/apk/\` بگذار — نام فایل از قبل با قاعده‌ی \`Version.php::scan()\` می‌خواند، پس تغییرنام لازم نیست"
-            echo "- این بیلد debug است (کلید debug). ریلیز کاربران را با keystore خودت بساز: docs/ANDROID-BUILD.md"
+            if [ "$BOOTSTRAP" = "true" ]; then
+              echo "- امضا: **کلیدِ تازه‌ی پروژه** (بوت‌استرپ، RSA 4096) — بیلد debug نیست. کلید در release پیش‌نویس جداگانه نگه داشته شده تا مالکِ مخزن برش دارد و از این پس انتشارها با همان کلید امضا شوند"
+            elif [ "$VARIANT" = "release" ]; then
+              echo "- امضا: keystore **خودِ پروژه** (secretهای MEELANO_*) — بیلد debug نیست، پس همین فایل را روی هاست بگذار"
+              echo "- همین کلید ثابت است، پس این APK روی نصب‌های قبلیِ همین بسته به‌روزرسانی می‌شود؛ فقط بیلد debug کنار گذاشته می‌شود (applicationId آن \`…​.debug\` است)"
+            else
+              echo "- این بیلد debug است (کلید debug). ریلیز کاربران را با keystore خودت بساز: docs/ANDROID-BUILD.md"
+            fi
             [ -n "${{ steps.bridge.outputs.core_sha256 }}" ] && echo "- هسته: libXray ${{ env.LIBXRAY_TAG }} — bridge \`${{ steps.bridge.outputs.bridge }}\` · core.aar sha256 \`${{ steps.bridge.outputs.core_sha256 }}\`"
-            echo "- ⚠️ اگر نصب به‌روزرسانی خطا داد: بیلدهای debug روی هر رانر امضای متفاوت می‌گیرند — نسخه‌ی قبلی را کامل پاک کن بعد نصب کن"
+            [ -n "${SIGNER:-}" ] && echo "- گواهی امضا (SHA-256): \`$SIGNER\` — ریلیزهای بعدی باید همین اثر را بدهند، وگرنه به‌روزرسانی روی نصب قبلی رد می‌شود"
+            if [ "$VARIANT" = "release" ]; then
+              echo "- ⚠️ اگر نسخه‌ی نصب‌شده‌ی قبلی با کلید دیگری امضا شده، فقط یک‌بار باید حذف/نصب شود؛ از این نسخه به بعد به‌روزرسانی بدون حذف کار می‌کند"
+            else
+              echo "- ⚠️ اگر نصب به‌روزرسانی خطا داد: بیلدهای debug روی هر رانر امضای متفاوت می‌گیرند — نسخه‌ی قبلی را کامل پاک کن بعد نصب کن"
+            fi
           } > notes.md
           assets="$FILE $FILE.sha256 $UFILE $UFILE.sha256"
           [ -f design/preview/assets/ic-store-512.png ] && assets="$assets design/preview/assets/ic-store-512.png"
           # خروجی کامل gh به‌صورت annotation: لاگ build از بیرون قابل دانلود نیست، این تنها کانال اطمینان‌یافتنی است
-          gh release create "$tag" $assets --title "Meelano VPN — $tag ($VARIANT)" --notes-file notes.md $pre >rel.log 2>&1 \
+          gh release create "$tag" $assets ${target:+--target "$target"} --title "Meelano VPN — $tag ($VARIANT)" --notes-file notes.md $pre >rel.log 2>&1 \
             || gh release upload "$tag" $assets --clobber >>rel.log 2>&1 \
             || { echo "::error::release failed — $(tr '\n' '|' < rel.log | cut -c1-500)"; exit 1; }
           url=$(gh release view "$tag" --json url -q .url)
@@ -557,6 +772,34 @@ jobs:
             echo "- arm64 sha256: \`$SHA\` · حجم: $SIZE بایت"
             echo "- universal: $url/download/$UFILE · sha256: \`$USHA\` · حجم: $USIZE بایت"
           } >> "$GITHUB_STEP_SUMMARY"
+
+          # کلیدِ بوت‌استرپ: به‌صورت **draft** برمی‌گردد. draft برای عموم (و برای هر کسی جز
+          # صاحبِ مخزن) نامرئی است، پس کلید و رمزها عمومی نمی‌شوند. صاحبِ مخزن برش می‌دارد،
+          # چهار secret را ست می‌کند و این draft را پاک می‌کند.
+          if [ "$BOOTSTRAP" = "true" ]; then
+            ktag="key-bootstrap-${VNAME}"
+            {
+              echo "# کلیدِ امضای M•A VPN — بوت‌استرپ"
+              echo
+              echo "این release **پیش‌نویس** است: فقط کسی که دسترسی push دارد آن را می‌بیند."
+              echo
+              echo "- تگِ بیلد: \`$GITHUB_REF_NAME\` · کامیت \`${GITHUB_SHA::7}\`"
+              echo "- اثر گواهی APK منتشرشده (SHA-256): \`${SIGNER:-نامشخص}\`"
+              echo
+              echo "## کاری که باید بکنی"
+              echo "1. \`meelano.keystore\` و \`keystore-credentials.txt\` را دانلود کن و در جای امن نگه دار."
+              echo "2. چهار secret را از همان مقادیر ست کن تا انتشارهای بعدی با همین کلید امضا شوند (دستورها داخل فایل رمزها هست)."
+              echo "3. همین draft را پاک کن — تنها نسخه‌ی کلید، فایلِ دانلودشدهٔ توست."
+              echo
+              echo "⚠️ اگر این کلید گم شود، کاربرانِ نسخه‌ی نصب‌شده فقط با حذف و نصبِ دوباره آپدیت می‌شوند."
+            } > keynotes.md
+            gh release create "$ktag" "$GITHUB_WORKSPACE/meelano.keystore" "$GITHUB_WORKSPACE/keystore-credentials.txt" \
+              --draft --target "$GITHUB_SHA" --title "کلید امضا — بوت‌استرپ $VNAME (پیش‌نویس، پاک کن بعد از برداشتن)" \
+              --notes-file keynotes.md >key.log 2>&1 \
+              || echo "::warning::ساختِ draft کلید نشد — $(tr '\n' '|' < key.log | cut -c1-300)"
+            echo "### کلید بوت‌استرپ" >> "$GITHUB_STEP_SUMMARY"
+            echo "release پیش‌نویس \`$ktag\` ساخته شد (کلید + رمزها). آن را بردار و بعد پاکش کن." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       # channel #2: artifact. وقتی کسی به Actions دسترسی ندارد (یا gh pr comment بی‌صدا رد می‌شود،
       # که در این مخزن رخ داده)، «چرا قرمز شد» بدون لاگ یعنی حدس‌زدنِ کور. لاگِ خام به‌عنوان
@@ -580,7 +823,7 @@ jobs:
         # not supplied: path» قرمز می‌شود و خطای *واقعی* را زیر خودش گم می‌کند.
         if: steps.out.outcome == 'success'
         with:
-          name: meelano-apk-${{ inputs.variant || 'debug' }}
+          name: meelano-apk-${{ steps.vr.outputs.variant }}
           path: |
             ${{ steps.out.outputs.file }}
             ${{ steps.out.outputs.universal_file }}
