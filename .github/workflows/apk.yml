@@ -158,6 +158,7 @@ jobs:
           cache-read-only: false
 
       - name: keystore (release only)
+        id: ks
         if: ${{ steps.vr.outputs.variant == 'release' }}
         env:
           KS_B64: ${{ secrets.MEELANO_KEYSTORE_B64 }}
@@ -176,6 +177,18 @@ jobs:
           if [ -z "${KEY_PASS:-}" ];   then missing="$missing MEELANO_KEY_PASS"; fi
           if [ -z "${ALIAS:-}" ];      then missing="$missing MEELANO_KEY_ALIAS"; fi
           if [ -n "$missing" ]; then
+            # دو حالتِ متفاوت، دو رفتارِ متفاوت:
+            #  • روی PR (تمرینِ release): بدون کلید هم بیلد می‌گیریم تا R8/منابع/تست‌ها سنجیده
+            #    شوند، ولی خروجی «unsigned» مهر می‌شود و از PR هیچ ریلیزی منتشر نمی‌شود. همین APK
+            #    را می‌توان بیرون از CI امضا و منتشر کرد (tools/sign-apk.sh) — مسیری که وقتی
+            #    secretها به هر دلیلی نمی‌رسند، گره را باز می‌کند.
+            #  • روی تگ: سخت‌گیر. انتشار یک APK بی‌امضا بدتر از منتشر نکردن است، و «موفقِ بی‌صدا»
+            #    بدترین حالت: کاربر فایل را می‌گیرد و نصب نمی‌شود.
+            if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+              echo "::warning::بدونِ کلید امضا اجرا می‌شود (unsigned dry-run):$missing"
+              echo "signing=unsigned" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             echo "::error::این secretها برای این run قابل‌دیدن نیستند:$missing"
             echo "::error::الف) در Actions ▸ Secrets ست شده باشند، نه Variables (این‌ها رمزند). ب) روی همین مخزن $GITHUB_REPOSITORY باشند، نه فورک/مخزنِ دیگر."
             echo "::error::ج) اگر Organization secret است، دسترسیِ همین مخزن باید تیک داشته باشد. تأیید: 'gh secret list --repo $GITHUB_REPOSITORY'"
@@ -200,6 +213,7 @@ jobs:
           keyPassword=$KEY_PASS
           storeType=$ks_type
           EOF
+          echo "signing=signed" >> "$GITHUB_OUTPUT"
 
       - name: version from gradle
         id: ver
@@ -549,8 +563,17 @@ jobs:
           [ -n "$universal" ] || { echo "::error::universal APK تولید نشد"; exit 1; }
           # The canonical backend-scannable name is intentionally the arm64 APK: that is the primary
           # Android-phone deliverable. Universal stays a separately named CI/Release fallback.
-          out="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}.apk"
-          uout="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}-universal.apk"
+          signing="${{ steps.ks.outputs.signing }}"
+          [ -n "$signing" ] || signing=signed     # بیلدهای debug این step را رد می‌کنند
+          # نامِ فایلِ بی‌امضا صریحاً `-unsigned` می‌گیرد: هیچ راهی نباید باشد که کسی این را با
+          # نسخه‌ی نهایی اشتباه بگیرد (Version.php هم چنین نامی را رد می‌کند، پس بی‌صدا به فید نمی‌رود).
+          if [ "$signing" = unsigned ]; then
+            out="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}-unsigned.apk"
+            uout="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}-unsigned-universal.apk"
+          else
+            out="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}.apk"
+            uout="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}-universal.apk"
+          fi
           cp "$arm64" "./$out"
           cp "$universal" "./$uout"
 
@@ -582,8 +605,10 @@ jobs:
               -alias androiddebugkey -storepass android -keypass android 2>/dev/null \
               | sed -n 's/.*SHA256: *//p' | head -1 | norm) || true)
           fi
-          echo "signer=${signer:-unknown} debug_signer=${debug_signer:-absent}"
-          if [ "${{ steps.vr.outputs.variant }}" = "release" ]; then
+          echo "signer=${signer:-unknown} debug_signer=${debug_signer:-absent} signing=$signing"
+          if [ "$signing" = unsigned ]; then
+            echo "::warning::$out بدون امضا است (تمرینِ release بدون keystore). برای انتشار، با keystore پروژه امضا کن: tools/sign-apk.sh"
+          elif [ "${{ steps.vr.outputs.variant }}" = "release" ]; then
             if [ -z "$signer" ]; then
               echo "::error::apksigner در دسترس نبود — نمی‌توان تأیید کرد APK نهایی با keystore پروژه امضا شده است"
               exit 1
