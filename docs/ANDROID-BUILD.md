@@ -169,18 +169,34 @@ SDK لازم: `platform-tools`, `platforms;android-35`, `build-tools;35.0.0`.
 ## ۷) لینک‌های نسخه‌ی فعلی
 | مورد | مقدار |
 |---|---|
-| Release | `https://github.com/Companymeelano/VPN/releases/tag/v2.5.0-beta.1` |
-| APK (asset) | `https://github.com/Companymeelano/VPN/releases/download/v2.5.0-beta.1/meelano-2.5.0-205000.apk` |
-| حجم / sha256 | ۶۴٬۰۹۴٬۴۶۶ بایت · `51a5da161865d4966b862b198cdec486a5da75a95fa6a56b4470b979cb34534f` |
+| Release | `https://github.com/Companymeelano/VPN/releases/tag/v2.5.0` (**Latest**، امضاشده) |
+| APK (asset) | `https://github.com/Companymeelano/VPN/releases/download/v2.5.0/meelano-2.5.0-205000.apk` |
+| حجم / sha256 | ۵۵٬۲۱۹٬۳۶۱ بایت · `7a8e35e460b5f6feb16ff64b5979353ac58e3bd9cf11f72a4b3175aed49fc7d3` |
+| اثر گواهی امضا (SHA-256) | `71f1e7b552a5a7871ff892269ec4919e55e0515d495241411b870f72637b8b27` — ریلیز بعدی باید همین را بدهد |
 | کنارش | `…meelano-2.5.0-205000.apk.sha256` (۶۵ بایت = ۶۴ هگز + newline — همان چیزی که `Version.php::checksum()` می‌خواند) |
-| universal (arm64 + v7a) | `…meelano-2.5.0-205000-universal.apk` · ۱۳۰٬۹۵۲٬۰۲۱ بایت · `de1fb48ff1907f3f89a0c0c5a3485f25b5bd069223c016b13ba053a9c796e20a` |
+| universal (arm64 + v7a) | `…meelano-2.5.0-205000-universal.apk` · ۱۲۲٬۰۷۶٬۹۰۰ بایت · `66f5dbab8aa2d3391767efae93d17e3eaec58a5b1015afae23e7fec479349a85` |
 | نام روی هاست | همان فایل، بدون تغییرنام: `public_html/v/apk/meelano-2.5.0-205000.apk` |
-| چه چیزی نسبت به ۲٫۳٫۲ فرق کرد | هسته‌ی تونل واقعاً وصل شد (libXray v26.9.9 + تپِ اتصال با نردبان تا برقراری)، پروکسی‌ها end-to-end تأیید و فِیل‌اُور خودکار می‌شوند، تقسیم مسیر برنامه‌ها (اسنپ/دیوار/بانک‌ها بیرون از تونل — `docs/APP-ROUTING.md`)، و بیلدِ نصب‌شده با `BUILD_ID` در دیباگ/تنظیمات شناسایی می‌شود |
-| وضعیت هسته | `CORE_LINKED=true` — bridge `libXray.LibXray` · core.aar sha256 `7ac5db44426e1d7c4570d408355aa0a7a93e224e198331cc23af82a7ebfe2911` (`docs/CORE-INTEGRATION.md` §۵) |
+| هسته | libXray v26.9.9 · bridge `libXray.LibXray` · core.aar sha256 `a5ecf755edc433929e01a4be78919d4e69e4a182accbc93ae2da7fb2cd5408c8` |
+| چه چیزی نسبت به ۲٫۴٫۵ فرق کرد | بیلد **release** (R8 + shrink، ۵۵MB در برابر ۶۴MB) و امضاشده با کلید پروژه؛ پروکسی‌ها end-to-end تأیید و فِیل‌اُور خودکار؛ تقسیم مسیر برنامه‌ها (`docs/APP-ROUTING.md`) |
+| کامیت | `cd4501d` (تگ `v2.5.0` روی همان) |
 
-بیلد `v2.5.0-beta.1` روی کامیت `443c941` است (`release: v2.5.0 (versionCode 205000)`) و چون تگش
-`beta` دارد، خودکار `--prerelease` منتشر شده. نسخه‌ی قبلی هسته‌وصل: `v2.4.5` →
-`meelano-2.4.5-204005.apk` (۶۴٬۰۵۶٬۲۳۶ بایت · `d03198925ff3ad57f436fb4670467e261256a84530197f772df46ebcde4e4d08`).
+⚠️ اگر روی گوشی نسخه‌ای با کلید دیگری نصب است (هر بیلد debug، از جمله `v2.5.0-beta.1` که
+`applicationId` آن `…​.debug` است)، برای رسیدن به این نسخه یک‌بار حذف/نصب لازم است. از این نسخه
+به بعد آپدیت با همان اثر گواهی بالا بی‌دردسر است.
+
+### ۷-ب) کلید امضا کجاست (مسیر بوت‌استرپ)
+انتشار `v2.5.0` با **کلیدِ تازه‌ی پروژه** امضا شد که در رانِ CI ساخته و در یک **release پیش‌نویس**
+(`key-bootstrap-2.5.0`) تحویل داده شد؛ پیش‌نویس برای عموم نامرئی است. برای اینکه انتشارهای بعدی
+با همان کلید امضا شوند: فایل‌های `meelano.keystore` و `keystore-credentials.txt` را از آن پیش‌نویس
+بردار، چهار secret را از همان مقادیر ست کن (دستورها داخل فایل رمزها هست) و بعد پیش‌نویس را پاک کن.
+
+از این پس قاعده‌ی انتشار تمیز است:
+```bash
+git tag -a v2.5.1 -m "…" && git push origin v2.5.1     # ← با secretهای ست‌شده، خودکار امضا می‌شود
+```
+و اگر روزی secretها باز هم نرسیدند، مسیر بوت‌استرپ با یک تگِ صریح در دسترس است
+(`git push origin bootstrap-key-v2.5.1`) — کلید تازه می‌سازد و در draft تحویل می‌دهد. تگ بوت‌استرپ
+بعد از موفقیت پاک می‌شود (تگِ انتشار همان `vX.Y.Z` است که ورک‌فلوی خودش می‌سازد).
 
 نسخه‌های قبلی (برای QA مقایسه‌ای): `v2.3.1-beta.1` → `meelano-2.3.1-203001.apk`
 (۱۲٬۹۶۷٬۹۷۴ بایت · `47530774d7ab1315cbfc3ca5975f6bdc9ae2ca46e233e6ef24a9d6c875683d6b`) —
