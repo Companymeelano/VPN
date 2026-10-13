@@ -205,11 +205,18 @@ jobs:
             #    همان apksig رسمی است — نه ابزار دست‌ساز.
             echo "::warning::بوت‌استرپِ کلید فعال شد؛ secretهای نامرئی:$missing"
             STORE_PASS="$(openssl rand -hex 24)"
-            KEY_PASS="$(openssl rand -hex 24)"
+            # رمزِ کلید = رمزِ انبار. چرا: مخزنِ پیش‌فرضِ JDK 9+ **PKCS12** است و در PKCS12
+            # رمزِ کلید همیشه رمزِ انبار است؛ keytool مقدارِ `-keypass` را بی‌صدا نادیده می‌گیرد و
+            # بعد Gradle با keyPasswordِ متفاوت سرِ packageRelease می‌شکند (همین اتفاق افتاد).
+            KEY_PASS="$STORE_PASS"
             keytool -genkeypair -v -keystore "$KS" -alias "$ALIAS" \
               -keyalg RSA -keysize 4096 -validity 10950 \
               -storepass "$STORE_PASS" -keypass "$KEY_PASS" \
               -dname "CN=M•A VPN, O=Meelano, C=IR" >/dev/null
+            # پروف‌خوانی: کلید واقعاً با همین رمز/alias خوانده می‌شود؟ اگر نه، همین‌جا با پیامِ
+            # روشن بایست — نه ۸ دقیقه بعد، وسطِ packageRelease با stack trace گرادِل.
+            keytool -list -keystore "$KS" -storepass "$STORE_PASS" -alias "$ALIAS" >/dev/null \
+              || { echo "::error::keystoreِ ساخته‌شده با رمز/alias خوانده نشد (alias=$ALIAS)"; exit 1; }
             {
               echo "M•A VPN — کلید امضای انتشار (بوت‌استرپِ CI)"
               echo "ساخته‌شده: $(date -u '+%Y-%m-%d %H:%M UTC')"
