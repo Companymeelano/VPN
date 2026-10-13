@@ -72,15 +72,15 @@ curl 'http://localhost/v/?action=selftest&key=<toolKey>'
 ## اندروید
 `android/app/src/main/java/ir/meelano/vpn/**` — یک ماژول Gradle واقعی (نه اسنیپت)، **با کامپایل موفق در CI**.
 
-> تازه‌ترین APK قابل‌نصب: `v2.5.0-beta.1` (بیلد **هسته‌وصل**) →
-> [`meelano-2.5.0-205000.apk`](https://github.com/Companymeelano/VPN/releases/download/v2.5.0-beta.1/meelano-2.5.0-205000.apk)
-> (۶۴٬۰۹۴٬۴۶۶ بایت · sha256 `51a5da16…cb34534f` · کنارش `.sha256` خام برای هاست؛
-> نسخه‌ی universal با `v7a`: `meelano-2.5.0-205000-universal.apk`).
-> این بیلد `core_linked=true` است — هسته‌ی تونل (libXray v26.9.9، bridge `libXray.LibXray`) واقعاً
-> کامپایل و به `CoreApi` وصل شده، پس تونل برقرار می‌شود؛ بیلدهای `push` روی `main` عمداً بدونِ هسته‌اند
-> (فقط UI/فید/آپدیت) و تنها `v*` (تگ) هسته را می‌سازد. چون پسوند تگش `beta` است، با **کلید debug**
-> امضا شده (applicationId پسوند `.debug` می‌گیرد)؛ نسخه‌ی **نهایی** از تگ تمیزِ `v2.5.0` می‌آید و با
-> keystore پروژه امضا می‌شود — §۱ و §۳-ب همان سند. مسیر ساخت: [docs/ANDROID-BUILD.md](docs/ANDROID-BUILD.md).
+> تازه‌ترین APK قابل‌نصب: **`v2.5.0`** (نسخه‌ی نهایی، **امضاشده با کلید پروژه**) →
+> [`meelano-2.5.0-205000.apk`](https://github.com/Companymeelano/VPN/releases/download/v2.5.0/meelano-2.5.0-205000.apk)
+> (۵۵٬۲۱۹٬۳۶۱ بایت · sha256 `7a8e35e4…d49fc7d3` · اثر گواهی `71f1e7b5…637b8b27`؛
+> universal با `v7a`: `meelano-2.5.0-205000-universal.apk`).
+> این بیلد `release` است (R8 + امضا با keystore پروژه، نه کلید debug) و هسته‌ی تونل
+> (libXray v26.9.9، bridge `libXray.LibXray`) در آن وصل است. بیلدهای `push` روی `main` عمداً
+> بی‌هسته و debug‌اند؛ فقط تگ به انتشار می‌رسد (جزئیات: §۱ و §۳-پ در [docs/ANDROID-BUILD.md](docs/ANDROID-BUILD.md)).
+> اگر روی گوشی نسخه‌ای با کلید دیگری نصب است، یک‌بار حذف/نصب لازم است؛ از این نسخه به بعد آپدیت
+> بدون حذف کار می‌کند (همان اثر گواهی).
 > هویت بصری و آیکن: [docs/BRAND.md](docs/BRAND.md) — نشان، یک `M` با دهانه‌ی تونل.
 
 
