@@ -1,0 +1,194 @@
+name: build ios
+
+# iOS: همان قرارداد اندروید، روی macOS. هسته‌ی تونل (XTLS/libXray با همان تگ پین‌شده) با پل cgo
+# ساخته می‌شود، پروژه با XcodeGen تولید می‌شود، تست‌های منطقی روی Simulator اجرا می‌شوند و در نهایت
+# یک IPA‌ی *امضا‌نشده* به‌صورت artifact می‌آید. برای نصب روی آیفون واقعی/TestFlight باید گواهی اپل
+# تنظیم شود (docs/IOS-BUILD.md) — هیچ ادعایی درباره‌ی «نصب مستقیم بدون امضا» در کار نیست.
+#
+# اجراها: PR/push با مسیرهای ios/** و tools/**، تگ‌های v* (بسته‌بندی انتشار)، و dispatch دستی.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - 'tools/build-libxray-ios.sh'
+      - 'tools/check-swift.py'
+      - '.github/workflows/ios.yml'
+  # تگ‌ها همیشه بیلد می‌گیرند (همان قاعده‌ی apk.yml): این چیزی است که کاربر نصب می‌کند.
+  # no YAML anchors here on purpose: GitHub Actions does not expand them.
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - 'ios/**'
+      - 'tools/build-libxray-ios.sh'
+      - 'tools/check-swift.py'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # همان تگ CalVer اندروید؛ موتور در دو پلتفرم یک‌جا عوض می‌شود، نه در هر بیلد.
+  LIBXRAY_TAG: v26.9.9
+
+jobs:
+  structure:
+    name: swift structure + theme mirrors
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: python3 tools/check-swift.py
+      - run: python3 tools/check-theme.py
+
+  ios:
+    name: build + test + package IPA
+    runs-on: macos-15
+    needs: structure
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          check-latest: true
+          # بدون go.sum در ریشه، کش خودکارِ setup-go فقط هشدار می‌دهد؛ کش هسته را خودمان نگه می‌داریم.
+          cache: false
+
+      - name: cache libXray iOS core
+        id: core-cache
+        uses: actions/cache@v4
+        with:
+          path: ios/LibXray.xcframework
+          key: libxray-ios-${{ env.LIBXRAY_TAG }}-${{ hashFiles('tools/build-libxray-ios.sh') }}
+
+      - name: build the tunnel core (XTLS/libXray, pinned)
+        if: steps.core-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          ./tools/build-libxray-ios.sh core-only 2>&1 | tee /tmp/core-build.log | tail -30
+
+      - name: core build diagnostics (annotations)
+        # دانلود لاگ Actions از بعضی شبکه‌ها EOF می‌خورد؛ سرِ خطا را به‌صورت annotation بیرون می‌ریزیم
+        # تا بدونِ فایل لاگ هم بشود فهمید کجا سوخته است.
+        if: failure()
+        run: |
+          if [ -f /tmp/core-build.log ]; then
+            tail -40 /tmp/core-build.log | while IFS= read -r line; do
+              echo "::error title=core build::${line}"
+            done
+          fi
+
+      - name: verify the bridge contract inside the xcframework
+        id: bridge
+        run: |
+          set -euo pipefail
+          header=$(find ios/LibXray.xcframework -name libXray.h -print -quit)
+          if [ -z "$header" ]; then
+            echo "::error::no libXray.h inside ios/LibXray.xcframework"
+            exit 1
+          fi
+          grep -q 'CGoInvoke' "$header"
+          grep -q 'CGoFree' "$header"
+          echo "core bridge: CGoInvoke/CGoFree ($header)" >> "$GITHUB_STEP_SUMMARY"
+          shasum -a 256 "$header" | awk '{print "header_sha256=" $1}' >> "$GITHUB_OUTPUT"
+
+      - name: generate the Xcode project (XcodeGen)
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          cd ios
+          xcodegen generate
+          test -d MeelanoVPN.xcodeproj
+
+      - name: unit tests (the core contract, on Simulator)
+        id: tests
+        run: |
+          set -euo pipefail
+          dest=$(xcrun simctl list devices available | grep -Eo 'iPhone [^(]+' | head -1 | xargs)
+          if [ -z "$dest" ]; then dest='iPhone 16'; fi
+          echo "testing on: $dest"
+          xcodebuild test \
+            -project ios/MeelanoVPN.xcodeproj \
+            -scheme MeelanoVPN \
+            -destination "platform=iOS Simulator,name=$dest" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' \
+            | tee /tmp/xcode-test.log | tail -40
+          # بدون ستاره‌ها: xcodebuild به خطوط رنگی ANSI می‌زند و الگوی '** TEST SUCCEEDED **'
+          # دقیق نمی‌خورد - درست همان چیزی که با وجود تست‌های سبز، step را قرمز کرد.
+          if ! grep -q 'TEST SUCCEEDED' /tmp/xcode-test.log; then
+            echo '::error::xcodebuild test did not report success'
+            exit 1
+          fi
+
+      - name: xcode diagnostics (annotations)
+        # مثل مرحله‌ی هسته: سرِ خطاها را annotation می‌کنیم چون دانلود لاگ از بعضی شبکه‌ها ممکن نیست.
+        if: failure()
+        run: |
+          for f in /tmp/xcode-test.log /tmp/xcode-archive.log; do
+            [ -f "$f" ] || continue
+            {
+              grep -E "error:" "$f" | head -8
+              grep -E "Undefined symbols for architecture" -A 6 "$f" | head -8
+              grep -E "The following build commands failed" -A 4 "$f" | head -6
+              tail -8 "$f"
+            } | awk '!seen[$0]++' | head -10 | while IFS= read -r line; do
+              echo "::error title=xcode::${line}"
+            done
+          done
+
+      - name: archive + package unsigned IPA
+        id: ipa
+        run: |
+          set -euo pipefail
+          xcodebuild archive \
+            -project ios/MeelanoVPN.xcodeproj \
+            -scheme MeelanoVPN \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/MeelanoVPN.xcarchive \
+            SKIP_INSTALL=NO BUILD_LIBRARY_FOR_DISTRIBUTION=YES \
+            CODE_SIGN_IDENTITY='' CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            | tee /tmp/xcode-archive.log | tail -20
+          if ! grep -q 'ARCHIVE SUCCEEDED' /tmp/xcode-archive.log; then
+            echo '::error::xcodebuild archive did not report success'
+            exit 1
+          fi
+          app='build/MeelanoVPN.xcarchive/Products/Applications/MeelanoVPN.app'
+          test -d "$app"
+          # افزونه‌ی تونل باید داخل اپ جاسازی شده باشد، وگرنه «VPN» اصلاً ساخته نمی‌شود.
+          test -d "$app/PlugIns/MeelanoVPNTunnel.appex"
+          rm -rf Payload && mkdir Payload
+          cp -R "$app" Payload/
+          name="meelano-ios-${{ github.ref_name }}-unsigned.ipa"
+          if [[ "${{ github.ref }}" != refs/tags/* ]]; then
+            name="meelano-ios-2.6.0-206000-unsigned.ipa"
+          fi
+          zip -qry "$name" Payload
+          shasum -a 256 "$name" | awk '{print "sha256=" $1}' >> "$GITHUB_OUTPUT"
+          echo "ipa=$name" >> "$GITHUB_OUTPUT"
+          ls -l "$name" >> "$GITHUB_STEP_SUMMARY"
+          echo '⚠️ این IPA امضا نشده است؛ نصب روی آیفون/TestFlight نیازمند گواهی اپل است (docs/IOS-BUILD.md).' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: meelano-ios-unsigned
+          path: ${{ steps.ipa.outputs.ipa }}
+          if-no-files-found: error
+
+      - name: attach IPA to the GitHub release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${{ github.ref_name }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${{ steps.ipa.outputs.ipa }}" --clobber
+          else
+            echo "no release for $tag yet - artifact only (create the release, then re-run to attach)"
+          fi

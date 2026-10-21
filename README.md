@@ -119,6 +119,15 @@ android/
 APK واقعی در CI ساخته می‌شود (این محیط Android SDK ندارد): `.github/workflows/apk.yml` → Artifact.
 توضیح کامل، ورودی‌ها، و معنی `core_linked`: [`docs/ANDROID-BUILD.md`](docs/ANDROID-BUILD.md).
 
+## iOS (آیفون)
+`ios/` — اپ SwiftUI (فارسی/راست‌چین) + افزونهٔ Packet Tunnel + همان هستهٔ Xray (XTLS/libXray با
+همان تگ پین‌شده، پل cgo) + همان فید/رتبه‌بندی/Failover اندروید. پروژه با XcodeGen از
+`ios/project.yml` تولید می‌شود؛ بیلد محلی: `tools/build-libxray-ios.sh` (macOS).
+CI (`.github/workflows/ios.yml`) تست‌های منطقی را روی Simulator می‌گیرد و یک **IPA‌ی امضا‌نشده**
+تحویل می‌دهد؛ نصب واقعی/TestFlight نیازمند گواهی Apple Developer است — محدودیت پلتفرم، نه کم‌کاری.
+جزئیات معماری، مدل ترافیک (پروکسی-مود)، امضا/TestFlight و چک‌لیست آزمون میدانی:
+[`docs/IOS-BUILD.md`](docs/IOS-BUILD.md) — شروع سریع: [`ios/README-fa.md`](ios/README-fa.md).
+
 ## برای ادامه به چه نیاز دارم
 1. سورس اپ (Kotlin/Flutter/…) — پوشه‌ی پروژه، یا دست‌کم: `VpnService`، سازنده‌ی کانفیگ، بخش تست، صفحه‌ی اتصال.
 2. مشخص بودن هسته‌ی VPN (tProxy / sing-box / v2rayNG-lib / …) و نسخه‌اش.

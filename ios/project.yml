@@ -1,0 +1,127 @@
+# XcodeGen spec - the single source of truth for the Xcode project.
+#
+# Why a spec instead of a committed project.pbxproj: the project file is generated, merge-conflict
+# poison and impossible to review. `brew install xcodegen && xcodegen generate` (or
+# scripts/build-libxray-ios.sh, which does it for you) recreates everything deterministically.
+#
+# Prereq: ios/LibXray.xcframework must exist before generation, or the app targets cannot link the
+# tunnel core. scripts/build-libxray-ios.sh builds it from the pinned XTLS/libXray tag.
+name: MeelanoVPN
+options:
+  bundleIdPrefix: ir.meelano
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "2.6.0"
+    CURRENT_PROJECT_VERSION: "206000"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    # The design system is 17 tokens mirrored four ways (tools/check-theme.py); never let Xcode
+    # generate its own asset symbols and drift from them.
+    ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: NO
+
+targets:
+  MeelanoVPN:
+    type: application
+    platform: iOS
+    sources:
+      - path: MeelanoVPN
+      - path: Shared
+    dependencies:
+      - target: MeelanoVPNTunnel
+        embed: true
+      - framework: LibXray.xcframework
+        embed: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ir.meelano.vpn
+        PRODUCT_NAME: MeelanoVPN
+        INFOPLIST_KEY_CFBundleDisplayName: "M•A VPN"
+        # Go c-archive (libXray) resolves DNS through libresolv; without this the link step dies
+        # with undefined res_9_* symbols - the classic Go-on-iOS requirement.
+        OTHER_LDFLAGS: "-lresolv"
+        # هسته به این تارگت‌ها وصل است؛ تارگتِ تست عمداً بدون این فلگ می‌ماند (XrayEngine.swift).
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MEELANO_CORE_LINKED"
+    info:
+      path: MeelanoVPN/Info.plist
+      properties:
+        CFBundleDisplayName: "M•A VPN"
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIUserInterfaceStyle: Automatic
+    entitlements:
+      path: MeelanoVPN/MeelanoVPN.entitlements
+      properties:
+        com.apple.developer.app-groups:
+          - group.ir.meelano.vpn
+        com.apple.developer.networking.networkextension:
+          - packet-tunnel
+
+  MeelanoVPNTunnel:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: MeelanoVPNTunnel
+      - path: Shared
+    dependencies:
+      - framework: LibXray.xcframework
+        embed: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ir.meelano.vpn.tunnel
+        PRODUCT_NAME: MeelanoVPNTunnel
+        OTHER_LDFLAGS: "-lresolv"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MEELANO_CORE_LINKED"
+    info:
+      path: MeelanoVPNTunnel/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.networkextension.packet-tunnel
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).PacketTunnelProvider
+    entitlements:
+      path: MeelanoVPNTunnel/MeelanoVPNTunnel.entitlements
+      properties:
+        com.apple.developer.app-groups:
+          - group.ir.meelano.vpn
+        com.apple.developer.networking.networkextension:
+          - packet-tunnel
+
+  # Logic tests for the shared core (ranking, URI parsing, profile contract). Compiled from source,
+  # host-free: they run on the simulator without a signed app, exactly like the Android JVM tests.
+  MeelanoVPNTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ir.meelano.vpn.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  MeelanoVPN:
+    build:
+      targets:
+        MeelanoVPN: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - MeelanoVPNTests
+    archive:
+      config: Release
