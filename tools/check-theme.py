@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Palette mirror check. Fails (exit 1) when a colour is written differently in two of the three places.
+Palette mirror check. Fails (exit 1) when a colour is written differently in two of the four places.
 
 Why a script and not a comment: the light theme broke precisely because "match the other file" was a
 sentence. A token that exists in one mirror and not another is reported too - a missing light value is
@@ -13,6 +13,7 @@ COLOR_KT = "android/app/src/main/java/ir/meelano/vpn/ui/theme/Color.kt"
 XML_LIGHT = "android/app/src/main/res/values/colors.xml"
 XML_DARK = "android/app/src/main/res/values-night/colors.xml"
 HTML = "design/preview/index.html"
+IOS_THEME = "ios/MeelanoVPN/UI/Theme.swift"
 
 def resolve(v, block):
     """Substitute var(--x) inside a value using the same block, so --hairline:rgba(var(--film),.055)
@@ -70,6 +71,16 @@ def css_vars(text, selector):
         return None
     return dict(re.findall(r"--([a-z0-9-]+)\s*:\s*([^;]+);", m.group(1)))
 
+def swift_palettes(text):
+    """ios/MeelanoVPN/UI/Theme.swift - the fourth mirror. `static let light = Palette(bg: 0xFFF2...)`."""
+    out = {}
+    for name in ("dark", "light"):
+        m = re.search(r"static let %s = Palette\((.*?)\n    \)" % name, text, re.S)
+        if not m:
+            return None
+        out[name] = {k: "#" + v for k, v in re.findall(r"(\w+):\s*0x([0-9A-Fa-f]{8})", m.group(1))}
+    return out
+
 # name maps: Kotlin field -> xml color name -> css var (only entries that must exist everywhere)
 MAP = [
     ("bg", "bg", "bg"), ("surface", "surface", "surface"), ("surfaceHigh", "surface_high", "surface-2"),
@@ -102,6 +113,16 @@ def main():
         problems.append("%s: no body.light block - the prototype has a theme toggle and nothing to toggle to" % HTML)
         css_light = {}
 
+    ios_path = os.path.join(ROOT, IOS_THEME)
+    if not os.path.isfile(ios_path):
+        problems.append("%s is missing: the iOS palette is the fourth mirror and must exist" % IOS_THEME)
+        sw = {}
+    else:
+        sw = swift_palettes(open(ios_path).read())
+        if sw is None:
+            problems.append("%s: cannot parse Palette.dark/Palette.light" % IOS_THEME)
+            sw = {}
+
     def check(where, name, got, want):
         """Compare one value across mirrors, ignoring #rgb/#rrggbb/rgba() spelling differences."""
         if got is None:
@@ -129,6 +150,13 @@ def main():
             block = css_light if label == "light" else css_dark
             check("%s (body.%s)" % (HTML, label) if label == "light" else "%s (:root)" % HTML,
                   cn, resolve(css[cn], block), want)
+        # iOS SwiftUI mirror (Theme.swift) speaks the Kotlin field names
+        for swp, label in ((sw.get("dark", {}), "dark"), (sw.get("light", {}), "light")):
+            want = (dark if label == "dark" else light)[kn]
+            if kn not in swp:
+                problems.append("%s: %s missing from the %s palette" % (IOS_THEME, kn, label))
+                continue
+            check("%s (%s)" % (IOS_THEME, label), kn, swp[kn], want)
 
     # the launcher field must be identical in both xml files on purpose (brand decision)
     if xd.get("icon_field") and xl.get("icon_field") and norm(xd["icon_field"]) != norm(xl["icon_field"]):
@@ -142,7 +170,7 @@ def main():
             print("  - " + p)
         print("\nfix the value in every mirror; the mapping table lives in tools/check-theme.py MAP")
         return 1
-    print("theme OK: Color.kt, values/-night colors.xml and the prototype agree on %d tokens" % len(MAP))
+    print("theme OK: Color.kt, values/-night colors.xml, the prototype and iOS Theme.swift agree on %d tokens" % len(MAP))
     return 0
 
 sys.exit(main())

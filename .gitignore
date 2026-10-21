@@ -31,3 +31,16 @@
 /android/keystore.properties
 *.keystore
 *.jks
+
+# iOS: همان قاعده‌ی AAR اندروید - هسته‌ی باینری (LibXray.xcframework، ۳۰MB+) هرگز در git نمی‌آید؛
+# tools/build-libxray-ios.sh آن را در همان تگ پین‌شده می‌سازد.
+/ios/LibXray.xcframework/
+# پروژه‌ی Xcode تولیدشده از ios/project.yml (XcodeGen) است؛ pbxproj در git سم است.
+/ios/*.xcodeproj/
+/ios/MeelanoVPN/Info.plist
+/ios/MeelanoVPN/MeelanoVPN.entitlements
+/ios/MeelanoVPNTunnel/Info.plist
+/ios/MeelanoVPNTunnel/MeelanoVPNTunnel.entitlements
+/ios/build/
+/ios/Payload/
+*.ipa

@@ -18,6 +18,7 @@ on:
       - 'tools/**'
       - 'docs/**'
       - 'design/preview/**'
+      - 'ios/**'
       - 'android/app/src/main/res/**'
       - 'android/app/src/main/java/ir/meelano/vpn/ui/theme/**'
       - '.github/workflows/checks.yml'
@@ -28,6 +29,7 @@ on:
       - 'tools/**'
       - 'docs/**'
       - 'design/preview/**'
+      - 'ios/**'
       - 'android/app/src/main/res/**'
       - 'android/app/src/main/java/ir/meelano/vpn/ui/theme/**'
       - '.github/workflows/checks.yml'
@@ -87,10 +89,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
-      - name: three mirrors must agree
+      - name: four mirrors must agree
         run: |
           if ! python3 tools/check-theme.py; then
-            echo '::error::palette mirrors disagree - see tools/check-theme.py (Color.kt vs values(-night)/colors.xml vs design/preview CSS)'
+            echo '::error::palette mirrors disagree - see tools/check-theme.py (Color.kt vs values(-night)/colors.xml vs design/preview CSS vs ios Theme.swift)'
             exit 1
           fi
       - name: every res XML must parse
@@ -107,3 +109,15 @@ jobs:
           print('parsed %d res xml files' % n)
           sys.exit(1 if bad else 0)
           PY
+
+  swift:
+    name: ios swift structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: braces / #if / strings must balance
+        # بدون مک‌بیلدن: همان نگهبانی که check-comments.py برای کاتلین است، برای سوئیفت. ساخت واقعی
+        # اپ و تست‌های منطقی در ios.yml روی macOS می‌آید؛ این‌جا فقط ساختار فایل‌ها در ۵ ثانیه.
+        run: python3 tools/check-swift.py
