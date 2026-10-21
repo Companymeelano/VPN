@@ -122,6 +122,19 @@ jobs:
             exit 1
           fi
 
+      - name: xcode diagnostics (annotations)
+        # مثل مرحله‌ی هسته: سرِ خطاها را annotation می‌کنیم چون دانلود لاگ از بعضی شبکه‌ها ممکن نیست.
+        if: failure()
+        run: |
+          for f in /tmp/xcode-test.log /tmp/xcode-archive.log; do
+            [ -f "$f" ] || continue
+            echo "::error title=xcode::diagnostics from $f"
+            grep -E "error:|The following build commands failed|TEST FAILED|does not contain|Provisioning" "$f" \
+              | head -40 | while IFS= read -r line; do
+                echo "::error title=xcode::${line}"
+              done
+          done
+
       - name: archive + package unsigned IPA
         id: ipa
         run: |
