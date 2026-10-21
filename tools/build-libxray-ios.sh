@@ -37,9 +37,11 @@ grep -q 'func CGoFree' cgo_bridge/main.go
 
 python3 build/main.py apple go
 
-XCFRAMEWORK="$WORK/lib/LibXray.xcframework"
-[ -d "$XCFRAMEWORK" ] || { echo "ERROR: build produced no LibXray.xcframework" >&2; exit 1; }
-HEADER="$(find "$XCFRAMEWORK" -name libXray.h | head -1)"
+# apple_go.py writes the xcframework to the repo root (Builder.lib_dir = build/..), same place the
+# android builder drops libXray.aar. Not under lib/.
+XCFRAMEWORK="$WORK/LibXray.xcframework"
+[ -d "$XCFRAMEWORK" ] || { echo "ERROR: build produced no LibXray.xcframework at $XCFRAMEWORK" >&2; exit 1; }
+HEADER="$(find "$XCFRAMEWORK" -name libXray.h -print -quit)"
 [ -n "$HEADER" ] || { echo "ERROR: no libXray.h inside the xcframework" >&2; exit 1; }
 grep -q 'CGoInvoke' "$HEADER"
 grep -q 'CGoFree' "$HEADER"

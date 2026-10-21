@@ -56,6 +56,8 @@ jobs:
         with:
           go-version: '1.27'
           check-latest: true
+          # بدون go.sum در ریشه، کش خودکارِ setup-go فقط هشدار می‌دهد؛ کش هسته را خودمان نگه می‌داریم.
+          cache: false
 
       - name: cache libXray iOS core
         id: core-cache
@@ -68,13 +70,24 @@ jobs:
         if: steps.core-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          ./tools/build-libxray-ios.sh core-only
+          ./tools/build-libxray-ios.sh core-only 2>&1 | tee /tmp/core-build.log | tail -30
+
+      - name: core build diagnostics (annotations)
+        # دانلود لاگ Actions از بعضی شبکه‌ها EOF می‌خورد؛ سرِ خطا را به‌صورت annotation بیرون می‌ریزیم
+        # تا بدونِ فایل لاگ هم بشود فهمید کجا سوخته است.
+        if: failure()
+        run: |
+          if [ -f /tmp/core-build.log ]; then
+            tail -40 /tmp/core-build.log | while IFS= read -r line; do
+              echo "::error title=core build::${line}"
+            done
+          fi
 
       - name: verify the bridge contract inside the xcframework
         id: bridge
         run: |
           set -euo pipefail
-          header=$(find ios/LibXray.xcframework -name libXray.h | head -1)
+          header=$(find ios/LibXray.xcframework -name libXray.h -print -quit)
           if [ -z "$header" ]; then
             echo "::error::no libXray.h inside ios/LibXray.xcframework"
             exit 1
