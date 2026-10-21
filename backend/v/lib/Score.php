@@ -276,6 +276,7 @@ final class Score
             $n['samples'] = $samples;
             $n['latencyMs'] = $lat;
             $n['grade'] = self::grade($lat, $rel);
+            $n['_iran'] = self::iranRank($n);
             $n['banned'] = Ledger::isBanned($id);
             if ($dropFailed && $n['banned']) {
                 continue;
@@ -290,6 +291,16 @@ final class Score
             if ($ra !== $rb) {
                 return $ra <=> $rb;
             }
+            // Inside one grade, order for the country the users are actually in: survivable
+            // transport, then geography, then port 443. The latency in this list is measured
+            // from *this host* (usually Europe); from Tehran the ranking of the same two nodes
+            // routinely flips, and a plaintext node the host reaches in 40 ms is still dead at
+            // the first ClientHello from an Iranian carrier. Mirrors the client's NodeRanking.
+            $ia = isset($a['_iran']) ? (int) $a['_iran'] : self::iranRank($a);
+            $ib = isset($b['_iran']) ? (int) $b['_iran'] : self::iranRank($b);
+            if ($ia !== $ib) {
+                return $ia <=> $ib;
+            }
             $la = $a['latencyMs'] === null ? PHP_INT_MAX : (int) $a['latencyMs'];
             $lb = $b['latencyMs'] === null ? PHP_INT_MAX : (int) $b['latencyMs'];
             if ($la !== $lb) {
@@ -298,5 +309,77 @@ final class Score
             return $b['reliability'] <=> $a['reliability'];
         });
         return $out;
+    }
+
+    /**
+     * Iran-first ordering bucket, the server mirror of the app's NodeRanking (2.6.0): lower is
+     * better. Transport survivability under the TIGHT regime dominates (x1000), then country
+     * proximity to Iran (x100), then the port (443 first). Deliberately a *bucket*, not a
+     * score: measured grade stays the primary key in annotate(), this only orders equals.
+     */
+    public static function iranRank(array $n)
+    {
+        $proto = isset($n['proto']) ? strtolower((string) $n['proto']) : '';
+        $tls = isset($n['tls']) ? strtolower((string) $n['tls']) : '';
+        $net = isset($n['network']) ? strtolower((string) $n['network']) : 'tcp';
+        if ($net === 'websocket') {
+            $net = 'ws';
+        } elseif ($net === 'splithttp') {
+            $net = 'xhttp';
+        } elseif ($net === 'raw' || $net === '') {
+            $net = 'tcp';
+        }
+        $transport = 'tcp-plain';
+        if ($tls === 'reality') {
+            $transport = 'reality';
+        } elseif ($tls === 'tls' && $net === 'grpc') {
+            $transport = 'grpc-tls';
+        } elseif ($tls === 'tls' && $net === 'xhttp') {
+            $transport = 'xhttp-tls';
+        } elseif ($tls === 'tls' && $net === 'ws') {
+            $transport = 'ws-tls';
+        } elseif ($tls === 'tls') {
+            $transport = 'tcp-tls';
+        } elseif ($proto === 'hysteria2' || $proto === 'hy2') {
+            $transport = 'udp-hy2';
+        } elseif ($proto === 'tuic') {
+            $transport = 'udp-tuic';
+        } elseif ($proto === 'ss' || $proto === 'shadowsocks') {
+            $transport = 'tcp-ss';
+        }
+        $ladder = ['reality', 'xhttp-tls', 'grpc-tls', 'tcp-tls', 'udp-hy2', 'udp-tuic', 'ws-tls', 'tcp-ss', 'tcp-plain'];
+        $t = array_search($transport, $ladder, true);
+        if ($t === false) {
+            $t = count($ladder);
+        }
+
+        $cc = isset($n['cc']) ? strtoupper(trim((string) $n['cc'])) : '';
+        $c = 5; // unknown: after every known country except a domestic exit
+        if (in_array($cc, ['TR', 'AE', 'AM', 'AZ', 'GE', 'IQ', 'QA', 'KW', 'OM', 'BH', 'CY'], true)) {
+            $c = 0;
+        } elseif (in_array($cc, ['KZ', 'RU', 'UA', 'RO', 'BG', 'MD', 'RS', 'HU', 'AT', 'CZ', 'PL', 'SK', 'GR'], true)) {
+            $c = 1;
+        } elseif (in_array($cc, ['DE', 'NL', 'FI', 'SE', 'NO', 'DK', 'CH', 'FR', 'BE', 'IT', 'ES', 'PT', 'GB', 'IE', 'EE', 'LV', 'LT', 'IS', 'LU', 'SI'], true)) {
+            $c = 2;
+        } elseif (in_array($cc, ['IN', 'SG', 'MY', 'TH', 'ID', 'VN', 'HK', 'TW', 'JP', 'KR', 'CN'], true)) {
+            $c = 3;
+        } elseif (in_array($cc, ['US', 'CA', 'AU', 'NZ', 'BR', 'AR', 'MX', 'ZA', 'EG', 'IL', 'SA'], true)) {
+            $c = 4;
+        } elseif ($cc === 'IR') {
+            $c = 6;
+        }
+
+        $port = isset($n['port']) ? (int) $n['port'] : 0;
+        if ($port === 443) {
+            $pr = 0;
+        } elseif (in_array($port, [8443, 2053, 2083, 2087, 2096], true)) {
+            $pr = 1;
+        } elseif ($port === 80 || $port === 8080) {
+            $pr = 2;
+        } else {
+            $pr = 3;
+        }
+
+        return $t * 1000 + $c * 100 + $pr * 10;
     }
 }

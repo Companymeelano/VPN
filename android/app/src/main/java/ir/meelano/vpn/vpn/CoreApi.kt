@@ -129,7 +129,8 @@ object CoreApi {
  * XRAY is the default and the target: it is MPL-2.0 (so a closed-source app may ship it), it is what
  * `CoreProfiles` was written against, and VLESS+Reality+Vision is still the best-performing combination
  * under Iranian DPI. SING_BOX (GPL-3.0-or-later, including the Hiddify fork's `fragment` extension) is
- * kept because it *does* support transport-level fragmentation natively, which matters in BLACKOUT.
+ * kept as a supported dialect; the Xray dialect no longer needs it for fragmentation - since 2.6.0 the
+ * Xray profile fragments for real, through a `freedom` dialer chain (see [CoreProfiles.xray]).
  */
 enum class CoreEngine {
     XRAY,
@@ -428,15 +429,26 @@ object CoreProfiles {
             r["spiderX"] = ""
             stream["realitySettings"] = r
         }
-        // Xray's sockopt knows these two and nothing else; do not "add" tcpMss here, it is a sing-box
+        // Fragmentation, the way Xray actually does it: the proxy outbound dials *through* a
+        // freedom outbound whose only job is to slice the first TLS record ("tlshello") into
+        // small writes with pauses. `streamSettings.sockopt.dialerProxy` is the chain link.
+        //
+        // Two deliberate exclusions:
+        //  - Reality: its ClientHello is a genuine borrowed handshake; slicing it adds a
+        //    failure mode to the strongest camouflage we have and buys nothing the DPI sees.
+        //  - plaintext: there is no hello to hide; the protocol shape is already on the wire.
+        // Until 2.6.0 this was a comment-shaped lie (`meelanoFragment` was echoed into the
+        // profile and the core ignored it), which meant the TIGHT/BLACKOUT regimes fragmented
+        // nothing on the shipping engine. The echo stays - as diagnostics, next to the real thing.
+        val fragmentWanted = s.needsFragment && s.security == "tls"
+        // Xray's sockopt knows these and nothing else; do not "add" tcpMss here, it is a sing-box
         // option and an unknown field here is silently dropped, which is worse than absent.
-        stream["sockopt"] = mapOf("tcpNoDelay" to true, "tcpFastOpen" to s.connectionReuse)
+        val sockopt = linkedMapOf<String, Any?>("tcpNoDelay" to true, "tcpFastOpen" to s.connectionReuse)
+        if (fragmentWanted) sockopt["dialerProxy"] = FRAGMENT_TAG
+        stream["sockopt"] = sockopt
 
         val outbound = xrayUsableOutbound(s, settings, stream)
         if (s.needsFragment) {
-            // Upstream Xray has no transport fragmenter. It is echoed rather than faked: a build that
-            // needs fragmentation in BLACKOUT selects the sing-box dialect, where the same numbers are
-            // a real field (see singBox() below).
             outbound["meelanoFragment"] = fragmentPlan(s)
         }
         outbound["meelanoTune"] = s.tuneEcho
@@ -477,16 +489,28 @@ object CoreProfiles {
                 ),
             )
         )
+        // Three resolvers, three networks (Cloudflare, Google, AliDNS), all dialed by IP so no
+        // bootstrap lookup can be poisoned: DNS is the one dependency whose failure looks
+        // exactly like "the VPN connected but nothing loads", and a single hard-coded DoH made
+        // the whole tunnel inherit one provider's bad evening. 4 s each, tried in order.
+        // UseIPv4 stays: it is the core-side half of the IPv6 policy (the TUN advertises a v6
+        // route only when the underlying network really has global v6 - VpnOrchestrator).
         profile["dns"] = mapOf(
             "queryStrategy" to "UseIPv4",
-            "servers" to listOf(mapOf("address" to DOH_ENDPOINT, "tag" to "proxy", "timeoutMs" to 5000)),
+            "servers" to DNS_SERVERS.map { mapOf("address" to it, "tag" to "proxy", "timeoutMs" to 4000) },
         )
-        profile["outbounds"] = listOf(
-            outbound,
-            mapOf("protocol" to "dns", "tag" to "dns-out", "settings" to emptyMap<String, Any?>()),
-            mapOf("protocol" to "freedom", "tag" to "direct"),
-            mapOf("protocol" to "blackhole", "tag" to "block"),
-        )
+        val outbounds = mutableListOf<Map<String, Any?>>(outbound)
+        if (fragmentWanted) {
+            outbounds += mapOf(
+                "protocol" to "freedom",
+                "tag" to FRAGMENT_TAG,
+                "settings" to mapOf("fragment" to xrayFragment(s)),
+            )
+        }
+        outbounds += mapOf("protocol" to "dns", "tag" to "dns-out", "settings" to emptyMap<String, Any?>())
+        outbounds += mapOf("protocol" to "freedom", "tag" to "direct")
+        outbounds += mapOf("protocol" to "blackhole", "tag" to "block")
+        profile["outbounds"] = outbounds
         profile["routing"] = mapOf("domainStrategy" to "IPIfNonMatch", "rules" to rules)
         return profile
     }
@@ -521,11 +545,16 @@ object CoreProfiles {
      */
     fun pingConfigJson(node: FeedNode, tune: ir.meelano.vpn.net.Tune): String {
         val full = xray(specFor(node, tune))
-        val proxy = (full["outbounds"] as? List<*>)?.firstOrNull()
+        val all = (full["outbounds"] as? List<*>).orEmpty()
+        val proxy = all.firstOrNull()
             ?: return render(mapOf("outbounds" to emptyList<Any>()))
         @Suppress("UNCHECKED_CAST")
         val cleaned = (proxy as? Map<String, Any?>)?.filterKeys { !it.startsWith("meelano") } ?: proxy
-        return render(mapOf("outbounds" to listOf(cleaned)))
+        // A fragmented proxy references its freedom dialer by tag; a ping config without that
+        // second outbound would fail to construct for exactly the nodes fragmentation helps.
+        @Suppress("UNCHECKED_CAST")
+        val fragment = all.filterIsInstance<Map<String, Any?>>().firstOrNull { it["tag"] == FRAGMENT_TAG }
+        return render(mapOf("outbounds" to listOfNotNull(cleaned, fragment)))
     }
 
     /* -------------------------------------------------------- sing-box / Hiddify-fork dialect */
@@ -661,6 +690,13 @@ object CoreProfiles {
             "$delayMs-${(delayMs * 2).coerceAtLeast(delayMs + 10)}"
         else "$delayMs"
 
+    /** The Xray/freedom spelling of the same numbers: `packets` is "tlshello" there, not "tlstls". */
+    private fun xrayFragment(s: Spec): Map<String, Any?> = mapOf(
+        "packets" to "tlshello",
+        "length" to fragRange(s.fragSize, s.fragStrategy, s.fragCount),
+        "interval" to fragInterval(s.fragDelayMs, s.fragStrategy),
+    )
+
     private fun fragmentPlan(s: Spec): Map<String, Any?> = mapOf(
         "packets" to if (s.isTls) "tlstls" else "1-1",
         "length" to fragRange(s.fragSize, s.fragStrategy, s.fragCount),
@@ -716,6 +752,14 @@ object CoreProfiles {
     private const val LOCAL_PORT = 10808
     private const val DOH_ENDPOINT = "https://1.1.1.1/dns-query"
     private const val ECH_DOH = "https://1.1.1.1/dns-query"
+    private const val FRAGMENT_TAG = "fragment"
+
+    /** In-tunnel DoH, by IP, in try-order: Cloudflare, Google, AliDNS (historically last to be throttled). */
+    private val DNS_SERVERS = listOf(
+        DOH_ENDPOINT,
+        "https://8.8.8.8/dns-query",
+        "https://223.5.5.5/dns-query",
+    )
 
     private val LAN_CIDR = listOf(
         "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8",

@@ -13,6 +13,17 @@ import java.util.concurrent.TimeUnit
  * Proof that packets crossed the Android TUN and the selected outbound, not merely that Xray parsed a
  * profile. These requests intentionally run in the VPN app process without VpnService.protect(); the
  * core's own remote sockets are protected by XrayBridge, while these probe sockets must enter the TUN.
+ *
+ * The verdict is two-tiered, and the split is the lesson of the Irancell field report:
+ *  - [Result.clean]  - every platform answered exactly as expected. The best grade a node can get.
+ *  - [Result.usable] - the tunnel provably carries internet traffic (the dedicated Cloudflare
+ *    connectivity endpoint, or a majority of endpoints), even if one platform is slow, geo-blocked
+ *    at this exit, or dropped a single probe to mobile jitter.
+ *
+ * Connect/health decisions gate on *usable*; *clean* only ranks. The previous rule - all three
+ * endpoints or failure, re-checked every health interval - meant one slow `generate_204` on a
+ * jittery carrier could reject a healthy tunnel at connect time and then keep killing it every
+ * minute after. That is indistinguishable, in user reports, from "it only connects sometimes".
  */
 class TunnelProbe(
     private val client: OkHttpClient = OkHttpClient.Builder()
@@ -41,11 +52,35 @@ class TunnelProbe(
         val internet: Boolean get() = checks.any { it.reached }
         val clean: Boolean get() = cloudflareOk && googleOk && gstaticOk
         val platformBlocked: Boolean get() = cloudflareOk && (!googleOk || !gstaticOk)
-        val latencyMs: Long get() = checks.filter { it.status != null }.maxOfOrNull { it.latencyMs } ?: 0L
+
+        /** How many endpoints returned their exact expected status. */
+        val okCount: Int get() = ENDPOINTS.count { ok(it.id) }
+
+        /**
+         * "Internet demonstrably flows through this tunnel": a majority verdict, or the one
+         * purpose-built connectivity endpoint. A single Google timeout on a congested cell is
+         * weather, not a dead tunnel - the platform note still travels in [reason] and in the
+         * node's platform verdict, it just no longer vetoes the connection.
+         */
+        val usable: Boolean get() = okCount >= 2 || cloudflareOk
+
+        /**
+         * Median successful-check latency. The old "slowest check" punished a node for its one
+         * unlucky endpoint and overwrote a genuinely fast path in the health ledger.
+         */
+        val latencyMs: Long
+            get() {
+                val good = ENDPOINTS.mapNotNull { e ->
+                    checks.firstOrNull { c -> c.id == e.id && c.status == e.expectedStatus }?.latencyMs
+                }.sorted()
+                val pool = good.ifEmpty { checks.filter { it.status != null }.map { it.latencyMs }.sorted() }
+                return if (pool.isEmpty()) 0L else pool[pool.size / 2]
+            }
         val reason: String
             get() = when {
                 clean -> "clean"
                 platformBlocked -> "platform_blocked"
+                usable -> "partial"
                 internet -> "unexpected_status"
                 else -> "no_internet_through_tunnel"
             }

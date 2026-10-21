@@ -18,10 +18,12 @@ class TunnelProbeTest {
     fun exact204FromEveryPlatformIsClean() {
         val r = result(204, 204, 204)
         assertTrue(r.clean)
+        assertTrue(r.usable)
         assertTrue(r.internet)
         assertFalse(r.platformBlocked)
         assertEquals("clean", r.reason)
-        assertEquals(30, r.latencyMs)
+        // median, not slowest: one unlucky endpoint must not be the node's reported speed
+        assertEquals(20, r.latencyMs)
     }
 
     @Test
@@ -31,6 +33,22 @@ class TunnelProbeTest {
         assertTrue(r.internet)
         assertTrue(r.platformBlocked)
         assertEquals("platform_blocked", r.reason)
+    }
+
+    @Test
+    fun oneDroppedPlatformProbeDoesNotVetoAWorkingTunnel() {
+        // The Irancell case: Cloudflare + gstatic answer, Google's probe dies to mobile
+        // jitter. Internet demonstrably flows, so connect/health must accept the tunnel.
+        val r = result(204, null, 204)
+        assertFalse(r.clean)
+        assertTrue(r.usable)
+    }
+
+    @Test
+    fun cloudflareAloneIsUsableButASingleOtherEndpointIsNot() {
+        assertTrue(result(204, null, null).usable)
+        assertFalse(result(null, 204, null).usable)
+        assertEquals(2, result(204, null, 204).okCount)
     }
 
     @Test
@@ -45,6 +63,7 @@ class TunnelProbeTest {
     fun noResponsesMeansNoTunnelInternet() {
         val r = result(null, null, null)
         assertFalse(r.clean)
+        assertFalse(r.usable)
         assertFalse(r.internet)
         assertEquals("no_internet_through_tunnel", r.reason)
     }

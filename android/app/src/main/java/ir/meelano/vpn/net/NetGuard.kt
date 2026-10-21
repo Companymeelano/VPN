@@ -127,16 +127,30 @@ object NetGuard {
      * Which of these addresses is actually answering on this port, right now, from here.
      * -1 = unreachable; otherwise the TCP RTT in ms. [limit] keeps a refresh from turning into a
      * scan: 12 targets is already more than the number of nodes a phone can usefully dial at once.
+     *
+     * One retry per target: on a lossy mobile link a single dropped SYN is common and says
+     * nothing about the node; two consecutive failures inside [ProbePolicy] budgets is a signal.
+     * (The timeout defaults come from ProbePolicy - the old fixed 1200 ms mislabelled healthy
+     * Iranian-carrier paths as dead, which is the "connects only sometimes" bug in probe form.)
      */
-    suspend fun tcpProbe(targets: List<Pair<String, Int>>, timeoutMs: Int = 1200, limit: Int = 12): List<Long> =
+    suspend fun tcpProbe(
+        targets: List<Pair<String, Int>>,
+        timeoutMs: Int = ProbePolicy.tcpTimeoutMs(),
+        limit: Int = 12,
+    ): List<Long> =
         coroutineScope {
             targets.take(limit).map { (h, p) ->
-                async { probeOne(h, p, timeoutMs) }
-            }.awaitAllSafe()
+                async { probeOneWithRetry(h, p, timeoutMs) }
+            }.awaitAllSafe(ProbePolicy.awaitCapMs(timeoutMs) * 2)
         }
 
-    private suspend fun List<kotlinx.coroutines.Deferred<Long>>.awaitAllSafe(): List<Long> =
-        map { runCatching { withTimeoutOrNull(3000) { it.await() } ?: -1L }.getOrDefault(-1L) }
+    private suspend fun List<kotlinx.coroutines.Deferred<Long>>.awaitAllSafe(capMs: Long): List<Long> =
+        map { runCatching { withTimeoutOrNull(capMs) { it.await() } ?: -1L }.getOrDefault(-1L) }
+
+    private fun probeOneWithRetry(host: String, port: Int, timeoutMs: Int): Long {
+        val first = probeOne(host, port, timeoutMs)
+        return if (first > 0L) first else probeOne(host, port, timeoutMs)
+    }
 
     private fun probeOne(host: String, port: Int, timeoutMs: Int): Long {
         if (host.isBlank() || port !in 1..65535) return -1L
@@ -157,7 +171,10 @@ object NetGuard {
      * ALPN is set on API 29+ only (SSLParameters.setApplicationProtocols); on older devices we still
      * get the pass/fail, which is the part we act on.
      */
-    suspend fun tlsProbe(host: String, port: Int, sni: String, alpn: String?, timeoutMs: Int = 2000): Long {
+    suspend fun tlsProbe(
+        host: String, port: Int, sni: String, alpn: String?,
+        timeoutMs: Int = ProbePolicy.tlsTimeoutMs(),
+    ): Long {
         if (host.isBlank() || port !in 1..65535) return -1L
         val t0 = System.nanoTime()
         return runCatching {
@@ -190,20 +207,23 @@ object NetGuard {
      * [BlockReport]. Failures are counted, never thrown - a probe that cannot run is not evidence
      * that the network is down.
      */
-    suspend fun measure(nodes: List<ProbeTarget>): BlockReport {
+    suspend fun measure(nodes: List<ProbeTarget>, previousMedianRttMs: Long = -1L): BlockReport {
         if (nodes.isEmpty()) return BlockReport()
+        val tcpTimeout = ProbePolicy.tcpTimeoutMs(previousMedianRttMs)
+        val tlsTimeout = ProbePolicy.tlsTimeoutMs(previousMedianRttMs)
         val rtts = Collections.synchronizedList(ArrayList<Long>())
         val tls = Collections.synchronizedList(ArrayList<Long>())
         val out = coroutineScope {
             val jobs = nodes.take(12).map { n ->
                 async {
-                    val r = probeOne(n.host, n.port, 1200)
+                    val r = probeOneWithRetry(n.host, n.port, tcpTimeout)
                     rtts += r
-                    if (r > 0 && n.tls) tls += tlsProbe(n.host, n.port, n.sni, n.alpn)
+                    if (r > 0 && n.tls) tls += tlsProbe(n.host, n.port, n.sni, n.alpn, tlsTimeout)
                     r
                 }
             }
-            jobs.map { runCatching { withTimeoutOrNull(3500) { it.await() } }.getOrNull() }
+            val cap = ProbePolicy.awaitCapMs(tcpTimeout) * 2 + tlsTimeout
+            jobs.map { runCatching { withTimeoutOrNull(cap) { it.await() } }.getOrNull() }
         }
         if (out.isEmpty()) return BlockReport()
         val ok = rtts.count { it > 0 }

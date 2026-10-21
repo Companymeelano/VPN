@@ -1,8 +1,11 @@
 package ir.meelano.vpn.vpn
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
+import ir.meelano.vpn.net.IpFamily
 import ir.meelano.vpn.data.AppSettings
 import ir.meelano.vpn.data.FeedNode
 import ir.meelano.vpn.data.TunnelSpec
@@ -173,7 +176,10 @@ class VpnOrchestrator(
         engine.onTunnelUp()
         delay(PROBE_SETTLE_MS)
         val probe = engine.verifyTunnel()
-        if (!probe.clean) error(probe.reason)
+        // Usable, not spotless: one geo-blocked or jitter-dropped platform probe is recorded as
+        // the node's platform verdict by the caller, but a tunnel that provably moves internet
+        // traffic must not be torn down for it (see TunnelProbe's two-tier verdict).
+        if (!probe.usable) error(probe.reason)
         return probe
     }
 
@@ -184,7 +190,7 @@ class VpnOrchestrator(
             var consecutiveFailures = 0
             while (generation.get() == mine) {
                 val result = runCatching { engine.verifyTunnel() }.getOrNull()
-                if (result?.clean == true && engine.isTunnelAlive()) {
+                if (result?.usable == true && engine.isTunnelAlive()) {
                     consecutiveFailures = 0
                 } else {
                     consecutiveFailures++
@@ -199,27 +205,63 @@ class VpnOrchestrator(
                     connect(rotated, reorder = true)
                     return@launch
                 }
-                delay(HEALTH_INTERVAL_MS)
+                // Adaptive cadence: a healthy tunnel is re-proved every HEALTH_INTERVAL_MS, but
+                // the *first* failed proof re-checks within HEALTH_RECHECK_MS. Detection of a
+                // genuinely dead node drops from ~50 s (two 25 s cycles, the old constants) to
+                // ~15 s, while a single lost probe on a noisy cell still cannot kill the tunnel
+                // on its own - the second, prompt proof is what decides.
+                delay(if (consecutiveFailures > 0) HEALTH_RECHECK_MS else HEALTH_INTERVAL_MS)
             }
         }
     }
+
+    /**
+     * Does any *physical* (non-VPN) network right now carry a globally routable IPv6 address?
+     *
+     * This decides whether the TUN captures `::/0`. Capturing v6 unconditionally was the old
+     * behaviour, and on the dominant Iranian mobile path (IPv4 + carrier-grade NAT, no global
+     * v6) it produced a subtle failure: apps that prefer AAAA answers sent v6 packets into a
+     * tunnel whose public exit frequently has no v6 egress, and simply hung - "connected, but
+     * Telegram/Instagram stall while the browser sort of works". Not capturing v6 when the
+     * underlying network has none cannot leak anything (there is no v6 path to leak onto);
+     * capturing it when the underlying network *does* have it preserves the no-leak property.
+     * A network switch re-runs the whole connect path (MeelanoVpnService), so the answer is
+     * re-evaluated at every establish(), never cached across networks.
+     */
+    private fun underlyingHasGlobalIpv6(): Boolean = runCatching {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return false
+        @Suppress("DEPRECATION")
+        cm.allNetworks.any { network ->
+            val caps = cm.getNetworkCapabilities(network) ?: return@any false
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return@any false
+            if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) return@any false
+            val props = cm.getLinkProperties(network) ?: return@any false
+            IpFamily.hasGlobalIpv6(props.linkAddresses.map { it.address })
+        }
+    }.getOrDefault(false)
 
     private fun builderFor(spec: TunnelSpec): VpnService.Builder {
         val service = context as? VpnService
             ?: error("VpnOrchestrator must be constructed with the VpnService instance")
         val tune = runCatching { AppSettings.tuneFor(spec.node) }.getOrNull()
         val mtu = (tune?.mtu ?: 0).takeIf { it in 576..9000 } ?: MTU
+        val v6 = underlyingHasGlobalIpv6()
         return service.Builder()
             .setSession(context.getString(ir.meelano.vpn.R.string.app_name))
             .setMtu(mtu)
             .addAddress(VPN_IP4, 32)
-            .addAddress(VPN_IP6, 128)
             .addRoute("0.0.0.0", 0)
-            .addRoute("::", 0)
             .apply {
+                if (v6) {
+                    addAddress(VPN_IP6, 128)
+                    addRoute("::", 0)
+                }
                 // These are virtual destinations only. The profile's dns-out intercepts port 53 and
                 // resolves over DoH tagged to the selected proxy, including for TCP-only HTTP proxies.
-                DNS_VIRTUAL.forEach { addDnsServer(it) }
+                // The v6 resolver is only advertised when the tunnel actually carries v6.
+                addDnsServer(DNS_VIRTUAL4)
+                if (v6) addDnsServer(DNS_VIRTUAL6)
             }
             .apply {
                 // Per-app routing: Iranian/banking apps (banks, payment, Snapp, Divar…) stay outside
@@ -252,11 +294,13 @@ class VpnOrchestrator(
         private const val MTU = 1280
         private const val VPN_IP4 = "10.128.0.2"
         private const val VPN_IP6 = "fd00:6d65:656c::2"
-        private val DNS_VIRTUAL = listOf("1.1.1.1", "2606:4700:4700::1111")
+        private const val DNS_VIRTUAL4 = "1.1.1.1"
+        private const val DNS_VIRTUAL6 = "2606:4700:4700::1111"
         private const val MAX_CANDIDATES = 8
         private const val PROBE_SETTLE_MS = 650L
-        private const val HEALTH_INITIAL_DELAY_MS = 15_000L
-        private const val HEALTH_INTERVAL_MS = 25_000L
+        private const val HEALTH_INITIAL_DELAY_MS = 8_000L
+        private const val HEALTH_INTERVAL_MS = 12_000L
+        private const val HEALTH_RECHECK_MS = 3_000L
         private const val HEALTH_FAILURES = 2
         private const val FAILURE_COOLDOWN_MS = 3 * 60_000L
         private const val PLATFORM_COOLDOWN_MS = 15 * 60_000L

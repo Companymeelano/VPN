@@ -407,4 +407,29 @@ class NodeUriTest {
         assertEquals("tls", n.tls)
         assertEquals("ws", n.network)
     }
+
+    /* ------------------------------------------------------------------ ipv6 literals */
+
+    @Test
+    fun bracketedIpv6LiteralParsesWithHostAndPortIntact() {
+        val n = NodeUri.parseUri(
+            "vless://11111111-2222-3333-4444-555555555555@[2606:4700:4700::1111]:443" +
+                "?security=reality&type=tcp&pbk=KEY&sni=www.microsoft.com#v6node"
+        )
+        checkNotNull(n)
+        assertEquals("2606:4700:4700::1111", n.host)
+        assertEquals(443, n.port)
+        assertEquals("reality", n.tls)
+    }
+
+    @Test
+    fun nonGlobalIpv6LiteralsAreRefused() {
+        // loopback, link-local and the documentation range must never become dial targets
+        assertNull(NodeUri.parseUri("vless://u@[::1]:443?security=tls"))
+        assertNull(NodeUri.parseUri("vless://u@[fe80::1]:443?security=tls"))
+        assertNull(NodeUri.parseUri("vless://u@[2001:db8::1]:443?security=tls"))
+        assertNull(NodeUri.parseUri("vless://u@[fd00::5]:443?security=tls"))
+        assertFalse(NodeUri.isPublicAddress("::1"))
+        assertTrue(NodeUri.isPublicAddress("2606:4700:4700::1111"))
+    }
 }
