@@ -43,6 +43,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: ir.meelano.vpn
         PRODUCT_NAME: MeelanoVPN
         INFOPLIST_KEY_CFBundleDisplayName: "M•A VPN"
+        # Go c-archive (libXray) resolves DNS through libresolv; without this the link step dies
+        # with undefined res_9_* symbols - the classic Go-on-iOS requirement.
+        OTHER_LDFLAGS: "-lresolv"
     info:
       path: MeelanoVPN/Info.plist
       properties:
@@ -76,6 +79,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ir.meelano.vpn.tunnel
         PRODUCT_NAME: MeelanoVPNTunnel
+        OTHER_LDFLAGS: "-lresolv"
     info:
       path: MeelanoVPNTunnel/Info.plist
       properties:
