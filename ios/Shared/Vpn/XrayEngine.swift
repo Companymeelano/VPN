@@ -1,5 +1,5 @@
 import Foundation
-#if canImport(LibXray)
+#if MEELANO_CORE_LINKED && canImport(LibXray)
 import LibXray
 #endif
 
@@ -11,9 +11,11 @@ import LibXray
 ///   request : {"apiVersion":3,"method":"runXray","payload":{"xrayJson":"..."}}
 ///   response: {"success":true,"data":{...},"error":""}
 ///
-/// When `LibXray.xcframework` is absent (`scripts/build-libxray-ios.sh` not run), this type still
-/// compiles and every call fails as a *named* error - never a silent green ring. A build that cannot
-/// tunnel must refuse to pretend, exactly like `CoreApi.LINKED == false` on Android.
+/// `MEELANO_CORE_LINKED` is a build setting of the app/extension targets only (project.yml), the
+/// Swift twin of `-PMEELANO_CORE_LINKED` on Android. The logic-test target compiles this file
+/// *without* the flag and without linking the xcframework - which is exactly why the flag must be
+/// explicit: `canImport` alone sees the module from the test target but cannot link it. A build
+/// that cannot tunnel refuses to pretend - every call fails as a named error, never a green ring.
 enum XrayEngine {
 
     static let apiVersion = 3
@@ -32,15 +34,17 @@ enum XrayEngine {
 
     /// One-line diagnosis for the diagnostics screen; never throws.
     static func describe() -> String {
-        #if canImport(LibXray)
+        #if MEELANO_CORE_LINKED && canImport(LibXray)
         return "ready (LibXray cgo bridge)"
+        #elseif MEELANO_CORE_LINKED
+        return "MEELANO_CORE_LINKED is on but the LibXray module is missing (rebuild ios/LibXray.xcframework)"
         #else
-        return "LibXray.xcframework missing: run scripts/build-libxray-ios.sh (docs/IOS-BUILD.md)"
+        return "core not linked in this build (run tools/build-libxray-ios.sh; docs/IOS-BUILD.md)"
         #endif
     }
 
     static var linked: Bool {
-        #if canImport(LibXray)
+        #if MEELANO_CORE_LINKED && canImport(LibXray)
         return true
         #else
         return false
@@ -50,7 +54,7 @@ enum XrayEngine {
     /// Raw request/response through the C bridge. On the string boundary: libXray owns the response
     /// buffer (CGoFree), the request is ours (free()).
     private static func invokeRaw(_ requestJson: String) throws -> String {
-        #if canImport(LibXray)
+        #if MEELANO_CORE_LINKED && canImport(LibXray)
         guard let req = strdup(requestJson) else { throw EngineError.invokeFailed("out of memory") }
         defer { free(req) }
         guard let resp = CGoInvoke(req) else {

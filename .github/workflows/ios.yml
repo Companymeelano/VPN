@@ -130,11 +130,11 @@ jobs:
           for f in /tmp/xcode-test.log /tmp/xcode-archive.log; do
             [ -f "$f" ] || continue
             {
-              grep -E "Undefined symbols for architecture" -A 6 "$f" | head -12
-              grep -E "The following build commands failed" -A 4 "$f" | head -8
-              grep -E "error:|ld: |symbol\(s\) not found" "$f" | head -12
-              tail -12 "$f"
-            } | awk '!seen[$0]++' | head -12 | while IFS= read -r line; do
+              grep -E "error:" "$f" | head -8
+              grep -E "Undefined symbols for architecture" -A 6 "$f" | head -8
+              grep -E "The following build commands failed" -A 4 "$f" | head -6
+              tail -8 "$f"
+            } | awk '!seen[$0]++' | head -10 | while IFS= read -r line; do
               echo "::error title=xcode::${line}"
             done
           done

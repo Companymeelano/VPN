@@ -46,6 +46,8 @@ targets:
         # Go c-archive (libXray) resolves DNS through libresolv; without this the link step dies
         # with undefined res_9_* symbols - the classic Go-on-iOS requirement.
         OTHER_LDFLAGS: "-lresolv"
+        # هسته به این تارگت‌ها وصل است؛ تارگتِ تست عمداً بدون این فلگ می‌ماند (XrayEngine.swift).
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MEELANO_CORE_LINKED"
     info:
       path: MeelanoVPN/Info.plist
       properties:
@@ -80,6 +82,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: ir.meelano.vpn.tunnel
         PRODUCT_NAME: MeelanoVPNTunnel
         OTHER_LDFLAGS: "-lresolv"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MEELANO_CORE_LINKED"
     info:
       path: MeelanoVPNTunnel/Info.plist
       properties:
