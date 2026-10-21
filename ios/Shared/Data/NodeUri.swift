@@ -125,7 +125,7 @@ enum NodeUri {
         if hostPort.hasPrefix("[") {
             guard let close = hostPort.firstIndex(of: "]") else { return nil }
             host = String(hostPort[hostPort.index(after: hostPort.startIndex)..<close])
-            let tail = String(hostPort[hostPort.index(after: close)...]).dropFirst(while: { $0 == ":" })
+            let tail = String(hostPort[hostPort.index(after: close)...]).drop(while: { $0 == ":" })
             port = Int(String(tail.prefix(while: { $0.isNumber })))
         } else {
             if let c = hostPort.firstIndex(of: ":") {

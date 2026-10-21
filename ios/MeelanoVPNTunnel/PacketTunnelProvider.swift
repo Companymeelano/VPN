@@ -84,8 +84,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         proxy.httpServer = NEProxyServer(address: TunnelSession.proxyHost, port: TunnelSession.proxyPort)
         proxy.httpsEnabled = true
         proxy.httpsServer = NEProxyServer(address: TunnelSession.proxyHost, port: TunnelSession.proxyPort)
-        proxy.socksEnabled = true
-        proxy.socksServer = NEProxyServer(address: TunnelSession.proxyHost, port: TunnelSession.proxyPort)
+        // No SOCKS fields here: NEProxySettings exposes socks only on macOS. The mixed inbound still
+        // speaks SOCKS for anything that dials it by hand; the *system* proxy is HTTP/HTTPS.
         // matchDomains [""] = "use this proxy for the whole device" - the default route of proxies.
         proxy.matchDomains = [""]
         proxy.excludeSimpleHostnames = true

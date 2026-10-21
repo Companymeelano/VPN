@@ -65,7 +65,7 @@ struct FeedClient {
             throw FeedError.transport("unreadable feed body")
         }
         let schema = FeedNode.int(obj["schema"]) ?? 1
-        if schema > schemaMax { throw FeedError.schemaTooNew(schema) }
+        if schema > FeedClient.schemaMax { throw FeedError.schemaTooNew(schema) }
 
         let rows = obj["servers"] as? [[String: Any]] ?? []
         var nodes: [FeedNode] = []

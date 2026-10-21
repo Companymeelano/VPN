@@ -109,20 +109,20 @@ struct TunePatch: Codable, Equatable {
 
     func apply(to base: Tune) -> Tune {
         var t = base
-        if let v = fragSize { t.fragSize = clamp(v, 0, 16384) }
-        if let v = fragCount { t.fragCount = clamp(v, 1, 64) }
+        if let v = fragSize { t.fragSize = Self.clamp(v, 0, 16384) }
+        if let v = fragCount { t.fragCount = Self.clamp(v, 1, 64) }
         if let v = fragStrategy { t.fragStrategy = v }
-        if let v = fragDelayMs { t.fragDelayMs = clamp(v, 0, 600) }
+        if let v = fragDelayMs { t.fragDelayMs = Self.clamp(v, 0, 600) }
         if let v = alpn { t.alpn = v }
         if let v = fingerprint { t.fingerprint = v }
         if let v = sni { t.sni = v }
         if let v = ech { t.ech = v }
-        if let v = keepAliveSec { t.keepAliveSec = clamp(v, 0, 300) }
+        if let v = keepAliveSec { t.keepAliveSec = Self.clamp(v, 0, 300) }
         if let v = mux { t.mux = v }
-        if let v = muxConcurrency { t.muxConcurrency = clamp(v, 1, 64) }
+        if let v = muxConcurrency { t.muxConcurrency = Self.clamp(v, 1, 64) }
         if let v = allowLan { t.allowLan = v }
-        if let v = mtu { t.mtu = clamp(v, 576, 9000) }
-        if let v = mss { t.mss = v == 0 ? 0 : clamp(v, 300, 1460) }
+        if let v = mtu { t.mtu = Self.clamp(v, 576, 9000) }
+        if let v = mss { t.mss = v == 0 ? 0 : Self.clamp(v, 300, 1460) }
         if let v = grpcMode { t.grpcMode = v }
         if let v = connectionReuse { t.connectionReuse = v }
         return t
