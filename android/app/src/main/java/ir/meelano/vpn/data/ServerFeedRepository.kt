@@ -29,6 +29,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import ir.meelano.vpn.net.NetGuard
 import ir.meelano.vpn.net.Ladder
+import ir.meelano.vpn.net.ProbePolicy
 import ir.meelano.vpn.net.BlockReport
 import ir.meelano.vpn.net.Regime
 import org.json.JSONArray
@@ -219,11 +220,16 @@ class ServerFeedRepository(
         val all = (listOf(preferred) + _vip.value + _free.value + _proxies.value).distinctBy { it.id }
             .filter { it.proto in DirectFeed.TUNNEL_PROTOS && !it.insecure && it.isUsable }
         val grade = mapOf("A" to 0, "B" to 1, "C" to 2, "D" to 3)
+        val regime = AppSettings.effectiveRegime()
         return all.sortedWith(
             compareBy<FeedNode>(
                 { if (it.id == preferred.id) 0 else 1 },
                 { platformRank(platformVerdicts[it.id]?.first ?: it.platformStatus) },
                 { localPenalty(it.id) },
+                // Iran-aware order inside equal local health: a survivable transport near the
+                // country on 443 gets its dial before a marginally faster plain node an ocean
+                // away. (This phone's measured failures above still outrank geography.)
+                { NodeRanking.bucket(it, regime) },
                 { grade[it.grade] ?: 9 },
                 { it.latencyMs ?: Long.MAX_VALUE },
                 { if (it.isVip) 0 else 1 },
@@ -389,6 +395,7 @@ class ServerFeedRepository(
             } else {
                 DirectFeed.buildFree(
                     brand = FREE_BRAND,
+                    regime = AppSettings.effectiveRegime(),
                     // The optional URL is the user's private subscription and belongs only to VIP;
                     // public free servers continue to come exclusively from the audited source set.
                     extra = null,
@@ -658,6 +665,9 @@ class ServerFeedRepository(
      */
     private suspend fun probeBatch(nodes: List<FeedNode>): Map<String, Long> = coroutineScope {
         if (nodes.isEmpty()) return@coroutineScope emptyMap()
+        // Adaptive budget (was a fixed 1500 ms): on a loaded Iranian cell the first SYN alone
+        // can take most of that, and every false "dead" here sorts a working node to grade D.
+        val timeoutMs = ProbePolicy.tcpTimeoutMs(lastReport.medianRttMs)
         val gate = Semaphore(12)
         nodes.map { node ->
             async(Dispatchers.IO) {
@@ -667,7 +677,7 @@ class ServerFeedRepository(
                         java.net.Socket().use { socket ->
                             socket.tcpNoDelay = true
                             if (!MeelanoVpnService.protectFeedSocket(socket)) error("socket_protect_failed")
-                            socket.connect(java.net.InetSocketAddress(node.host, node.port), 1_500)
+                            socket.connect(java.net.InetSocketAddress(node.host, node.port), timeoutMs)
                         }
                     }.isSuccess
                     node.id to if (ok) {
@@ -790,11 +800,17 @@ class ServerFeedRepository(
         appScope.launch {
             val nodes = (if (kind == KIND_VIP) _vip.value else _free.value).take(12)
             if (nodes.isEmpty()) return@launch
-            val res = NetGuard.tcpProbe(nodes.map { Pair(it.host, it.port) })
+            val res = NetGuard.tcpProbe(
+                nodes.map { Pair(it.host, it.port) },
+                timeoutMs = ProbePolicy.tcpTimeoutMs(lastReport.medianRttMs),
+            )
             nodes.forEachIndexed { i, n -> localProbe[n.id] = res.getOrElse(i) { -1L } }
-            val rep0 = NetGuard.measure(nodes.map {
-                NetGuard.ProbeTarget(it.id, it.host, it.port, it.tls != null, it.sni ?: it.host, it.alpn)
-            })
+            val rep0 = NetGuard.measure(
+                nodes.map {
+                    NetGuard.ProbeTarget(it.id, it.host, it.port, it.tls != null, it.sni ?: it.host, it.alpn)
+                },
+                previousMedianRttMs = lastReport.medianRttMs,
+            )
             val rep = rep0.copy(dnsPoisoned = lastDnsPoisoned)
             lastReport = rep
             AppSettings.setBlockReport(context, rep.toJson().toString(), rep.guess().name.lowercase())

@@ -177,10 +177,54 @@ class CoreProfilesTest {
         assertEquals("20-40", o.path("fragment", "interval"))
         assertEquals(true, o.path("tls", "enabled"))
         assertEquals(8, o.path("multiplex", "max_connections"))
-        // and the Xray dialect must not pretend: it echoes the intent, it does not invent a field
-        val xo = outbound(profile(node(tls = "tls", network = "ws", path = "/"), tune, CoreEngine.XRAY))
-        assertNull(xo["fragment"])
+        // and since 2.6.0 the Xray dialect fragments for real: the proxy dials through a
+        // freedom outbound that slices the ClientHello, carrying the same numbers. The
+        // diagnostic echo stays, but it is no longer the only place fragmentation exists.
+        val xp = profile(node(tls = "tls", network = "ws", path = "/"), tune, CoreEngine.XRAY)
+        val xo = outbound(xp)
+        assertNull(xo["fragment"]) // the fragmenter is its own outbound, never a proxy field
+        assertEquals("fragment", xo.path("streamSettings", "sockopt", "dialerProxy"))
+        @Suppress("UNCHECKED_CAST")
+        val frag = (xp["outbounds"] as List<Map<String, Any?>>).first { it["tag"] == "fragment" }
+        assertEquals("freedom", frag["protocol"])
+        assertEquals("tlshello", frag.path("settings", "fragment", "packets"))
+        assertEquals("150-250", frag.path("settings", "fragment", "length"))
+        assertEquals("20-40", frag.path("settings", "fragment", "interval"))
         assertTrue(xo.containsKey("meelanoFragment"))
+    }
+
+    @Test
+    fun realityIsNeverFragmentedEvenWhenTheTuneAsks() {
+        // Reality's borrowed ClientHello is the camouflage; slicing it only adds a failure mode.
+        val tune = Tune(fragSize = 200, fragCount = 2, fragStrategy = "variable", fragDelayMs = 20)
+        val p = profile(node(), tune, CoreEngine.XRAY) // default fixture is vless+reality+tcp
+        val o = outbound(p)
+        assertNull(o.path("streamSettings", "sockopt", "dialerProxy"))
+        @Suppress("UNCHECKED_CAST")
+        assertFalse((p["outbounds"] as List<Map<String, Any?>>).any { it["tag"] == "fragment" })
+    }
+
+    @Test
+    fun pingConfigsCarryTheirFragmentDialer() {
+        // libXray races the ping config standalone: a dialerProxy tag with no target outbound
+        // would fail construction for exactly the nodes fragmentation is meant to save.
+        val tune = Tune(fragSize = 200, fragCount = 2, fragStrategy = "variable", fragDelayMs = 20)
+        val json = CoreProfiles.pingConfigJson(node(tls = "tls", network = "ws", path = "/"), tune)
+        assertTrue(json.contains("\"dialerProxy\":\"fragment\""))
+        assertTrue(json.contains("\"tag\":\"fragment\""))
+        assertFalse("app-only echoes must not reach the engine", json.contains("meelano"))
+    }
+
+    @Test
+    fun inTunnelDnsHasThreeIndependentResolvers() {
+        val p = profile(node())
+        @Suppress("UNCHECKED_CAST")
+        val servers = (p.path("dns", "servers") as List<Map<String, Any?>>)
+        assertEquals(3, servers.size)
+        val addresses = servers.map { it["address"] }
+        assertTrue(addresses.contains("https://1.1.1.1/dns-query"))
+        assertTrue(addresses.contains("https://8.8.8.8/dns-query"))
+        assertEquals("UseIPv4", p.path("dns", "queryStrategy"))
     }
 
     @Test

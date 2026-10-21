@@ -1,5 +1,6 @@
 package ir.meelano.vpn.data
 
+import ir.meelano.vpn.net.IpFamily
 import java.net.URLDecoder
 import java.util.Locale
 
@@ -117,8 +118,21 @@ object NodeUri {
         val authority = rest.substringBefore('?')
         val cred = authority.substringBefore('@', "")
         val hostPort = authority.substringAfterLast('@')
-        val host = hostPort.substringBefore(':').trim('[', ']')
-        val port = hostPort.substringAfter(':', "").takeWhile { it.isDigit() }.toIntOrNull()
+        // Bracketed IPv6 literals ([2001:db8::1]:443) used to be mangled by the naive
+        // first-colon split below (host became "", the node was dropped). Panels on v6-only
+        // hosts exist, and a share link the user pastes must not silently lose its server.
+        val host: String
+        val port: Int?
+        if (hostPort.startsWith("[")) {
+            val close = hostPort.indexOf(']')
+            host = if (close > 1) hostPort.substring(1, close) else ""
+            port = if (close >= 0) {
+                hostPort.substring(close + 1).removePrefix(":").takeWhile { it.isDigit() }.toIntOrNull()
+            } else null
+        } else {
+            host = hostPort.substringBefore(':').trim()
+            port = hostPort.substringAfter(':', "").takeWhile { it.isDigit() }.toIntOrNull()
+        }
 
         // vmess carries its whole body base64'd in the userinfo: host, port and everything else is inside
         if (scheme == "vmess") {
@@ -353,8 +367,12 @@ object NodeUri {
 
     /** Host a phone should not even dial: loopback, LAN, CGNAT, link-local, multicast, reserved. */
     fun isPublicAddress(host: String): Boolean {
-        if (host.isBlank() || host.contains(':')) return false       // IPv6 literals: refused for now
-        val parts = host.split('.')
+        val h = host.trim().trim('[', ']')
+        if (h.isBlank()) return false
+        // IPv6 literals are welcome exactly when globally routable (IpFamily owns the ranges);
+        // a hostname never reaches the literal check, so no DNS lookup can hide in here.
+        if (h.contains(':')) return IpFamily.isGlobalIpv6Literal(h)
+        val parts = h.split('.')
         if (parts.size == 4 && parts.all { it.toIntOrNull() != null }) {
             val octets = parts.map { it.toInt() }
             if (octets.any { it !in 0..255 }) return false
@@ -369,8 +387,8 @@ object NodeUri {
             if (a >= 224) return false                                  // multicast / reserved
             return true
         }
-        if (host.equals("localhost", ignoreCase = true) || !host.contains('.')) return false
-        return host.length >= 4 && host.indexOf('.') in 1 until host.length - 1
+        if (h.equals("localhost", ignoreCase = true) || !h.contains('.')) return false
+        return h.length >= 4 && h.indexOf('.') in 1 until h.length - 1
     }
 
     /** Short, stable, and derived from what makes the node *this* node (same idea as the server's ids). */

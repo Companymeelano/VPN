@@ -193,6 +193,8 @@ object DirectFeed {
     suspend fun buildFree(
         sources: List<Upstream> = DEFAULTS,
         brand: String = "Free M•A",
+        /** The anti-block regime in force; shapes which transports sort first (NodeRanking). */
+        regime: ir.meelano.vpn.net.Regime = ir.meelano.vpn.net.Regime.TIGHT,
         maxNodes: Int = 64,
         parseCap: Int = 192,
         probeLimit: Int = 48,
@@ -368,7 +370,12 @@ object DirectFeed {
         }.sortedWith(
             compareBy<FeedNode>(
                 { if (it.latencyMs != null) 0 else 1 },
-                { GRADE_RANK[it.grade] ?: 9 },
+                // Iran-aware bucket before raw RTT: from inside the country, *what* a node is
+                // (Reality before plaintext) and *where* it is (Istanbul before Oregon) decides
+                // whether it survives the DPI at all; the RTT decides only inside that class.
+                // Sorting by one bare-TCP number put doomed-but-fast nodes at the head of every
+                // auto-connect attempt - the feed-side half of "connects only sometimes".
+                { NodeRanking.bucket(it, regime) },
                 { it.latencyMs ?: Long.MAX_VALUE },
                 { it.slot },
             )

@@ -348,6 +348,20 @@ t('vip mode keeps a failing node (never drop a paid server on one probe)', funct
     $r = Score::annotate([$t1, $t2], ['aaaaaaaaaaaa' => ['ok' => false], 'bbbbbbbbbbbb' => ['ok' => false]], [], false);
     return eq(count($r), 2, 'got ' . count($r));
 });
+t('equal grades order Iran-first: Reality next door before plaintext far away', function () {
+    // Both fresh, both reachable at the same 100 ms *from the host*: host-side latency alone
+    // cannot separate them, but from an Iranian carrier they are not the same bet at all.
+    $near = ['id' => 'iranrank0001', 'proto' => 'vless', 'host' => '4.4.4.4', 'port' => 443, 'cc' => 'TR', 'tls' => 'reality', 'network' => 'tcp'];
+    $far = ['id' => 'iranrank0002', 'proto' => 'ss', 'host' => '5.5.5.5', 'port' => 8388, 'cc' => 'US', 'tls' => '', 'network' => 'tcp'];
+    $r = Score::annotate([$far, $near], [
+        'iranrank0001' => ['ok' => true, 'ms' => 100],
+        'iranrank0002' => ['ok' => true, 'ms' => 100],
+    ], [], true);
+    return (count($r) === 2 && $r[0]['id'] === 'iranrank0001'
+        && Score::iranRank($near) < Score::iranRank($far)
+        && Score::iranRank(['cc' => 'IR', 'port' => 443]) > Score::iranRank(['cc' => 'ZZ', 'port' => 443]))
+        ? true : json_encode(array_column($r, 'id'));
+});
 t('client feedback moves reliability and latency (isolated node id)', function () {
     $id = 'eeeeeeeeeeee';
     $before = Ledger::quality($id);

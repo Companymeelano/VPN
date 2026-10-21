@@ -11,6 +11,7 @@ import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Build
 import android.os.Handler
@@ -20,6 +21,7 @@ import androidx.core.app.NotificationCompat
 import ir.meelano.vpn.MainActivity
 import ir.meelano.vpn.R
 import ir.meelano.vpn.data.FeedNode
+import ir.meelano.vpn.data.NodeRanking
 import ir.meelano.vpn.data.FeedHolder
 import ir.meelano.vpn.data.Prefs
 import ir.meelano.vpn.keepalive.KeepAlive
@@ -431,40 +433,86 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
     /**
      * On a network switch (wifi -> cell) the tunnel socket is dead. Reconnect the *engine*,
      * do not tear the notification down: a flash of "disconnected" is what users read as a crash.
+     *
+     * Two structural rules, both learned from the "connects only sometimes on Irancell" report:
+     *
+     *  1. We listen with a [NetworkRequest] carrying NET_CAPABILITY_NOT_VPN. The earlier
+     *     `registerDefaultNetworkCallback` reports *the VPN itself* as the default network
+     *     (carrying the underlying transports), so the callback could mistake our own tunnel
+     *     coming up for a physical network change - a self-triggered reconnect right after a
+     *     successful connect, precisely when the route is settling.
+     *  2. The system is told which networks are underneath us via [setUnderlyingNetworks] on
+     *     every change. Without it, Android cannot present the right metered/roaming state for
+     *     the tunnel and OEM traffic policers treat the tunnel as unsourced; with it, a cell<->wifi
+     *     hand-over is one coherent event instead of a stream of capability churn.
+     *
+     * A reconnect is scheduled only when the *primary* underlying network actually changes
+     * while connected - capability noise on the same network (signal bars, bandwidth estimates,
+     * which cellular fires constantly) is no longer an event at all.
      */
-    @Volatile private var underlying: Network? = null
+    private val underlyingLock = Any()
+    private val underlyingNetworks = LinkedHashSet<Network>()
     private var networkReconnect: kotlinx.coroutines.Job? = null
 
     private fun registerNetworkCallback() {
         connectivity = getSystemService(ConnectivityManager::class.java)
         val cb = object : ConnectivityManager.NetworkCallback() {
-            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-                val physical = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-                    caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
-                    caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
-                if (!physical || !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) return
-                val old = underlying
-                underlying = network
-                if (old == null || old == network || _phase.value !is ConnectPhase.Connected) return
-                // Debounce wifi/cell capability churn. A full candidate reconnect is required; merely
-                // re-running protect() cannot revive sockets bound to the vanished network.
-                networkReconnect?.cancel()
-                networkReconnect = serviceScope.launch {
-                    delay(1_200)
-                    reconnectActive("network_changed")
-                }
-            }
-
-            override fun onLost(network: Network) {
-                if (network != underlying) return
-                underlying = null
-                if (_phase.value is ConnectPhase.Connected) _phase.value = ConnectPhase.Handshake(0.2f)
-                // The periodic through-TUN monitor performs failover after two failed proofs. Do not run
-                // a second retry loop here; duplicate reconnectors are how two cores/two TUNs are born.
-            }
+            override fun onAvailable(network: Network) = updateUnderlying(network, added = true)
+            override fun onLost(network: Network) = updateUnderlying(network, added = false)
         }
         networkCallback = cb
-        runCatching { connectivity?.registerDefaultNetworkCallback(cb) }
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
+            .addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET)
+            .build()
+        runCatching { connectivity?.registerNetworkCallback(request, cb) }
+    }
+
+    private fun updateUnderlying(network: Network, added: Boolean) {
+        val oldPrimary: Network?
+        val newPrimary: Network?
+        synchronized(underlyingLock) {
+            oldPrimary = underlyingNetworks.firstOrNull()
+            if (added) {
+                // Most-recently-available first: Android's own default follows the newest good
+                // network (wifi joining while on cellular becomes the path), and the head of the
+                // set is both our "primary" and the preference order setUnderlyingNetworks wants.
+                val reordered = LinkedHashSet<Network>()
+                reordered += network
+                reordered += underlyingNetworks
+                underlyingNetworks.clear()
+                underlyingNetworks.addAll(reordered)
+            } else {
+                underlyingNetworks -= network
+            }
+            newPrimary = underlyingNetworks.firstOrNull()
+            // Tell the platform what this tunnel stands on, every time that changes. null is the
+            // documented "no specific underlying networks" value, and it is what a moment with no
+            // physical network at all must look like - not yesterday's wifi.
+            runCatching {
+                setUnderlyingNetworks(if (underlyingNetworks.isEmpty()) null else underlyingNetworks.toTypedArray())
+            }
+        }
+        if (oldPrimary == null || oldPrimary == newPrimary) return
+        if (_phase.value !is ConnectPhase.Connected) return
+        if (newPrimary == null) {
+            _phase.value = ConnectPhase.Handshake(0.2f)
+            // No second retry loop here: the orchestrator's health monitor owns failover proofs.
+            // Duplicate reconnectors are how two cores/two TUNs are born.
+            return
+        }
+        // The physical path moved under a live tunnel: the core's sockets are bound to the old
+        // one and protect() cannot revive them. Reconnect through the orchestrator (its
+        // generation guard supersedes any health-monitor attempt already in flight), debounced
+        // briefly so a wifi flap mid-hand-over does not dial twice.
+        networkReconnect?.cancel()
+        networkReconnect = serviceScope.launch {
+            delay(900)
+            reconnectActive("network_changed")
+        }
     }
 
     private suspend fun reconnectActive(reason: String) {
@@ -515,23 +563,25 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
             return result
         }
 
-        val cloudflare = measure("https://cp.cloudflare.com/generate_204") ?: return@withContext nodes
-        val google = measure("https://www.google.com/generate_204") ?: return@withContext nodes
-        if ((cloudflare.values + google.values).none { it < 10_000L }) return@withContext nodes
+        fun ranked(delays: Map<String, Long>): List<FeedNode> =
+            nodes.sortedWith(compareBy<FeedNode>(
+                { node -> if ((delays[node.id] ?: 11_000L) < 10_000L) 0 else 1 },
+                { node -> delays[node.id] ?: 11_000L },
+                { NodeRanking.bucket(it, ir.meelano.vpn.data.AppSettings.effectiveRegime()) },
+                { it.slot },
+            ))
 
-        nodes.sortedWith(compareBy<FeedNode>(
-            { node ->
-                val cf = (cloudflare[node.id] ?: 11_000L) < 10_000L
-                val gg = (google[node.id] ?: 11_000L) < 10_000L
-                when {
-                    cf && gg -> 0
-                    cf || gg -> 1
-                    else -> 2
-                }
-            },
-            { node -> maxOf(cloudflare[node.id] ?: 11_000L, google[node.id] ?: 11_000L) },
-            { it.slot },
-        ))
+        // One race, not two: Cloudflare's connectivity endpoint answers from any working exit,
+        // so a candidate that wins it has already proved the full transport. The old code then
+        // *always* ran a second, sequential Google race before dialling anything - up to ten
+        // extra seconds on a slow carrier, paid on every reconnect, to learn a fact (does this
+        // exit reach Google?) that TunnelProbe measures again through the real TUN anyway.
+        // Google is now only the tie-breaker of last resort, when the first race proved nothing.
+        val cloudflare = measure("https://cp.cloudflare.com/generate_204") ?: return@withContext nodes
+        if (cloudflare.values.any { it < 10_000L }) return@withContext ranked(cloudflare)
+        val google = measure("https://www.google.com/generate_204") ?: return@withContext nodes
+        if (google.values.none { it < 10_000L }) return@withContext nodes
+        ranked(google)
     }
 
     override suspend fun startProxy(spec: TunnelSpec) {

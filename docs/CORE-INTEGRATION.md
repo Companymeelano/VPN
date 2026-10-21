@@ -30,7 +30,7 @@
 |---|---|---|
 | لایسنس | **MPL-2.0** — در اپ بسته‌مصدر مجاز است | **GPL‑3.0+** — لینک‌کردن، کل اپ را GPL می‌کند |
 | Reality + Vision | بومی (همینجا بهترین است) | دارد (Reality) |
-| تکه‌تکه‌سازی ترنسپورت | ندارد (باید fork یا حذف) | دارد (`fragment`) |
+| تکه‌تکه‌سازی ترنسپورت | دارد (از ۲٫۶٫۰: زنجیرهٔ `freedom` با `fragment` از مسیر sockopt.dialerProxy؛ فقط TLS معمولی، نه Reality) | دارد (`fragment`) |
 | شکل کانفیگ | `streamSettings` / `realitySettings` | `transport` / `tls.reality` / `fragment` |
 | انتخاب پروژه | **پیش‌فرض** (`MEELANO_CORE_ENGINE=xray`) | `=sing-box` |
 

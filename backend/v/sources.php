@@ -10,13 +10,18 @@
  * Only the top of each list matters: they are all "sorted best first", so `take` keeps the
  * head and we never burn the shared host on 400k dead lines.
  *
+ * Budget note (2.6.0): the probe budget is finite per build, and a raw HTTP proxy that
+ * answers from this host still almost never survives an Iranian carrier - while a tunnel
+ * config can. Takes therefore favour tunnel configs (vless first) over raw proxy volume;
+ * ordering *inside* the gated result is Iran-first too (Score::iranRank).
+ *
  * You can drop a sources.local.php next to this file returning extra entries; they are appended.
  */
 
 $urls = [
     // ---------------------------------------------------------------- real tunnel configs
     'gfp-vless' => [
-        'kind' => 'config', 'take' => 300,
+        'kind' => 'config', 'take' => 360,
         'url'  => 'https://raw.githubusercontent.com/wiki/gfpcom/free-proxy-list/lists/vless.txt',
     ],
     'gfp-trojan' => [
@@ -24,11 +29,11 @@ $urls = [
         'url'  => 'https://raw.githubusercontent.com/wiki/gfpcom/free-proxy-list/lists/trojan.txt',
     ],
     'gfp-ss' => [
-        'kind' => 'config', 'take' => 120,
+        'kind' => 'config', 'take' => 100,
         'url'  => 'https://raw.githubusercontent.com/wiki/gfpcom/free-proxy-list/lists/ss.txt',
     ],
     'gfp-vmess' => [
-        'kind' => 'config', 'take' => 120,
+        'kind' => 'config', 'take' => 80,
         'url'  => 'https://raw.githubusercontent.com/wiki/gfpcom/free-proxy-list/lists/vmess.txt',
     ],
     'gfp-hy2' => [
@@ -43,35 +48,35 @@ $urls = [
     ],
     // ---------------------------------------------------------------- raw proxy lists (fallbacks)
     'thespeedx-http' => [
-        'kind' => 'proxy', 'protocol' => 'http', 'take' => 250,
+        'kind' => 'proxy', 'protocol' => 'http', 'take' => 150,
         'url'  => 'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt',
     ],
     'thespeedx-socks5' => [
-        'kind' => 'proxy', 'protocol' => 'socks5', 'take' => 250,
+        'kind' => 'proxy', 'protocol' => 'socks5', 'take' => 150,
         'url'  => 'https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt',
     ],
     'clarketm' => [
-        'kind' => 'proxy', 'protocol' => 'http', 'take' => 200,
+        'kind' => 'proxy', 'protocol' => 'http', 'take' => 120,
         'url'  => 'https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt',
     ],
     'shiftytr' => [
-        'kind' => 'proxy', 'protocol' => 'http', 'take' => 200,
+        'kind' => 'proxy', 'protocol' => 'http', 'take' => 120,
         'url'  => 'https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt',
     ],
     'monosans-http' => [
-        'kind' => 'proxy', 'protocol' => 'http', 'take' => 200,
+        'kind' => 'proxy', 'protocol' => 'http', 'take' => 120,
         'url'  => 'https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt',
     ],
     'monosans-socks5' => [
-        'kind' => 'proxy', 'protocol' => 'socks5', 'take' => 200,
+        'kind' => 'proxy', 'protocol' => 'socks5', 'take' => 120,
         'url'  => 'https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks5.txt',
     ],
     'jetkai' => [
-        'kind' => 'proxy', 'take' => 200,
+        'kind' => 'proxy', 'take' => 120,
         'url'  => 'https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies.txt',
     ],
     'sunny9577' => [
-        'kind' => 'proxy', 'protocol' => 'http', 'take' => 150,
+        'kind' => 'proxy', 'protocol' => 'http', 'take' => 100,
         'url'  => 'https://raw.githubusercontent.com/sunny9577/proxy-scraper/master/proxies.txt',
     ],
 ];
