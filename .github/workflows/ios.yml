@@ -118,7 +118,9 @@ jobs:
             -destination "platform=iOS Simulator,name=$dest" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' \
             | tee /tmp/xcode-test.log | tail -40
-          if ! grep -q '** TEST SUCCEEDED **' /tmp/xcode-test.log; then
+          # بدون ستاره‌ها: xcodebuild به خطوط رنگی ANSI می‌زند و الگوی '** TEST SUCCEEDED **'
+          # دقیق نمی‌خورد - درست همان چیزی که با وجود تست‌های سبز، step را قرمز کرد.
+          if ! grep -q 'TEST SUCCEEDED' /tmp/xcode-test.log; then
             echo '::error::xcodebuild test did not report success'
             exit 1
           fi
