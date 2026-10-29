@@ -337,4 +337,46 @@ class CoreProfilesTest {
         assertEquals(CoreEngine.SING_BOX, CoreEngine.of("sing-box"))
         assertEquals(CoreEngine.SING_BOX, CoreEngine.of("Hiddify"))
     }
+
+    /* ---------------- dialAddress (SmartResolver): IP dialing must be invisible to the server ---- */
+
+    @Test
+    fun dialByIpKeepsDomainInTlsSniAndWsHost() {
+        val n = node(tls = "tls", network = "ws", sni = null).copy(host = "node.example.com")
+        val o = outbound(CoreProfiles.plan(n, Tune.Default, CoreEngine.XRAY, dialAddress = "203.0.113.5"))
+        assertEquals("203.0.113.5", o.path("settings", "address"))
+        assertEquals("node.example.com", o.path("streamSettings", "tlsSettings", "serverName"))
+        assertEquals("node.example.com", o.path("streamSettings", "wsSettings", "host"))
+    }
+
+    @Test
+    fun dialByIpKeepsGrpcAuthorityAndRealityServerName() {
+        val g = node(tls = "tls", network = "grpc", sni = null).copy(host = "node.example.com")
+        val og = outbound(CoreProfiles.plan(g, Tune.Default, CoreEngine.XRAY, dialAddress = "203.0.113.5"))
+        assertEquals("203.0.113.5", og.path("settings", "address"))
+        assertEquals("node.example.com", og.path("streamSettings", "grpcSettings", "authority"))
+
+        // Reality: the spoofed serverName must stay the *spoof* domain while the socket gets the IP
+        val r = node(tls = "reality").copy(host = "node.example.com")
+        val or_ = outbound(CoreProfiles.plan(r, Tune.Default, CoreEngine.XRAY, dialAddress = "203.0.113.5"))
+        assertEquals("203.0.113.5", or_.path("settings", "address"))
+        assertEquals("www.speedtest.net", or_.path("streamSettings", "realitySettings", "serverName"))
+    }
+
+    @Test
+    fun blankDialAddressFallsBackToLegacyHostnameDialing() {
+        val n = node(tls = "tls", network = "ws", sni = null).copy(host = "node.example.com")
+        val o = outbound(CoreProfiles.plan(n, Tune.Default, CoreEngine.XRAY, dialAddress = ""))
+        assertEquals("node.example.com", o.path("settings", "address"))
+        // no IP substitution → the Host header stays unforced (legacy shape)
+        assertNull(o.path("streamSettings", "wsSettings", "host"))
+    }
+
+    @Test
+    fun explicitHostHeaderAlwaysWinsOverTheSubstitutionFallback() {
+        val n = node(tls = "tls", network = "ws", sni = null, hostHeader = "cdn.example.com")
+            .copy(host = "node.example.com")
+        val o = outbound(CoreProfiles.plan(n, Tune.Default, CoreEngine.XRAY, dialAddress = "203.0.113.5"))
+        assertEquals("cdn.example.com", o.path("streamSettings", "wsSettings", "host"))
+    }
 }

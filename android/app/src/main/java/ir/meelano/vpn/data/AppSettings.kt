@@ -42,6 +42,9 @@ object AppSettings {
         private set
     var autoUpdate by mutableStateOf(true)
         private set
+    /** «بررسی خودکار نسخه» — periodic version check (update/UpdateScheduler); the download stays gated on [autoUpdate] + unmetered. */
+    var autoCheckUpdate by mutableStateOf(true)
+        private set
     /** «دریافت خودکار» — the periodic background feed sync (data/FeedScheduler). */
     var autoFetch by mutableStateOf(true)
         private set
@@ -112,6 +115,7 @@ object AppSettings {
         lastBlockReport = p.getString("block_report", "") ?: ""
         detectedRegime = p.getString("detected_regime", "tight") ?: "tight"
         autoUpdate = p.getBoolean("auto_update", true)
+        autoCheckUpdate = p.getBoolean("auto_check_update", true)
         autoFetch = p.getBoolean("auto_fetch", true)
         feedIntervalHours = p.getInt("feed_interval_hours", 6).coerceIn(1, 24)
         // One-way migration: old releases persisted HOST/AUTO. Merely changing the default would leave
@@ -135,6 +139,7 @@ object AppSettings {
     fun setSecureDns(c: Context, v: Boolean) = write(c, "secure_dns", v) { secureDns = v }
     fun setReducedMotion(c: Context, v: Boolean) = write(c, "reduced_motion", v) { reducedMotion = v }
     fun setAutoUpdate(c: Context, v: Boolean) = write(c, "auto_update", v) { autoUpdate = v }
+    fun setAutoCheckUpdate(c: Context, v: Boolean) = write(c, "auto_check_update", v) { autoCheckUpdate = v }
     fun setAutoFetch(c: Context, v: Boolean) = write(c, "auto_fetch", v) { autoFetch = v }
     fun setFeedIntervalHours(c: Context, v: Int) = write(c, "feed_interval_hours", v.coerceIn(1, 24)) {
         feedIntervalHours = v.coerceIn(1, 24)
@@ -212,6 +217,7 @@ object AppSettings {
             "regime" to regime, "frag" to fragmentAuto, "mux" to muxEnabled,
             "reality" to realityFirst, "boot" to autoConnectOnBoot, "mtu" to mtu,
             "feed" to feedMode, "autofetch" to autoFetch, "interval" to feedIntervalHours,
+            "autoupdate" to autoUpdate, "autocheck" to autoCheckUpdate,
         )
     }
 }

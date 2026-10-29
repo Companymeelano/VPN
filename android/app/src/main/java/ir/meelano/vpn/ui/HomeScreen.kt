@@ -47,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -425,13 +426,40 @@ private fun AmbientGlow(accent: Color, intensity: Float) {
     }
 }
 
+/**
+ * The «نسخه‌ی جدید آمد» slab on the home screen: the same raised-lit body as the rest of the kit,
+ * now with the breathing accent halo — the one moment on this screen allowed to be loud.
+ */
 @Composable
 private fun UpdateBanner(version: String, size: String, onOpen: () -> Unit, onSkip: () -> Unit) {
     val p = LocalPalette.current
+    val reduced = AppSettings.reducedMotion
+    val breath = androidx.compose.animation.core.rememberInfiniteTransition(label = "updBanner")
+    val glow by breath.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            androidx.compose.animation.core.tween(if (reduced) 0 else 1500),
+            androidx.compose.animation.core.RepeatMode.Reverse,
+        ),
+        label = "updBannerGlow",
+    )
     Row(
         Modifier
             .fillMaxWidth()
             .padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 2.dp)
+            .drawBehind {
+                // `size` is shadowed here by the banner's `size: String` parameter — the DrawScope
+                // dimension must be reached through the receiver explicitly.
+                drawRect(
+                    brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                        0f to p.accent.copy(alpha = 0.22f * glow),
+                        1f to Color.Transparent,
+                        center = androidx.compose.ui.geometry.Offset(this.size.width / 2f, this.size.height / 2f),
+                        radius = maxOf(this.size.width, this.size.height) * 0.8f,
+                    ),
+                )
+            }
             .meeExtruded(
                 corner = 14.dp,
                 depth = 3.5.dp,
@@ -440,7 +468,11 @@ private fun UpdateBanner(version: String, size: String, onOpen: () -> Unit, onSk
                 shadowAlpha = 0.7f,
             )
             .clip(RoundedCornerShape(14.dp))
-            .background(p.accent.copy(alpha = 0.10f))
+            .background(
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    listOf(p.accent.copy(alpha = 0.18f), p.accent.copy(alpha = 0.07f)),
+                ),
+            )
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -687,6 +687,11 @@ class ServerFeedRepository(
      * Bounded direct TCP pass. Protect each socket when a VPN is already running; otherwise a refresh
      * would measure endpoints from the old exit node and call them healthy even when this phone's own
      * network cannot reach them during failover.
+     *
+     * Endpoints are dialed by the *SmartResolver* address (foreign DoH, majority-ranked, v4-first),
+     * never by a system-resolved hostname: on carriers whose DNS sinkholes foreign names (MCI) the
+     * old path marked every domain-hosted node dead while IP-literal nodes sailed through — the
+     * "works on Irancell, not on MCI" report. The poison verdict feeds the fleet report below.
      */
     private suspend fun probeBatch(nodes: List<FeedNode>): Map<String, Long> = coroutineScope {
         if (nodes.isEmpty()) return@coroutineScope emptyMap()
@@ -698,11 +703,14 @@ class ServerFeedRepository(
             async(Dispatchers.IO) {
                 gate.withPermit {
                     val started = System.nanoTime()
+                    val resolved = ir.meelano.vpn.net.SmartResolver.resolve(node.host)
+                    if (resolved.poisoned) lastDnsPoisoned = true
+                    val dial = resolved.ip ?: node.host
                     val ok = runCatching {
                         java.net.Socket().use { socket ->
                             socket.tcpNoDelay = true
                             if (!MeelanoVpnService.protectFeedSocket(socket)) error("socket_protect_failed")
-                            socket.connect(java.net.InetSocketAddress(node.host, node.port), timeoutMs)
+                            socket.connect(java.net.InetSocketAddress(dial, node.port), timeoutMs)
                         }
                     }.isSuccess
                     node.id to if (ok) {

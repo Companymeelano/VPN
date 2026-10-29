@@ -86,6 +86,7 @@ private data class SettingsDraft(
     val autoFetch: Boolean = true,
     val feedIntervalHours: Int = 6,
     val autoUpdate: Boolean = true,
+    val autoCheckUpdate: Boolean = true,
     val feedback: Boolean = true,
     val reducedMotion: Boolean = false,
 )
@@ -103,6 +104,7 @@ private fun draftFrom(): SettingsDraft = SettingsDraft(
     autoFetch = AppSettings.autoFetch,
     feedIntervalHours = AppSettings.feedIntervalHours,
     autoUpdate = AppSettings.autoUpdate,
+    autoCheckUpdate = AppSettings.autoCheckUpdate,
     feedback = AppSettings.feedback,
     reducedMotion = AppSettings.reducedMotion,
 )
@@ -117,6 +119,7 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
     var diagnostics by remember { mutableStateOf(false) }
     var routing by remember { mutableStateOf(false) }
     var smart by remember { mutableStateOf(false) }
+    var updateSheet by remember { mutableStateOf(false) }
     // The on-device list has no host to ask "what happened", so the sheet carries the answer: which
     // sources answered, and what was thrown away. Local state only - nothing here survives the sheet.
     val feedNotes by vm.feedNotes.collectAsState()
@@ -158,12 +161,14 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
         AppSettings.setAutoFetch(ctx, draft.autoFetch)
         AppSettings.setFeedIntervalHours(ctx, draft.feedIntervalHours)
         AppSettings.setAutoUpdate(ctx, draft.autoUpdate)
+        AppSettings.setAutoCheckUpdate(ctx, draft.autoCheckUpdate)
         AppSettings.setFeedback(ctx, draft.feedback)
         AppSettings.setReducedMotion(ctx, draft.reducedMotion)
         // Side effects the dials promise: the watchdog exists only while smart-reconnect is on, and
         // the periodic feed sync must re-arm with the new interval immediately, not on next launch.
         runCatching { if (draft.smartReconnect) KeepAlive.enableWatchdog(ctx) else KeepAlive.disableWatchdog(ctx) }
         runCatching { FeedScheduler.schedule(ctx) }
+        runCatching { ir.meelano.vpn.update.UpdateScheduler.schedule(ctx) }
         savedFlash = true
     }
 
@@ -281,18 +286,75 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                         }
                         PanelDivider()
                         SwitchRow(
+                            title = stringResource(R.string.set_feedback),
+                            body = stringResource(R.string.set_feedback_body),
+                            on = draft.feedback,
+                            onChange = { draft = draft.copy(feedback = it) },
+                        )
+                    }
+                }
+
+                // ── «به‌روزرسانی برنامه» — the new automatic version-check section ──
+                item {
+                    MeelanoPanel(title = stringResource(R.string.group_update)) {
+                        SwitchRow(
+                            title = stringResource(R.string.set_autocheck),
+                            body = stringResource(R.string.set_autocheck_body),
+                            on = draft.autoCheckUpdate,
+                            onChange = { draft = draft.copy(autoCheckUpdate = it) },
+                        )
+                        PanelDivider()
+                        SwitchRow(
                             title = stringResource(R.string.set_update),
                             body = stringResource(R.string.set_update_body),
                             on = draft.autoUpdate,
                             onChange = { draft = draft.copy(autoUpdate = it) },
                         )
                         PanelDivider()
-                        SwitchRow(
-                            title = stringResource(R.string.set_feedback),
-                            body = stringResource(R.string.set_feedback_body),
-                            on = draft.feedback,
-                            onChange = { draft = draft.copy(feedback = it) },
-                        )
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+                            Text(
+                                stringResource(R.string.upd_installed, BuildConfig.VERSION_NAME),
+                                fontSize = 11.sp, color = p.faint,
+                                style = TextStyle(fontFeatureSettings = "tnum"),
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            val updState by vm.updateState.collectAsState()
+                            val statusText = when (val s = updState) {
+                                is ir.meelano.vpn.update.UpdateManager.State.Checking ->
+                                    stringResource(R.string.upd_status_checking)
+                                is ir.meelano.vpn.update.UpdateManager.State.Available ->
+                                    stringResource(R.string.upd_status_available, s.info.versionName)
+                                is ir.meelano.vpn.update.UpdateManager.State.Failed ->
+                                    stringResource(R.string.upd_status_failed)
+                                is ir.meelano.vpn.update.UpdateManager.State.ReadyToInstall ->
+                                    stringResource(R.string.upd_saved)
+                                else -> stringResource(R.string.upd_status_uptodate)
+                            }
+                            Text(statusText, fontSize = 12.sp, color = p.muted)
+                            Spacer(Modifier.height(10.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                MeelanoButton(
+                                    label = stringResource(R.string.upd_check_now),
+                                    onClick = { vm.updates.checkAsync() },
+                                    tone = BtnTone.Tonal,
+                                    size = BtnSize.Small,
+                                    iconRes = R.drawable.ic_refresh,
+                                    loading = updState is ir.meelano.vpn.update.UpdateManager.State.Checking,
+                                )
+                                if (updState is ir.meelano.vpn.update.UpdateManager.State.Available ||
+                                    updState is ir.meelano.vpn.update.UpdateManager.State.Downloading
+                                ) {
+                                    Spacer(Modifier.width(8.dp))
+                                    MeelanoButton(
+                                        label = stringResource(R.string.upd_open),
+                                        onClick = { updateSheet = true },
+                                        tone = BtnTone.Primary,
+                                        size = BtnSize.Small,
+                                        iconRes = R.drawable.ic_download,
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -713,6 +775,7 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
         if (diagnostics) DiagnosticsSheet(vm = vm, onDismiss = { diagnostics = false })
         if (routing) AppRoutingSheet(onDismiss = { routing = false })
         if (smart) SmartProfileSheet(vm = vm, onDismiss = { smart = false })
+        if (updateSheet) UpdateSheet(vm = vm, onDismiss = { updateSheet = false })
     }
 }
 

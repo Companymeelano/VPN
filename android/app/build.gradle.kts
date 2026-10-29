@@ -85,11 +85,11 @@ android {
         // feed compares (see backend/v/lib/Version.php) and an APK with a code already "seen" is a
         // silent no-op for every user.
         //
-        // scheme: major*100_000 + minor*1_000 + patch  ->  2.7.0 = 207_000. It is arithmetic, not a
+        // scheme: major*100_000 + minor*1_000 + patch  ->  2.8.0 = 208_000. It is arithmetic, not a
         // date, because a date code (20240911) overflows the int some tooling prints and it tells
         // you nothing about which build is newer when two are built on the same day.
-        versionCode = 207_000
-        versionName = "2.7.0"
+        versionCode = 208_000
+        versionName = "2.8.0"
 
         resourceConfigurations += listOf("fa", "en")
         vectorDrawables.useSupportLibrary = true

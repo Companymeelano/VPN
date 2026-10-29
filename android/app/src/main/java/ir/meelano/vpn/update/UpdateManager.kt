@@ -9,6 +9,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import ir.meelano.vpn.BuildConfig
+import ir.meelano.vpn.data.AppSettings
 import java.io.File
 import java.security.MessageDigest
 import kotlinx.coroutines.CoroutineScope
@@ -46,7 +47,13 @@ class UpdateManager(private val context: Context, private val baseUrl: String = 
         object Idle : State()
         object Checking : State()
         data class Available(val info: UpdateInfo) : State()
-        data class Downloading(val percent: Int, val bytes: Long) : State()
+        /** Real numbers only: percent from bytes/sizeBytes, speed measured over the last ticks. */
+        data class Downloading(
+            val percent: Int,
+            val bytes: Long,
+            val totalBytes: Long,
+            val bytesPerSec: Long = 0L,
+        ) : State()
         object Verifying : State()
         data class ReadyToInstall(val info: UpdateInfo, val file: File) : State()
         data class BlockedNeedPermission(val info: UpdateInfo, val file: File) : State()
@@ -89,7 +96,15 @@ class UpdateManager(private val context: Context, private val baseUrl: String = 
                         _state.value = State.Failed("bad_signature")   // host or CDN tampered with
                     }
                     !info.updateAvailable -> _state.value = State.Idle
-                    else -> _state.value = State.Available(info)
+                    else -> {
+                        _state.value = State.Available(info)
+                        // «دانلود خودکار»: the promise the settings toggle makes. On an unmetered
+                        // network the download starts itself — the user then only confirms install
+                        // (Android's one hard limit), watched through the 3D progress dial.
+                        if (AppSettings.autoUpdate && ir.meelano.vpn.onUnmetered(context)) {
+                            downloadAndInstall(info)
+                        }
+                    }
                 }
                 info
             }
@@ -148,7 +163,7 @@ class UpdateManager(private val context: Context, private val baseUrl: String = 
             if (file.length() == info.sizeBytes && info.sha256.isNotBlank() && sha256(file) == info.sha256.lowercase()) {
                 _state.value = State.Verifying
             } else {
-                _state.value = State.Downloading(0, 0)
+                _state.value = State.Downloading(0, 0, info.sizeBytes)
                 part.delete()
                 http.newCall(Request.Builder().url(info.url).build()).execute().use { r ->
                     if (!r.isSuccessful) throw IllegalStateException("http_${r.code}")
@@ -158,6 +173,8 @@ class UpdateManager(private val context: Context, private val baseUrl: String = 
                         val buf = ByteArray(64 * 1024)
                         var done = 0L
                         var lastTick = 0L
+                        var lastBytes = 0L
+                        var speed = 0L
                         while (true) {
                             val n = input.read(buf)
                             if (n < 0) break
@@ -166,9 +183,16 @@ class UpdateManager(private val context: Context, private val baseUrl: String = 
                             if (done > info.sizeBytes) throw IllegalStateException("download_too_large")
                             val t = System.currentTimeMillis()
                             if (t - lastTick > 250) {     // do not spam Compose per 64 KB chunk
+                                // measured speed, EMA-smoothed so the dial's needle does not jitter
+                                val instant = if (t > lastTick) (done - lastBytes) * 1000L / (t - lastTick) else 0L
+                                speed = if (speed == 0L) instant else (speed * 2 + instant) / 3
                                 lastTick = t
+                                lastBytes = done
                                 _state.value = State.Downloading(
-                                    if (total > 0) ((done * 100) / total).toInt() else 0, done
+                                    if (total > 0) ((done * 100) / total).toInt() else 0,
+                                    done,
+                                    total,
+                                    speed,
                                 )
                             }
                         }
