@@ -8,8 +8,10 @@
  *    fragmented (splitting a borrowed handshake adds failures and buys nothing);
  *  - DNS is DoH *by IP* (five providers — the 2.8.1 set), so no bootstrap lookup can be
  *    poisoned; queryStrategy UseIPv4 (the v6 hang guard);
- *  - LAN ranges are blocked by default (kill-switch semantics), port 53 goes to the core's
- *    dns outbound so nothing leaks to the carrier resolver.
+ *  - LAN routing is a user choice, not a hard rule: the desktop default is LAN *direct*
+ *    (routers, printers and NAS keep working — a desktop is not a phone), and the
+ *    «دسترسی شبکه محلی» switch turns it into the Android kill-switch semantics (LAN → block)
+ *    when the user wants zero local escape. [ProfileOptions.allowLan] carries that choice.
  *
  * Pure data in, JSON out: no fs, no net — this module is unit-tested on every PR.
  */
@@ -125,6 +127,14 @@ function transportSettings(node: NodeInfo): Record<string, unknown> | null {
         path: node.path || "/",
         ...(node.headerHost ? { host: [node.headerHost] } : {}),
       };
+    case "httpupgrade":
+      // Xray's own transport (stream network "httpupgrade") — the single-stream HTTP upgrade
+      // shape some CDNs only allow. Downcasing it to "tcp" (the old shortcut) silently dropped
+      // the transport and produced a config the server rejects.
+      return {
+        path: node.path || "/",
+        ...(node.headerHost ? { host: node.headerHost } : {}),
+      };
     default:
       return null;
   }
@@ -140,8 +150,8 @@ export function buildConfig(
   opts: ProfileOptions = DEFAULT_PROFILE_OPTIONS,
 ): Record<string, unknown> {
   const stream: Record<string, unknown> = {
-    network: node.network === "httpupgrade" ? "tcp" : node.network || "tcp",
-    sockopt: { tcpNoDelay: true, tcpFastOpen: tune.keepAliveSec > 0 },
+    network: node.network || "tcp",
+    sockopt: { tcpNoDelay: true, tcpFastOpen: tune.tfo },
   };
   const transport = transportSettings(node);
   if (transport) stream[`${stream["network"]}Settings`] = transport;

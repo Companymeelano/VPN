@@ -30,4 +30,10 @@ describe("regime table", () => {
     expect(REGIMES.calm.mux).toBe(true);
     expect(REGIMES.blackout.mux).toBe(false);
   });
+
+  it("TFO is calm-only (a DPI anomaly when everything else is camouflaged)", () => {
+    expect(REGIMES.calm.tfo).toBe(true);
+    expect(REGIMES.tight.tfo).toBe(false);
+    expect(REGIMES.blackout.tfo).toBe(false);
+  });
 });

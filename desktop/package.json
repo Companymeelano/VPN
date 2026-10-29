@@ -1,6 +1,6 @@
 {
   "name": "ma-vpn-desktop",
-  "version": "2.8.1",
+  "version": "2.8.2",
   "description": "MA VPN — کلاینت حرفه‌ای ویندوز ۶۴بیت",
   "main": "dist/main/main.js",
   "private": true,

@@ -102,6 +102,23 @@ export class XrayCore {
       }, 1500);
     });
   }
+
+  /**
+   * Synchronous last-resort kill for process-exit hooks: an Electron app that quits without
+   * stopping the core leaves xray.exe running as an orphan (Windows does not cascade process
+   * death), silently keeping a tunnel alive the user thinks they closed.
+   */
+  forceKill(): void {
+    const child = this.child;
+    this.child = null;
+    if (child && child.exitCode === null) {
+      try {
+        child.kill();
+      } catch {
+        /* already gone */
+      }
+    }
+  }
 }
 
 /**
@@ -133,7 +150,7 @@ export async function fetchSubscription(url: string, timeoutMs = 15000): Promise
     const res = await fetch(url, {
       signal: controller.signal,
       redirect: "follow",
-      headers: { "User-Agent": "MA-VPN-Desktop/2.8.1" },
+      headers: { "User-Agent": "MA-VPN-Desktop/2.8.2" },
     });
     if (!res.ok) throw new Error(`http_${res.status}`);
     return await res.text();

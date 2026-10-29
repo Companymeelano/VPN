@@ -27,9 +27,8 @@ export interface AppSettingsState {
 export interface SpeedPoint {
   /** epoch ms */
   t: number;
-  /** bytes/sec (system-wide interface counter delta) */
+  /** bytes/sec (system-wide interface counter) */
   down: number;
-  up: number;
 }
 
 export interface AppSnapshot {
