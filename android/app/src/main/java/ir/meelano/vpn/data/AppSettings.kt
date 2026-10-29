@@ -42,6 +42,12 @@ object AppSettings {
         private set
     var autoUpdate by mutableStateOf(true)
         private set
+    /** «دریافت خودکار» — the periodic background feed sync (data/FeedScheduler). */
+    var autoFetch by mutableStateOf(true)
+        private set
+    /** Hours between automatic feed refreshes; 6 is the honest TTL of a public list. */
+    var feedIntervalHours by mutableStateOf(6)
+        private set
     /** Always FEED_DIRECT; public constants only exist to migrate older installs safely. */
     var feedMode by mutableStateOf(FEED_DIRECT)
         private set
@@ -106,6 +112,8 @@ object AppSettings {
         lastBlockReport = p.getString("block_report", "") ?: ""
         detectedRegime = p.getString("detected_regime", "tight") ?: "tight"
         autoUpdate = p.getBoolean("auto_update", true)
+        autoFetch = p.getBoolean("auto_fetch", true)
+        feedIntervalHours = p.getInt("feed_interval_hours", 6).coerceIn(1, 24)
         // One-way migration: old releases persisted HOST/AUTO. Merely changing the default would leave
         // those users waiting on the private backend forever, so rewrite the stored value as well.
         feedMode = FEED_DIRECT
@@ -127,6 +135,10 @@ object AppSettings {
     fun setSecureDns(c: Context, v: Boolean) = write(c, "secure_dns", v) { secureDns = v }
     fun setReducedMotion(c: Context, v: Boolean) = write(c, "reduced_motion", v) { reducedMotion = v }
     fun setAutoUpdate(c: Context, v: Boolean) = write(c, "auto_update", v) { autoUpdate = v }
+    fun setAutoFetch(c: Context, v: Boolean) = write(c, "auto_fetch", v) { autoFetch = v }
+    fun setFeedIntervalHours(c: Context, v: Int) = write(c, "feed_interval_hours", v.coerceIn(1, 24)) {
+        feedIntervalHours = v.coerceIn(1, 24)
+    }
     /** Legacy UI/API call: private-host modes are no longer selectable or reachable. */
     fun setFeedMode(c: Context, @Suppress("UNUSED_PARAMETER") v: Int) =
         write(c, "feed_mode", FEED_DIRECT) { feedMode = FEED_DIRECT }
@@ -199,7 +211,7 @@ object AppSettings {
             "theme" to themeMode, "auto" to autoSelect, "seen" to seenVersion,
             "regime" to regime, "frag" to fragmentAuto, "mux" to muxEnabled,
             "reality" to realityFirst, "boot" to autoConnectOnBoot, "mtu" to mtu,
-            "feed" to feedMode,
+            "feed" to feedMode, "autofetch" to autoFetch, "interval" to feedIntervalHours,
         )
     }
 }
