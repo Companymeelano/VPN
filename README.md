@@ -72,11 +72,16 @@ curl 'http://localhost/v/?action=selftest&key=<toolKey>'
 ## اندروید
 `android/app/src/main/java/ir/meelano/vpn/**` — یک ماژول Gradle واقعی (نه اسنیپت)، **با کامپایل موفق در CI**.
 
-> تازه‌ترین APK قابل‌نصب: **`v2.6.1`** (نسخه‌ی نهایی، **امضاشده با کلید پروژه**) →
-> [`meelano-2.6.1-206001.apk`](https://github.com/Companymeelano/VPN/releases/download/v2.6.1/meelano-2.6.1-206001.apk)
-> (arm64؛ universal با `v7a`: `meelano-2.6.1-206001-universal.apk`؛
-> اندازه، sha256 و اثر گواهی دقیقاً در یادداشت همان ریلیز است:
-> [`releases/tag/v2.6.1`](https://github.com/Companymeelano/VPN/releases/tag/v2.6.1)).
+> نسخه‌ی کدِ روی `main`: **`v2.6.1`** (رفع چهار باگ مسیر اتصال — بازبینی دقیق؛
+> جزئیات: PR [#11](https://github.com/Companymeelano/VPN/pull/11)). انتشار APK امضاشده‌ی آن
+> فقط منتظرِ ست‌شدنِ چهار secret امضا (`MEELANO_*`) از draftِ `key-bootstrap-2.6.0` است؛
+> بلافاصله پس از آن، تگ `v2.6.1` همین‌جا با لینک مستقیم جایگزینِ بلوک زیر می‌شود.
+>
+> تازه‌ترین APK قابل‌نصبِ همین حالا: **`v2.6.0`** (نسخه‌ی نهایی، **امضاشده با کلید پروژه**) →
+> [`meelano-2.6.0-206000.apk`](https://github.com/Companymeelano/VPN/releases/download/v2.6.0/meelano-2.6.0-206000.apk)
+> (arm64 · ۵۵٬۲۲۰٬۵۸۵ بایت · sha256 `dca9b3ba…6bfca34`؛
+> universal با `v7a`: `meelano-2.6.0-206000-universal.apk` · ۱۲۲٬۰۷۸٬۷۸۸ بایت · sha256 `8524cf80…092db35`؛
+> صفحه: [`releases/tag/v2.6.0`](https://github.com/Companymeelano/VPN/releases/tag/v2.6.0)).
 > این بیلد `release` است (R8 + امضا با keystore پروژه، نه کلید debug) و هسته‌ی تونل
 > (libXray v26.9.9، bridge `libXray.LibXray`) در آن وصل است. بیلدهای `push` روی `main` عمداً
 > بی‌هسته و debug‌اند؛ فقط تگ به انتشار می‌رسد (جزئیات: §۱ و §۳-پ در [docs/ANDROID-BUILD.md](docs/ANDROID-BUILD.md)).
