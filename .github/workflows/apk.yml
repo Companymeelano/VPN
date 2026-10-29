@@ -627,7 +627,14 @@ jobs:
           [ -n "$signing" ] || signing=signed     # بیلدهای debug این step را رد می‌کنند
           # نامِ فایلِ بی‌امضا صریحاً `-unsigned` می‌گیرد: هیچ راهی نباید باشد که کسی این را با
           # نسخه‌ی نهایی اشتباه بگیرد (Version.php هم چنین نامی را رد می‌کند، پس بی‌صدا به فید نمی‌رود).
-          if [ "$signing" = unsigned ]; then
+          if [ "$variant" = debug ]; then
+            # نامِ بیلدِ debug همیشه `-debug` می‌گیرد (همان قاعده‌ی تاریخیِ `meelano-2.0.0-200000-debug.apk`):
+            # یک APKِ کلید-debug/بی‌هسته هرگز نباید با نامِ رسمیِ نسخه‌ی نهایی عوض شود — نه در دانلودِ
+            # کاربر، نه در public_html/v/apk/ که Version.php از رویِ نام حدس می‌زند و خودش را
+            # به‌روزرسانیِ کاربران می‌کند.
+            out="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}-debug.apk"
+            uout="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}-debug-universal.apk"
+          elif [ "$signing" = unsigned ]; then
             out="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}-unsigned.apk"
             uout="meelano-${{ steps.ver.outputs.name }}-${{ steps.ver.outputs.code }}-unsigned-universal.apk"
           else
@@ -711,7 +718,15 @@ jobs:
       # این، شرط به نامِ یک شاخه‌ی ادغام‌شده‌ی قدیمی گره خورده بود؛ یعنی «انتشار از PR» فقط برای
       # همان یک شاخه ممکن بود و برای بقیه بی‌صدا رد می‌شد.
       - name: publish release
-        if: ${{ steps.out.outputs.file != '' && github.event_name != 'pull_request' }}
+        # فقط از تگ (یا dispatchِ صریحِ variant=release) — نه از push معمولی به main. مستندات همین
+        # را می‌گویند (docs/ANDROID-BUILD.md «راه دوم: Artifact از همان Run — بدون ریلیز» و README
+        # «فقط تگ به انتشار می‌رسد»)؛ پیش از این، هر push به main یک ریلیز debug می‌ساخت که چون
+        # prerelease نبود «Latest» را می‌دزدید و APKِ بی‌هسته/کلید-debug را با نامِ رسمیِ نسخه‌ی
+        # نهایی جلوی کاربر می‌گذاشت (۹ ریلیزِ apk-*-debug انباشته شده بود و پاک شدند).
+        if: >-
+          steps.out.outputs.file != '' &&
+          github.event_name != 'pull_request' &&
+          (startsWith(github.ref, 'refs/tags/') || steps.vr.outputs.variant == 'release')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FILE: ${{ steps.out.outputs.file }}
