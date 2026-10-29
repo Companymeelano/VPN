@@ -74,9 +74,11 @@ curl 'http://localhost/v/?action=selftest&key=<toolKey>'
 
 > نسخه‌ی کدِ روی `main`: **`v2.8.0`** (رفع ریشه‌ایِ «روی همراه اول وصل نمی‌شود» با حل نامِ میزبان از روی
 > DoH خارجی و دایال با IP + بخش «به‌روزرسانی برنامه» با پیام و لودینگ سه‌بعدیِ درصد واقعی — PR
-> [#14](https://github.com/Companymeelano/VPN/pull/14)). انتشار APK امضاشده فقط منتظرِ ست‌شدنِ
-> چهار secret امضا (`MEELANO_*`) از draftِ `key-bootstrap-2.6.0` است؛ پس از آن تگ‌های `v2.6.1`
-> (رفع باگ‌های اتصال)، `v2.7.0` و `v2.8.0` پشت‌سرهم منتشر می‌شوند.
+> [#14](https://github.com/Companymeelano/VPN/pull/14)). انتشار APK امضاشده دیگر منتظرِ secretها
+> نیست: اگر `MEELANO_*` ست نشده باشند، workflow کلیدِ امضای پروژه را زمانِ اجرا از draftِ
+> `key-bootstrap-2.6.0` می‌خواند و با **همان گواهیِ `v2.6.0`** امضا و منتشر می‌کند (PR
+> [#15](https://github.com/Companymeelano/VPN/pull/15)). ست‌کردنِ secretها همچنان مسیرِ اصلی است؛
+> بعد از آن می‌توان draftهای کلید را حذف کرد.
 >
 > تازه‌ترین APK قابل‌نصبِ همین حالا: **`v2.6.0`** (نسخه‌ی نهایی، **امضاشده با کلید پروژه**) →
 > [`meelano-2.6.0-206000.apk`](https://github.com/Companymeelano/VPN/releases/download/v2.6.0/meelano-2.6.0-206000.apk)

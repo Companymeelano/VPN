@@ -175,6 +175,7 @@ jobs:
         id: ks
         if: ${{ steps.vr.outputs.variant == 'release' }}
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           KS_B64: ${{ secrets.MEELANO_KEYSTORE_B64 }}
           STORE_PASS_IN: ${{ secrets.MEELANO_STORE_PASS }}
           KEY_PASS_IN: ${{ secrets.MEELANO_KEY_PASS }}
@@ -235,23 +236,57 @@ jobs:
             } > "$GITHUB_WORKSPACE/keystore-credentials.txt"
             echo "bootstrap_key=1" >> "$GITHUB_OUTPUT"
           else
+            # ── مسیرِ fallback (۲.۸.۰): کلیدِ امضای پروژه در draft release «key-bootstrap-2.6.0»
+            #    نگه داشته شده. وقتی secretهای MEELANO_* ست نشده‌اند (دسترسیِ ست‌کردن در همه‌ی
+            #    محیط‌ها نیست)، همان کلید را زمانِ اجرا از draft می‌خوانیم تا نسخه با *همان*
+            #    گواهیِ v2.6.0 امضا شود — کلیدِ تازه یعنی به‌روزرسانی روی نصب‌های قبلی رد می‌شود،
+            #    و به همین دلیل مسیرِ bootstrap-key هرگز نباید پایِ تگ‌های v* اجرا شود.
+            #    امنیت: draft فقط برای دارندگانِ دسترسیِ push دیدنی است — همان مرزی که secretهای
+            #    Actions را محافظت می‌کند (هرکس بتواند workflow را ویرایش کند به هر دو دسترسی دارد).
+            #    اگر روزی secretها ست شوند، شاخه‌ی اولِ پایین‌تر (مسیر عادی) برنده می‌شود و می‌توان
+            #    draft را حذف کرد. رمزها هرگز در لاگ چاپ نمی‌شوند؛ فقط keytool تأییدشان می‌کند.
+            if [ "$GITHUB_EVENT_NAME" != "pull_request" ] && command -v gh >/dev/null 2>&1; then
+              kd="$RUNNER_TEMP/keydraft"
+              rm -rf "$kd" && mkdir -p "$kd"
+              if gh release download "key-bootstrap-2.6.0" --repo "$GITHUB_REPOSITORY" \
+                   --pattern meelano.keystore --pattern keystore-credentials.txt \
+                   --dir "$kd" >/dev/null 2>&1 && [ -s "$kd/meelano.keystore" ]; then
+                cred="$kd/keystore-credentials.txt"
+                STORE_PASS="$(sed -n 's/^storePass[[:space:]]*:[[:space:]]*//p' "$cred" | head -1 | tr -d '\r')"
+                KEY_PASS="$(sed -n 's/^keyPass[[:space:]]*:[[:space:]]*//p' "$cred" | head -1 | tr -d '\r')"
+                parsed_alias="$(sed -n 's/^alias[[:space:]]*:[[:space:]]*//p' "$cred" | head -1 | tr -d '\r')"
+                [ -n "$parsed_alias" ] && ALIAS="$parsed_alias"
+                cp "$kd/meelano.keystore" "$KS"
+                if [ -n "$STORE_PASS" ] && [ -n "$KEY_PASS" ] && \
+                   keytool -list -keystore "$KS" -storepass "$STORE_PASS" -alias "$ALIAS" >/dev/null 2>&1; then
+                  echo "::warning::secretهای MEELANO_* ست نشده‌اند؛ کلید امضای پروژه از draftِ key-bootstrap-2.6.0 خوانده شد و امضا با همان گواهی انجام می‌شود."
+                  missing=""
+                else
+                  echo "::error::فایلِ کلید از draft خوانده شد ولی storePass/keyPass/alias آن با keytool تأیید نشد."
+                fi
+              else
+                echo "::error::دریافتِ کلید از draftِ key-bootstrap-2.6.0 ناموفق بود (gh release download)."
+              fi
+            fi
             # دو حالتِ متفاوت، دو رفتارِ متفاوت:
             #  • روی PR (تمرینِ release): بدون کلید هم بیلد می‌گیریم تا R8/منابع/تست‌ها سنجیده
             #    شوند، ولی خروجی «unsigned» مهر می‌شود و از PR هیچ ریلیزی منتشر نمی‌شود. همین APK
             #    را می‌توان بیرون از CI امضا و منتشر کرد (tools/sign-apk.sh).
             #  • روی تگِ معمولی: سخت‌گیر. انتشار یک APK بی‌امضا بدتر از منتشر نکردن است، و
             #    «موفقِ بی‌صدا» بدترین حالت: کاربر فایل را می‌گیرد و نصب نمی‌شود.
-            if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            if [ -n "$missing" ] && [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
               echo "::warning::بدونِ کلید امضا اجرا می‌شود (unsigned dry-run):$missing"
               echo "signing=unsigned" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            echo "::error::این secretها برای این run قابل‌دیدن نیستند:$missing"
-            echo "::error::الف) در Actions ▸ Secrets ست شده باشند، نه Variables (این‌ها رمزند). ب) روی همین مخزن $GITHUB_REPOSITORY باشند، نه فورک/مخزنِ دیگر."
-            echo "::error::ج) اگر Organization secret است، دسترسیِ همین مخزن باید تیک داشته باشد. تأیید: 'gh secret list --repo $GITHUB_REPOSITORY'"
-            echo "::error::د) یا با تگِ صریحِ «bootstrap-key-vX.Y.Z» یک کلیدِ تازه بساز (تحویل در draft release)."
-            echo "::error::ساختِ دوباره: ./tools/make-signing-key.sh  (کلید را بازنویسی نمی‌کند مگر FORCE=1)"
-            exit 1
+            if [ -n "$missing" ]; then
+              echo "::error::این secretها برای این run قابل‌دیدن نیستند:$missing"
+              echo "::error::الف) در Actions ▸ Secrets ست شده باشند، نه Variables (این‌ها رمزند). ب) روی همین مخزن $GITHUB_REPOSITORY باشند، نه فورک/مخزنِ دیگر."
+              echo "::error::ج) اگر Organization secret است، دسترسیِ همین مخزن باید تیک داشته باشد. تأیید: 'gh secret list --repo $GITHUB_REPOSITORY'"
+              echo "::error::د) مسیرِ fallback (draftِ key-bootstrap-2.6.0) هم نتوانست کلید را بخواند — یا آن draft پاک شده، یا رمز/alias آن با keytool نخواند."
+              echo "::error::ساختِ دوباره: ./tools/make-signing-key.sh  (کلید را بازنویسی نمی‌کند مگر FORCE=1)"
+              exit 1
+            fi
           fi
           # نوع keystore را از خودِ فایل تشخیص بده: JKS با جادوی FE ED FE ED شروع می‌شود (در hex
           # می‌شود `feedfeed`)، بقیه PKCS12. چرا اصلاً مهم است: پیش‌فرضِ JVM از JDK 9 به بعد PKCS12
