@@ -317,7 +317,10 @@ class VpnOrchestrator(
         private const val DNS_VIRTUAL4 = "1.1.1.1"
         private const val DNS_VIRTUAL6 = "2606:4700:4700::1111"
         private const val MAX_CANDIDATES = 8
-        private const val PROBE_SETTLE_MS = 650L
+        // 350 ms (was 650): enough for the first packets to cross a fresh TUN — the probe itself
+        // retries inside TunnelProbe — but 300 ms faster to «متصل شد» on every connect and every
+        // failover hop. With SmartResolver pre-warmed, the handshake dominates; this was pure tax.
+        private const val PROBE_SETTLE_MS = 350L
         private const val HEALTH_INITIAL_DELAY_MS = 8_000L
         private const val HEALTH_INTERVAL_MS = 12_000L
         private const val HEALTH_RECHECK_MS = 3_000L
