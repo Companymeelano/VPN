@@ -17,6 +17,7 @@ import androidx.work.Worker
 import androidx.work.WorkerParameters
 import ir.meelano.vpn.data.FeedJson
 import ir.meelano.vpn.data.FeedNode
+import ir.meelano.vpn.data.FeedNodeStub
 import ir.meelano.vpn.data.Prefs
 import ir.meelano.vpn.vpn.MeelanoVpnService
 import java.io.File
@@ -63,17 +64,37 @@ object KeepAlive {
         enableWatchdog(context)
     }
 
-    /** Called when the tunnel dropped: retry a few times, then park - never loop at 0ms. */
+    /**
+     * Called when the tunnel dropped: retry a few times, then park - never loop at 0ms.
+     *
+     * Wired from MeelanoVpnService's Failed-phase collector (it had zero callers before 2.6.1, so
+     * every all_candidates_failed waited for the 15-minute watchdog). Two rules keep this from
+     * becoming a reconnect storm:
+     *  - an attempt already in flight is *waited out* (bounded), never superseded - restarting a
+     *    candidate race that is one node away from success is how "auto-heal" becomes "reconnect
+     *    forever";
+     *  - the caller runs one chain per down episode (its latch re-arms on Connected/Idle), so after
+     *    these `attempts` the app is genuinely parked until the watchdog, a network restore, or the
+     *    user acts.
+     */
     suspend fun retryWithBackoff(context: Context, attempts: Int = 4) {
         var wait = 1_500L
         repeat(attempts) {
             delay(wait)
             if (!Prefs.vpnDesired(context) || !autoConnectEnabled(context)) return
             val id = Prefs.activeId(context) ?: return
-            val node = ActiveNodeCache.get(context, id) ?: return
-            if (!MeelanoVpnService.isRunning()) {
-                MeelanoVpnService.start(context, node)
+            // Give a live attempt one candidate sweep (up to ~30 s) to settle before acting.
+            var settle = 0
+            while (MeelanoVpnService.isConnecting() && settle < 30) {
+                delay(1_000)
+                settle++
             }
+            if (MeelanoVpnService.isRunning()) return
+            if (!Prefs.vpnDesired(context) || !autoConnectEnabled(context)) return
+            // The service re-resolves the node by id (feed first, cache second); the stub is only
+            // the carrier of that id, exactly like the QS tile does it.
+            val node = ActiveNodeCache.get(context, id) ?: FeedNodeStub.forId(id)
+            MeelanoVpnService.start(context, node)
             wait = (wait * 2).coerceAtMost(30_000L)
         }
     }

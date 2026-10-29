@@ -26,6 +26,7 @@ import ir.meelano.vpn.data.FeedHolder
 import ir.meelano.vpn.data.Prefs
 import ir.meelano.vpn.keepalive.KeepAlive
 import ir.meelano.vpn.keepalive.ActiveNodeCache
+import ir.meelano.vpn.net.RecoveryPolicy
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -114,6 +115,20 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
         fun isRunning(): Boolean = _phase.value is ConnectPhase.Connected && alive != null
 
         /**
+         * True while a connect attempt is mid-flight (profile write .. verify). KeepAlive's retry
+         * loop uses this to *wait out* a live attempt instead of superseding it: restarting a race
+         * that is one candidate away from success is how "retry for resilience" becomes
+         * "reconnect forever". (A stalled Handshake(0.2f) also reads as connecting here - the
+         * health monitor either re-publishes Connected or failovers within seconds, and the retry
+         * loop's bounded settle window then steps aside for that attempt too.)
+         */
+        fun isConnecting(): Boolean = alive != null && when (_phase.value) {
+            is ConnectPhase.WritingProfile, is ConnectPhase.Resolving, is ConnectPhase.Handshake,
+            is ConnectPhase.TunnelUp, is ConnectPhase.Verifying -> true
+            else -> false
+        }
+
+        /**
          * The user edited the per-app routing rules while a tunnel was up. Interface rules are baked
          * at establish() time - nothing short of rebuilding the TUN applies them - so restart the
          * connection on the CURRENT node with reorder=false: the node itself is fine, only the
@@ -152,6 +167,13 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
     private var lastNotifiedTx = -1L
     private var lastTraceStart = -1L
 
+    /**
+     * One recovery chain per down episode (see the collector in onCreate). Re-armed only on
+     * Connected/Idle, so a genuinely dead network cannot turn KeepAlive.retryWithBackoff into a
+     * retry storm: the chain is the budget, the 15-minute watchdog is the parked-state backstop.
+     */
+    private val recoveryArmed = AtomicBoolean(false)
+
     override fun onCreate() {
         super.onCreate()
         alive = this
@@ -165,7 +187,14 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
                 FeedHolder.pendingConnectId = node.id
                 Prefs.setActiveId(this, node.id)
                 ActiveNodeCache.save(this, node)
-                FeedHolder.repo.recordPlatformVerdict(node.id, "clean")
+                // The *real* platform verdict, not a constant "clean": startOne's comment promises
+                // the caller records what the probe saw (a geo-blocked Google at this exit is a fact
+                // the failover ladder must rank on). 2.6.0 wrote "clean" unconditionally, so
+                // platformRank() could never demote a platform-blocked node after it connected.
+                FeedHolder.repo.recordPlatformVerdict(
+                    node.id,
+                    if (probe.platformBlocked) "platform_blocked" else "clean",
+                )
                 notify(buildNotification("متصل · آزمون اینترنت ${probe.latencyMs}ms"))
             },
             onResult = { node, ok, latency, error ->
@@ -176,6 +205,25 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
             },
         )
         registerNetworkCallback()
+        // Seconds-level recovery on final failure. KeepAlive.retryWithBackoff existed since 2.5.0
+        // with zero callers (bug 3 of the 2.6.1 review): every all_candidates_failed landed in the
+        // Failed state and the *only* resurrection left was the 15-minute watchdog. The latch keeps
+        // one chain per episode; KeepAlive itself waits out in-flight attempts instead of killing them.
+        serviceScope.launch {
+            _phase.collect { phase ->
+                when {
+                    phase is ConnectPhase.Connected || phase is ConnectPhase.Idle ->
+                        recoveryArmed.set(false)
+                    phase is ConnectPhase.Failed &&
+                        RecoveryPolicy.isRetryableFailure(phase.reason) &&
+                        Prefs.vpnDesired(this@MeelanoVpnService) &&
+                        KeepAlive.autoConnectEnabled(this@MeelanoVpnService) &&
+                        recoveryArmed.compareAndSet(false, true) -> {
+                        KeepAlive.retryWithBackoff(this@MeelanoVpnService)
+                    }
+                }
+            }
+        }
         // targetSdk 35 = Android's new export rule: registering a receiver with no export flag
         // throws SecurityException on API 33+ *right here in onCreate*, so the service dies at birth
         // and the user only sees "اتصال برقرار نشد". NOT_EXPORTED: this action is the app's own
@@ -454,6 +502,12 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
     private val underlyingNetworks = LinkedHashSet<Network>()
     private var networkReconnect: kotlinx.coroutines.Job? = null
 
+    /**
+     * Set when the last physical network died under a live tunnel (the Handshake(0.2f) stall);
+     * consumed exactly once by the restore that follows it. See net/RecoveryPolicy.
+     */
+    @Volatile private var networkOutage = false
+
     private fun registerNetworkCallback() {
         connectivity = getSystemService(ConnectivityManager::class.java)
         val cb = object : ConnectivityManager.NetworkCallback() {
@@ -496,22 +550,43 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
                 setUnderlyingNetworks(if (underlyingNetworks.isEmpty()) null else underlyingNetworks.toTypedArray())
             }
         }
-        if (oldPrimary == null || oldPrimary == newPrimary) return
-        if (_phase.value !is ConnectPhase.Connected) return
-        if (newPrimary == null) {
-            _phase.value = ConnectPhase.Handshake(0.2f)
-            // No second retry loop here: the orchestrator's health monitor owns failover proofs.
-            // Duplicate reconnectors are how two cores/two TUNs are born.
-            return
+        // Every decision below lives in net/RecoveryPolicy (unit-tested row by row); this method only
+        // carries the effects out. In particular the *restore* event (zero networks -> one) is the
+        // one 2.6.0 dropped via an `oldPrimary == null` early return: after a failover burned every
+        // candidate while the radio was down, nothing ever re-dialed and the app stayed down until
+        // the 15-minute watchdog.
+        when (RecoveryPolicy.onUnderlayEvent(
+            event = RecoveryPolicy.classify(oldPrimary, newPrimary),
+            phaseConnected = _phase.value is ConnectPhase.Connected,
+            recoverable = _phase.value is ConnectPhase.Failed || _phase.value is ConnectPhase.Idle,
+            outageMarked = networkOutage,
+        )) {
+            RecoveryPolicy.Action.NONE -> Unit
+            RecoveryPolicy.Action.MARK_OUTAGE -> {
+                // No retry loop here: the orchestrator's health monitor owns failover proofs.
+                // Duplicate reconnectors are how two cores/two TUNs are born.
+                networkOutage = true
+                _phase.value = ConnectPhase.Handshake(0.2f)
+            }
+            RecoveryPolicy.Action.RECONNECT_CHANGED -> scheduleReconnect("network_changed")
+            RecoveryPolicy.Action.RECONNECT_RESTORED -> {
+                networkOutage = false
+                scheduleReconnect("network_restored")
+            }
         }
-        // The physical path moved under a live tunnel: the core's sockets are bound to the old
-        // one and protect() cannot revive them. Reconnect through the orchestrator (its
-        // generation guard supersedes any health-monitor attempt already in flight), debounced
-        // briefly so a wifi flap mid-hand-over does not dial twice.
+    }
+
+    /**
+     * The physical path moved under a live tunnel (or returned under a stalled one): the core's
+     * sockets are bound to the old network and protect() cannot revive them. Reconnect through the
+     * orchestrator (its generation guard supersedes any health-monitor attempt already in flight),
+     * debounced briefly so a wifi flap mid-hand-over does not dial twice.
+     */
+    private fun scheduleReconnect(reason: String) {
         networkReconnect?.cancel()
         networkReconnect = serviceScope.launch {
             delay(900)
-            reconnectActive("network_changed")
+            reconnectActive(reason)
         }
     }
 

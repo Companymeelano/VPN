@@ -6,6 +6,7 @@ import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
 import ir.meelano.vpn.net.IpFamily
+import ir.meelano.vpn.net.RecoveryPolicy
 import ir.meelano.vpn.data.AppSettings
 import ir.meelano.vpn.data.FeedNode
 import ir.meelano.vpn.data.TunnelSpec
@@ -190,8 +191,20 @@ class VpnOrchestrator(
             var consecutiveFailures = 0
             while (generation.get() == mine) {
                 val result = runCatching { engine.verifyTunnel() }.getOrNull()
-                if (result?.usable == true && engine.isTunnelAlive()) {
+                if (result != null && result.usable && engine.isTunnelAlive()) {
                     consecutiveFailures = 0
+                    // A transient network blip may have knocked the phase off Connected (the
+                    // service marks Handshake(0.2f) on total loss). A healthy tunnel must *say* so:
+                    // a stale phase freezes the UI on "در حال اتصال", makes isRunning() false and
+                    // lets the watchdog restart a tunnel that is working. The generation guard keeps
+                    // a superseded monitor from overwriting a newer connect's phase mid-startup.
+                    if (RecoveryPolicy.shouldRepublishConnected(
+                            generationMatches = generation.get() == mine,
+                            phaseConnected = state.value is ConnectPhase.Connected,
+                        )
+                    ) {
+                        state.value = ConnectPhase.Connected(current.id, result.latencyMs)
+                    }
                 } else {
                     consecutiveFailures++
                 }

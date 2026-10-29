@@ -531,7 +531,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.number }}
         run: |
-          set -uo pipefail
+          # `set +e` الزامی است: شلِ پیش‌فرضِ اکشنز با -e اجرا می‌شود و این گزارش‌دهنده پر از
+          # grep/ls جست‌وجوگر است؛ بدون این خط، اولین grep بدون تطبیق step را می‌کشت (annotation
+          # «Process completed with exit code 1» روی هر بیلدِ سبز)، کامنت هرگز پست نمی‌شد و
+          # continue-on-error هم آن را بی‌صدا می‌پوشاند. گزارش‌دهنده نباید هرگز بمیرد.
+          set +e; set -uo pipefail
           # هر دو لاگ: اگر unit tests بترکند، build.log اصلاً وجود ندارد و گزارش بی‌محتوا می‌شد
           log=build.log
           if [ ! -f "$log" ] && [ -f test.log ]; then log=test.log; fi
