@@ -1,0 +1,36 @@
+{
+  "name": "ma-vpn-desktop",
+  "version": "2.8.1",
+  "description": "MA VPN — کلاینت حرفه‌ای ویندوز ۶۴بیت",
+  "main": "dist/main/main.js",
+  "private": true,
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build:renderer": "vite build",
+    "build:main": "node scripts/build-main.mjs",
+    "build": "npm run build:main && npm run build:renderer",
+    "fetch-core": "node scripts/fetch-core.mjs",
+    "pack": "electron-builder --x64 --publish never",
+    "release:win": "npm run fetch-core && npm run build && npm run pack"
+  },
+  "dependencies": {
+    "@fontsource-variable/vazirmatn": "^5.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.0",
+    "extract-zip": "^2.0.1",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  }
+}

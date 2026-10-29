@@ -1,0 +1,33 @@
+appId: ir.meelano.vpn
+productName: MA VPN
+copyright: © 2026 MA VPN
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**
+  - package.json
+  - build/icon.png
+extraResources:
+  - from: resources/core
+    to: core
+    filter:
+      - "**/*"
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  icon: build/icon.png
+  artifactName: MA-VPN-${version}-setup-x64.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: MA VPN
+  artifactName: MA-VPN-${version}-setup-x64.${ext}
+portable:
+  artifactName: MA-VPN-${version}-portable-x64.${ext}
