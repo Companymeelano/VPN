@@ -43,6 +43,29 @@ object NetGuard {
 
     private data class Tria(val host: String, val ip: String, val path: String)
 
+    /**
+     * Socket guard for every resolver/client this file builds. Default is a no-op for tests; the
+     * app installs `MeelanoVpnService.protectFeedSocket` so a lookup never enters a live (or worse,
+     * kill-switched) TUN — the VpnOrchestrator trap: during failover the old TUN is intentionally
+     * dead, and an unprotected socket would vanish into it and "prove" the network is down.
+     */
+    @Volatile
+    var socketProtect: (java.net.Socket) -> Boolean = { true }
+
+    private fun protectedSocketFactory(): javax.net.SocketFactory = object : javax.net.SocketFactory() {
+        override fun createSocket(): java.net.Socket = java.net.Socket().also { socketProtect(it) }
+        override fun createSocket(host: String, port: Int): java.net.Socket =
+            java.net.Socket().also { socketProtect(it) }.also { it.connect(java.net.InetSocketAddress(host, port), 5_000) }
+        override fun createSocket(host: String, port: Int, localHost: java.net.InetAddress, localPort: Int): java.net.Socket =
+            createSocket(host, port)
+        override fun createSocket(address: java.net.InetAddress, port: Int): java.net.Socket =
+            createSocket(address.hostAddress ?: "", port)
+        override fun createSocket(
+            address: java.net.InetAddress, port: Int,
+            localAddress: java.net.InetAddress, localPort: Int,
+        ): java.net.Socket = createSocket(address, port)
+    }
+
     /** Cache of DoH answers; 4 minutes, because a poisoned record is also a moving target. */
     private val dnsCache = Collections.synchronizedMap(HashMap<String, Pair<Long, List<String>>>())
     private const val DNS_TTL_MS = 4L * 60_000L
@@ -52,6 +75,7 @@ object NetGuard {
             .connectTimeout(4, TimeUnit.SECONDS)
             .readTimeout(7, TimeUnit.SECONDS)
             .retryOnConnectionFailure(false)          // we do our own failover; don't double the wait
+            .socketFactory(protectedSocketFactory())
             .build()
     }
 
@@ -60,6 +84,7 @@ object NetGuard {
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
         .retryOnConnectionFailure(false)
+        .socketFactory(protectedSocketFactory())
         .dns(object : Dns {
             override fun lookup(hostname: String): List<InetAddress> {
                 val list = ips.mapNotNull { runCatching { InetAddress.getByName(it) }.getOrNull() }

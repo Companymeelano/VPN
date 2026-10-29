@@ -143,17 +143,24 @@ class VpnOrchestrator(
         state.value = ConnectPhase.WritingProfile(0.08f + offset)
         val profileDir = File(context.cacheDir, "profile").apply { mkdirs() }
         val spec = withContext(Dispatchers.IO) {
+            // Resolve the endpoint through SmartResolver first: foreign DoH, majority-ranked,
+            // v4-first, over PROTECTED sockets (NetGuard.socketProtect). On carriers whose DNS
+            // sinkholes foreign hostnames (MCI), dialing the hostname here meant a poisoned answer
+            // every time while the same node connected fine on Irancell. The profile keeps the
+            // domain in SNI/Host/:authority, so the server and its CDN see no difference.
+            val resolved = ir.meelano.vpn.net.SmartResolver.resolve(node.host)
+            val dial = resolved.ip ?: node.host
             val file = File(profileDir, "config-${node.id}.json")
             val temp = File(profileDir, "config-${node.id}.json.tmp")
-            temp.writeText(engine.buildProfileJson(node))
+            temp.writeText(engine.buildProfileJson(node, dial))
             if (!temp.renameTo(file)) file.writeText(temp.readText())
             temp.delete()
             TunnelSpec(node, file.absolutePath)
         }
 
-        // Do not pre-resolve with InetAddress here: during failover the old kill-switch TUN is kept
-        // open, so an app-level DNS query would enter that intentionally dead interface. libXray's
-        // protected resolver resolves the endpoint outside the TUN when the core starts below.
+        // The old warning («do not pre-resolve with InetAddress») stays true in spirit: a *system*
+        // lookup would enter the intentionally dead kill-switch TUN during failover. SmartResolver's
+        // sockets are protected and bypass that TUN — resolution is now the fix, not the trap.
         state.value = ConnectPhase.Resolving(0.30f + offset)
 
         state.value = ConnectPhase.Handshake(0.48f + offset)
@@ -332,7 +339,11 @@ sealed class ConnectPhase(open val progress: Float = 0f) {
 }
 
 interface TunnelEngine {
-    fun buildProfileJson(node: FeedNode): String
+    /**
+     * [dialAddress] is the poison-proof address SmartResolver picked for the node's hostname
+     * (empty = dial the hostname). Identity fields inside the profile keep the domain either way.
+     */
+    fun buildProfileJson(node: FeedNode, dialAddress: String = ""): String
     suspend fun orderCandidates(nodes: List<FeedNode>): List<FeedNode> = nodes
     suspend fun startProxy(spec: TunnelSpec)
     fun attachTunnelFd(fd: Int)

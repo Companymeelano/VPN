@@ -616,16 +616,32 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
      * net/Regime.kt: regime default <- feed patch <- user switches. Keeping it here (and nowhere
      else) is what makes "why did this node fail" answerable from the log.
      */
-    override fun buildProfileJson(node: FeedNode): String =
-        CoreProfiles.toJson(node, protect = ::protect, tune = ir.meelano.vpn.data.AppSettings.tuneFor(node))
+    override fun buildProfileJson(node: FeedNode, dialAddress: String): String =
+        CoreProfiles.toJson(
+            node,
+            protect = ::protect,
+            tune = ir.meelano.vpn.data.AppSettings.tuneFor(node),
+            dialAddress = dialAddress,
+        )
 
     override suspend fun orderCandidates(nodes: List<FeedNode>): List<FeedNode> = withContext(Dispatchers.IO) {
         if (!CoreApi.LINKED || nodes.size < 2) return@withContext nodes
         // runCandidates stops the previous core before this race. Re-register protection so these
         // temporary-core sockets bypass the still-held kill-switch TUN instead of looping into it.
         CoreApi.prepareProbeSockets(this@MeelanoVpnService)
+        // Same poison-proof dial as startOne: the race must measure the address we will actually
+        // use, or MCI's sinkhole answers rank real nodes dead before they are ever tried.
+        val dials = nodes.associateWith { node ->
+            runCatching { ir.meelano.vpn.net.SmartResolver.resolve(node.host).ip }.getOrNull()
+        }
         val configs = nodes.mapNotNull { node ->
-            runCatching { node to CoreProfiles.pingConfigJson(node, ir.meelano.vpn.data.AppSettings.tuneFor(node)) }.getOrNull()
+            runCatching {
+                node to CoreProfiles.pingConfigJson(
+                    node,
+                    ir.meelano.vpn.data.AppSettings.tuneFor(node),
+                    dials[node].orEmpty(),
+                )
+            }.getOrNull()
         }
         if (configs.isEmpty()) return@withContext nodes
 

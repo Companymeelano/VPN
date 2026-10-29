@@ -35,6 +35,11 @@ class MeelanoApp : Application() {
         AppSettings.load(this)
         ir.meelano.vpn.data.PerAppRouting.load(this)
         FeedHolder.init(this)
+        // Every resolver socket (NetGuard/SmartResolver DoH) bypasses a live or kill-switched TUN:
+        // during failover the old TUN is intentionally dead and would swallow unprotected lookups.
+        ir.meelano.vpn.net.NetGuard.socketProtect = { s ->
+            ir.meelano.vpn.vpn.MeelanoVpnService.protectFeedSocket(s)
+        }
         updates = UpdateManager(this, BuildConfig.FEED_BASE_URL)
 
         // FeedHolder's repository paints its cache and starts one coalesced direct refresh. Starting a
@@ -42,8 +47,9 @@ class MeelanoApp : Application() {
         appScope.launch {
             delay(3_000)                     // never race the cold start with a network check
             // BuildConfig.SELF_UPDATE is the compile-time kill switch (a debug or a Play-bound
-            // build must never try to install anything); AppSettings.autoUpdate is the user's choice
-            if (BuildConfig.SELF_UPDATE && AppSettings.autoUpdate && onUnmetered(this@MeelanoApp)) {
+            // build must never try to install anything). «بررسی خودکار نسخه» (autoCheckUpdate) runs
+            // on any network — it is one tiny GET; the *download* is what autoUpdate gates on Wi-Fi.
+            if (BuildConfig.SELF_UPDATE && AppSettings.autoCheckUpdate) {
                 updates.checkAsync()
             }
         }
@@ -58,6 +64,8 @@ class MeelanoApp : Application() {
         // Enqueued on every start: WorkManager dedupes by tag, so this is idempotent, and a changed
         // interval is applied by the UPDATE policy inside schedule().
         runCatching { ir.meelano.vpn.data.FeedScheduler.schedule(this) }
+        // «بررسی خودکار نسخه»: daily version check (update/UpdateScheduler), same idiom.
+        runCatching { ir.meelano.vpn.update.UpdateScheduler.schedule(this) }
     }
 
     companion object {

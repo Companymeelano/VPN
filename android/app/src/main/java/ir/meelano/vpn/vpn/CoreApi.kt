@@ -227,28 +227,42 @@ object CoreProfiles {
      * Public API, unchanged on purpose: MeelanoVpnService only ever asks for a profile, so a dialect
      * change can never ripple into the service. `protect` is handed to the linked core for its
      * outbound sockets (VpnService.protect has exactly three overloads: int, Socket, DatagramSocket).
+     *
+     * [dialAddress] is the SmartResolver result: when the node's hostname is dialed by raw IP, the
+     * *domain* must keep living in SNI/Host/:authority or every CDN in front of the node rejects the
+     * handshake. Empty = dial the hostname itself (legacy behaviour).
      */
     fun toJson(
         node: FeedNode,
         protect: (Int) -> Boolean = { true },
         tune: ir.meelano.vpn.net.Tune = ir.meelano.vpn.net.Tune.Default,
         engine: CoreEngine = this.engine,
-    ): String = render(plan(node, tune, engine))
+        dialAddress: String = "",
+    ): String = render(plan(node, tune, engine, dialAddress))
 
     /** The parsed profile as nested maps/lists. The unit tests in app/src/test read *this*, not a string. */
-    fun plan(node: FeedNode, tune: ir.meelano.vpn.net.Tune, engine: CoreEngine = this.engine): Map<String, Any?> {
-        val s = specFor(node, tune)
+    fun plan(
+        node: FeedNode,
+        tune: ir.meelano.vpn.net.Tune,
+        engine: CoreEngine = this.engine,
+        dialAddress: String = "",
+    ): Map<String, Any?> {
+        val s = specFor(node, tune, dialAddress)
         return when (engine) {
             CoreEngine.XRAY -> xray(s)
             CoreEngine.SING_BOX -> singBox(s)
         }
     }
 
-    fun specFor(node: FeedNode, tune: ir.meelano.vpn.net.Tune): Spec {
+    fun specFor(node: FeedNode, tune: ir.meelano.vpn.net.Tune, dialAddress: String = ""): Spec {
         require(node.host.isNotBlank() && node.port in 1..65535) { "invalid_endpoint" }
         require(!node.insecure) { "insecure_tls_not_supported" }
         val proto = canonicalProtocol(node.proto)
         val net = normNetwork(node.network)
+        // The IP we actually dial (SmartResolver), or the hostname itself. Every *identity* field
+        // below (SNI, Host, :authority, Reality serverNames) keeps the original domain — dialing by
+        // IP must be invisible to the server and to any CDN in front of it.
+        val dial = dialAddress.ifBlank { node.host }
         val sec = when (node.tls?.trim()?.lowercase()) {
             "reality" -> "reality"
             "tls", "https" -> "tls"
@@ -288,7 +302,7 @@ object CoreProfiles {
         }
         return Spec(
             proto = proto,
-            address = node.host,
+            address = dial,
             port = node.port,
             userId = userId,
             alterId = node.alterId ?: 0,
@@ -303,7 +317,10 @@ object CoreProfiles {
             insecure = node.insecure,
             network = net,
             path = node.path ?: "",
-            hostHeader = node.hostHeader ?: "",
+            hostHeader = node.hostHeader?.takeIf { it.isNotBlank() }
+                // Dialing by IP must not demote the Host/:authority header to a bare IP — CDNs
+                // route on the domain and reject an IP authority outright.
+                ?: if (dial != node.host && net != "tcp") node.host else "",
             // free-proxy sources do not carry a grpc service name; the vip feed may one day. The
             // fallback is the convention every public grpc deployment uses, so it works and is honest.
             serviceName = node.serviceName?.ifBlank { null } ?: "grpc",
@@ -388,6 +405,8 @@ object CoreProfiles {
             "grpc" -> {
                 val g = LinkedHashMap<String, Any?>()
                 g["serviceName"] = s.serviceName
+                // :authority must carry the domain even when the dial address is a bare IP
+                if (s.hostHeader.isNotEmpty()) g["authority"] = s.hostHeader
                 // multi-mode keeps one long-lived stream open per connection: on a mobile link that
                 // drops an idle stream at ~60s, it is the difference between "connected" and "usable"
                 g["multiMode"] = s.grpcMulti
@@ -543,8 +562,8 @@ object CoreProfiles {
      * hard-coded on purpose - the race runs against the linked engine, which is Xray in every
      * shipping build.
      */
-    fun pingConfigJson(node: FeedNode, tune: ir.meelano.vpn.net.Tune): String {
-        val full = xray(specFor(node, tune))
+    fun pingConfigJson(node: FeedNode, tune: ir.meelano.vpn.net.Tune, dialAddress: String = ""): String {
+        val full = xray(specFor(node, tune, dialAddress))
         val all = (full["outbounds"] as? List<*>).orEmpty()
         val proxy = all.firstOrNull()
             ?: return render(mapOf("outbounds" to emptyList<Any>()))
