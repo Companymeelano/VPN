@@ -5,8 +5,8 @@ import ir.meelano.vpn.ui.theme.LocalPalette
 import ir.meelano.vpn.ui.theme.Motion
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -136,7 +136,7 @@ fun HomeScreen(vm: VpnViewModel) {
                     busy -> p.info
                     else -> p.accent
                 },
-                animationSpec = tween(Motion.breathMs / 2),
+                animationSpec = tween<Color>(Motion.breathMs / 2),
                 label = "glowAccent",
             )
             val glowIntensity by animateFloatAsState(
@@ -145,7 +145,7 @@ fun HomeScreen(vm: VpnViewModel) {
                     busy -> if (p.isDark) 0.13f else 0.07f
                     else -> if (p.isDark) 0.07f else 0.045f
                 },
-                animationSpec = tween(Motion.breathMs / 2),
+                animationSpec = tween<Float>(Motion.breathMs / 2),
                 label = "glowIntensity",
             )
             AmbientGlow(accent = glowAccent, intensity = glowIntensity)

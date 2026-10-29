@@ -10,6 +10,8 @@ import ir.meelano.vpn.update.UpdateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -63,9 +65,9 @@ class MeelanoApp : Application() {
             delay(2_500)                    // same cold-start courtesy as the update check above
             runCatching {
                 val nodes = (FeedHolder.repo.vip.value + FeedHolder.repo.free.value).distinctBy { it.host }
-                kotlinx.coroutines.coroutineScope {
+                coroutineScope {
                     nodes.take(6).map { node ->
-                        kotlinx.coroutines.async {
+                        async {
                             runCatching { ir.meelano.vpn.net.SmartResolver.resolve(node.host) }
                         }
                     }
