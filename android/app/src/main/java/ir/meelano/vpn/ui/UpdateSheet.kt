@@ -260,13 +260,15 @@ private fun HeroCard(version: String?, size: Long) {
             Modifier
                 .fillMaxWidth()
                 .drawBehind {
-                    // halo: the update is the one moment that deserves a light source
+                    // halo: the update is the one moment that deserves a light source.
+                    // `size` is shadowed by the card's `size: Long` parameter — the DrawScope
+                    // dimension must be reached through the receiver explicitly.
                     drawRect(
                         brush = Brush.radialGradient(
                             0f to p.accent.copy(alpha = 0.30f * glow),
                             1f to Color.Transparent,
-                            center = Offset(size.width / 2f, size.height / 2f),
-                            radius = maxOf(size.width, size.height) * 0.75f,
+                            center = Offset(this.size.width / 2f, this.size.height / 2f),
+                            radius = maxOf(this.size.width, this.size.height) * 0.75f,
                         ),
                     )
                 }

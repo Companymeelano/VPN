@@ -449,12 +449,14 @@ private fun UpdateBanner(version: String, size: String, onOpen: () -> Unit, onSk
             .fillMaxWidth()
             .padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 2.dp)
             .drawBehind {
+                // `size` is shadowed here by the banner's `size: String` parameter — the DrawScope
+                // dimension must be reached through the receiver explicitly.
                 drawRect(
                     brush = androidx.compose.ui.graphics.Brush.radialGradient(
                         0f to p.accent.copy(alpha = 0.22f * glow),
                         1f to Color.Transparent,
-                        center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f),
-                        radius = maxOf(size.width, size.height) * 0.8f,
+                        center = androidx.compose.ui.geometry.Offset(this.size.width / 2f, this.size.height / 2f),
+                        radius = maxOf(this.size.width, this.size.height) * 0.8f,
                     ),
                 )
             }
