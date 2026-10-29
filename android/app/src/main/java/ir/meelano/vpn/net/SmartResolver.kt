@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Poison-tolerant resolution for node hostnames — the fix for «روی ایرانسل وصل می‌شود، روی همراه اول نه».
@@ -43,9 +44,26 @@ object SmartResolver {
         val via: String,
     )
 
-    /** Cache: 4 minutes, mirroring NetGuard — poisoned records are a moving target, and so are CDN ones. */
-    private val cache = Collections.synchronizedMap(HashMap<String, Pair<Long, Pick>>())
+    /**
+     * Cache: 4 minutes for an answer (mirroring NetGuard — poisoned records are a moving target,
+     * and so are CDN ones), 30 seconds for silence. The negative TTL is the connect-speed half:
+     * orderCandidates resolves every candidate, and a dead hostname must not re-pay the resolver
+     * budget on each attempt of each reconnect. */
+    private class Cached(val expiresAt: Long, val pick: Pick)
+    private val cache = Collections.synchronizedMap(HashMap<String, Cached>())
     private const val TTL_MS = 4L * 60_000L
+    private const val NEG_TTL_MS = 30_000L
+
+    /**
+     * The whole lookup (both resolvers) is deadlined at [RESOLVE_BUDGET_MS]; DoH — the answer we
+     * actually trust — is awaited first and keeps its own NetGuard budget. The system lookup runs
+     * *concurrently* from t=0 (its result is usually ready the moment we ask for it) but can never
+     * hold the line past its slice: a hung carrier resolver used to be able to stall a connect for
+     * seconds per node, serialised over the whole candidate list — the «به سختی متصل می‌شود» tax.
+     */
+    private const val RESOLVE_BUDGET_MS = 2_400L
+    private const val DOH_WAIT_MS = 2_000L
+    private const val SYS_WAIT_MS = 900L
 
     private val LITERAL = Regex("""^\d{1,3}(\.\d{1,3}){3}$""")
 
@@ -82,7 +100,8 @@ object SmartResolver {
         if (LITERAL.matches(trimmed) || looksLikeV6(trimmed)) {
             return@withContext Pick(trimmed, poisoned = false, "literal")
         }
-        cache[trimmed]?.let { (at, pick) -> if (System.currentTimeMillis() - at < TTL_MS) return@withContext pick }
+        cache[trimmed]?.let { c -> if (System.currentTimeMillis() < c.expiresAt) return@withContext c.pick }
+        val started = System.currentTimeMillis()
         val (sys, doh) = coroutineScope {
             val s = async(Dispatchers.IO) {
                 runCatching {
@@ -92,10 +111,23 @@ object SmartResolver {
             val d = async(Dispatchers.IO) {
                 runCatching { NetGuard.doh(trimmed) }.getOrDefault(emptyList())
             }
-            s.await() to d.await()
+            // DoH first (trusted, self-bounded), then the system slice of what is left of the
+            // budget. Both were started at t=0, so "wait" here almost never costs wall time —
+            // this ordering only decides who gets *cut* when the network is being difficult.
+            val dohIps = runCatching {
+                withTimeoutOrNull(minOf(DOH_WAIT_MS, RESOLVE_BUDGET_MS)) { d.await() }
+            }.getOrNull() ?: emptyList()
+            val sysLeft = minOf(SYS_WAIT_MS, RESOLVE_BUDGET_MS - (System.currentTimeMillis() - started))
+            val sysIps = if (sysLeft > 0) {
+                runCatching { withTimeoutOrNull(sysLeft) { s.await() } }.getOrNull() ?: emptyList()
+            } else {
+                emptyList()
+            }
+            sysIps to dohIps
         }
         val result = pick(sys, doh)
-        if (result.ip != null) cache[trimmed] = System.currentTimeMillis() to result
+        val ttl = if (result.ip != null) TTL_MS else NEG_TTL_MS
+        cache[trimmed] = Cached(System.currentTimeMillis() + ttl, result)
         result
     }
 

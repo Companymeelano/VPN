@@ -35,6 +35,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import ir.meelano.vpn.data.TunnelSpec
@@ -631,9 +632,35 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
         CoreApi.prepareProbeSockets(this@MeelanoVpnService)
         // Same poison-proof dial as startOne: the race must measure the address we will actually
         // use, or MCI's sinkhole answers rank real nodes dead before they are ever tried.
-        val dials = nodes.associateWith { node ->
-            runCatching { ir.meelano.vpn.net.SmartResolver.resolve(node.host).ip }.getOrNull()
-        }
+        //
+        // 2.8.1 speed: resolution is PARALLEL (4 at a time) under one shared 4 s collection
+        // budget — the old `associateWith` walked nodes one by one and a single uncached lookup
+        // could eat seconds, so the pre-connect tax grew with the candidate list. With the budget
+        // spent, whatever already resolved is used and the rest dial their hostnames (today's
+        // behaviour). The app-start warm-up (MeelanoApp) keeps this block near-zero on the tap.
+        val resolveStarted = System.currentTimeMillis()
+        val dials: Map<FeedNode, String?> = runCatching {
+            kotlinx.coroutines.coroutineScope {
+                val gate = kotlinx.coroutines.sync.Semaphore(4)
+                val jobs = nodes.map { node ->
+                    async {
+                        gate.acquire()
+                        try {
+                            node to runCatching {
+                                ir.meelano.vpn.net.SmartResolver.resolve(node.host).ip
+                            }.getOrNull()
+                        } finally {
+                            gate.release()
+                        }
+                    }
+                }
+                jobs.mapNotNull { job ->
+                    val left = 4_000L - (System.currentTimeMillis() - resolveStarted)
+                    if (left <= 0) return@mapNotNull null
+                    runCatching { kotlinx.coroutines.withTimeoutOrNull(left) { job.await() } }.getOrNull()
+                }.toMap()
+            }
+        }.getOrDefault(emptyMap())
         val configs = nodes.mapNotNull { node ->
             runCatching {
                 node to CoreProfiles.pingConfigJson(
@@ -648,7 +675,10 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
         fun measure(url: String): Map<String, Long>? {
             val result = LinkedHashMap<String, Long>()
             for (chunk in configs.chunked(5)) {
-                val delays = XrayBridge.pingBatch(chunk.map { it.second }, timeoutSec = 5, url = url) ?: return null
+                // 3 s, not 5 s: pingBatch's timeout is per chunk (5 dials in parallel inside the
+                // core), so the old value billed a dead chunk 5 s of connect time. Two chunks = the
+                // whole race fits the 6 s budget below with room for the tie-breaker.
+                val delays = XrayBridge.pingBatch(chunk.map { it.second }, timeoutSec = 3, url = url) ?: return null
                 chunk.forEachIndexed { i, pair -> result[pair.first.id] = delays.getOrElse(i) { 11_000L } }
             }
             return result
@@ -668,11 +698,27 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
         // extra seconds on a slow carrier, paid on every reconnect, to learn a fact (does this
         // exit reach Google?) that TunnelProbe measures again through the real TUN anyway.
         // Google is now only the tie-breaker of last resort, when the first race proved nothing.
-        val cloudflare = measure("https://cp.cloudflare.com/generate_204") ?: return@withContext nodes
-        if (cloudflare.values.any { it < 10_000L }) return@withContext ranked(cloudflare)
-        val google = measure("https://www.google.com/generate_204") ?: return@withContext nodes
-        if (google.values.none { it < 10_000L }) return@withContext nodes
-        ranked(google)
+        // The whole race is a CONNECT-time cost, so it gets a hard 6 s ceiling (2.8.1): on timeout
+        // the pool keeps its current order and dialing simply begins — the old code had no ceiling
+        // and a network that answered nothing made the user watch «در حال اتصال» for the full sum
+        // of every chunk timeout before the first attempt. Giving up on ranking is cheap (the
+        // per-node probe still measures truth); giving up on *connecting* is not.
+        val raced: List<FeedNode>? = kotlinx.coroutines.withTimeoutOrNull(6_000L) {
+            val cloudflare = measure("https://cp.cloudflare.com/generate_204")
+            when {
+                cloudflare == null -> nodes
+                cloudflare.values.any { it < 10_000L } -> ranked(cloudflare)
+                else -> {
+                    val google = measure("https://www.google.com/generate_204")
+                    when {
+                        google == null -> nodes
+                        google.values.none { it < 10_000L } -> nodes
+                        else -> ranked(google)
+                    }
+                }
+            }
+        }
+        raced ?: nodes
     }
 
     override suspend fun startProxy(spec: TunnelSpec) {

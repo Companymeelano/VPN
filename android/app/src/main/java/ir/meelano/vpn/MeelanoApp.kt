@@ -10,6 +10,8 @@ import ir.meelano.vpn.update.UpdateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -51,6 +53,25 @@ class MeelanoApp : Application() {
             // on any network — it is one tiny GET; the *download* is what autoUpdate gates on Wi-Fi.
             if (BuildConfig.SELF_UPDATE && AppSettings.autoCheckUpdate) {
                 updates.checkAsync()
+            }
+        }
+        // 2.8.1 connect-speed warm-up: resolve the hostnames of the nodes the user is most likely
+        // to dial BEFORE the first tap. SmartResolver.resolve fills both caches (its own + the
+        // NetGuard DoH cache), so the hot path in orderCandidates/startOne hits memory instead of
+        // the network — on a poisoned-DNS carrier this is the difference between an instant dial
+        // and a full resolver budget per node. All six in parallel, fire-and-forget; a failure
+        // costs nothing (the connect path resolves again anyway).
+        appScope.launch {
+            delay(2_500)                    // same cold-start courtesy as the update check above
+            runCatching {
+                val nodes = (FeedHolder.repo.vip.value + FeedHolder.repo.free.value).distinctBy { it.host }
+                coroutineScope {
+                    nodes.take(6).map { node ->
+                        async {
+                            runCatching { ir.meelano.vpn.net.SmartResolver.resolve(node.host) }
+                        }
+                    }
+                }
             }
         }
         appScope.launch {

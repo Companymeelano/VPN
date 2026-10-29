@@ -33,15 +33,37 @@ object NetGuard {
 
     private const val TAG = "NetGuard"
 
-    /** Resolvers reachable from inside Iran without a VPN, with the address we dial them by. */
+    /**
+     * Resolvers reachable from inside Iran without a VPN, with the address we dial them by.
+     *
+     * 2.8.1: the set grew from three to five and the *order* stopped mattering (every provider is
+     * still asked in parallel). On MCI and some Irancell regions the two Western classics
+     * (8.8.8.8, 1.1.1.1) are throttled or blackholed at the IP level — a resolver that answers
+     * from Shanghai (AliDNS) or from an ad-blocker anycast (AdGuard) or from Quad9 is the
+     * difference between "DoH works here" and "every lookup silently falls back to the poisoned
+     * system resolver", which is exactly the bug this file exists to remove. A provider whose JSON
+     * flavour we mis-parse simply contributes nothing (parseAnswers is total); it can never hurt.
+     */
     private val DOH = listOf(
         Tria("dns.google", "8.8.8.8", "/resolve?name=%s&type=A&sd=1"),
         Tria("cloudflare-dns.com", "1.1.1.1", "/dns-query?name=%s&type=A"),
         // AliDNS: Chinese, aggressively cached, and historically alive when Google/Cloudflare are throttled.
         Tria("dns.alidns.com", "223.5.5.5", "/resolve?name=%s&type=A"),
+        // AdGuard: anycast incl. Middle-East PoPs; Google-style JSON API; alive on most Iranian carriers.
+        Tria("dns.adguard-dns.com", "94.140.14.14", "/resolve?name=%s&type=A"),
+        // Quad9: security-focused anycast, RFC-8484 JSON mapping on the same path shape as Cloudflare.
+        Tria("dns.quad9.net", "9.9.9.9", "/dns-query?name=%s&type=A"),
     )
 
     private data class Tria(val host: String, val ip: String, val path: String)
+
+    /**
+     * The resolver that answered fastest on the most recent full lookup. Purely a tie-breaker for
+     * list order next time — every call still asks everyone (agreement is what ranks answers) —
+     * but it keeps the "who is alive from here" learning instead of throwing it away.
+     */
+    @Volatile
+    private var preferred: Tria? = null
 
     /**
      * Socket guard for every resolver/client this file builds. Default is a no-op for tests; the
@@ -66,15 +88,36 @@ object NetGuard {
         ): java.net.Socket = createSocket(address, port)
     }
 
-    /** Cache of DoH answers; 4 minutes, because a poisoned record is also a moving target. */
-    private val dnsCache = Collections.synchronizedMap(HashMap<String, Pair<Long, List<String>>>())
+    /**
+     * Cache of DoH answers with per-entry expiry: 4 minutes for an answer (a poisoned record is a
+     * moving target, and so are CDN ones), 30 seconds for *silence*. Negative caching is the
+     * connect-speed side of the same coin: without it, one dead hostname re-pays the full DoH
+     * budget on every candidate attempt of every reconnect (orderCandidates used to serialise
+     * exactly that).
+     */
+    private class Cached(val expiresAt: Long, val ips: List<String>)
+    private val dnsCache = Collections.synchronizedMap(HashMap<String, Cached>())
     private const val DNS_TTL_MS = 4L * 60_000L
+    private const val DNS_NEG_TTL_MS = 30_000L
 
-    private val plain by lazy {
+    /**
+     * Every DoH request is bounded TWICE: [DOH_CALL_MS] per HTTP call (OkHttp callTimeout — covers
+     * connect+read+redirect no matter what the network does) and [DOH_BUDGET_MS] for the whole
+     * parallel batch (whoever answered by then counts; the laggards are dropped). The old client
+     * (4 s connect + 7 s read, wait-for-all-three) could park a single resolve at 11 s — and
+     * orderCandidates resolved nodes one after another, so the pre-connect tax reached a minute.
+     * The DoH payload is a few hundred bytes; a resolver that needs more than these budgets is,
+     * from here, indistinguishable from a blocked one.
+     */
+    private const val DOH_CALL_MS = 1_600L
+    private const val DOH_BUDGET_MS = 2_000L
+
+    private val dohClient by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(4, TimeUnit.SECONDS)
-            .readTimeout(7, TimeUnit.SECONDS)
-            .retryOnConnectionFailure(false)          // we do our own failover; don't double the wait
+            .connectTimeout(1, TimeUnit.SECONDS)
+            .readTimeout(1, TimeUnit.SECONDS)
+            .callTimeout(DOH_CALL_MS, TimeUnit.MILLISECONDS)
+            .retryOnConnectionFailure(false)
             .socketFactory(protectedSocketFactory())
             .build()
     }
@@ -95,23 +138,29 @@ object NetGuard {
 
     /**
      * A-records for [host], via every DoH endpoint we know, in parallel, each dialed by IP literal.
-     * Returns empty when all three fail - in which case the caller must not conclude "the host is
+     * Returns empty when all fail - in which case the caller must not conclude "the host is
      * dead", only "we cannot lie to ourselves right now".
      *
-     * `sd=1`/no-Cookie/short timeout: this runs on the app's hot path (feed refresh) and must never
-     * be the reason a connect feels slow.
+     * Latency contract (2.8.1): the batch as a whole never outlives [DOH_BUDGET_MS], because this
+     * sits on the *connect* hot path (SmartResolver asks it before every dial). Answers are ranked
+     * by how many resolvers agree (a sinkhole answer usually appears in exactly one); the fastest
+     * non-empty responder is remembered and asked first next time.
      */
     suspend fun doh(host: String): List<String> {
-        dnsCache[host]?.let { (at, ips) ->
-            if (System.currentTimeMillis() - at < DNS_TTL_MS) return ips
+        val now = System.currentTimeMillis()
+        dnsCache[host]?.let { c ->
+            if (now < c.expiresAt) return c.ips
         }
-        val answers: List<List<String>> = coroutineScope {
-            DOH.map { t ->
+        // Preferred resolver first, rest after — a pure ordering hint for the deadline loop below.
+        val order = listOfNotNull(preferred) + DOH.filterNot { it == preferred }
+        val started = System.currentTimeMillis()
+        val answers: List<Pair<Tria, List<String>>> = coroutineScope {
+            val jobs = order.map { t ->
                 async {
-                    runCatching {
+                    t to runCatching {
                         val url = "https://" + t.host + t.path.format(host)
                         // pin the *resolver* by IP: the whole point is to bypass the local resolver
-                        val client = plain.newBuilder().dns(singletonDns(t.ip)).build()
+                        val client = dohClient.newBuilder().dns(singletonDns(t.ip)).build()
                         val body = client.newCall(
                             Request.Builder().url(url)
                                 .header("Accept", "application/dns-json")
@@ -120,13 +169,25 @@ object NetGuard {
                         parseAnswers(body)
                     }.getOrDefault(emptyList())
                 }
-            }.map { it.await() }
+            }
+            // Await in list order but against ONE shared deadline: a straggler beyond the budget is
+            // left to its OkHttp callTimeout and simply not counted. An already-finished job costs
+            // zero, so ordering cannot slow the fast path down.
+            jobs.mapNotNull { job ->
+                val left = DOH_BUDGET_MS - (System.currentTimeMillis() - started)
+                if (left <= 0) return@mapNotNull null
+                runCatching { withTimeoutOrNull(left) { job.await() } }.getOrNull()
+            }
         }
         // union, but a resolver that returns nothing contributes nothing: we want *candidates*,
         // ranked by how many resolvers agree (a sinkhole answer usually appears in exactly one).
-        val ranked = answers.flatten().groupingBy { it }.eachCount()
+        val ranked = answers.flatMap { it.second }.groupingBy { it }.eachCount()
             .entries.sortedByDescending { it.value }.map { it.key }
-        if (ranked.isNotEmpty()) dnsCache[host] = System.currentTimeMillis() to ranked
+        answers.firstOrNull { it.second.isNotEmpty() }?.let { preferred = it.first }
+        // Positive entries live DNS_TTL_MS; a lookup that found nothing is remembered only briefly
+        // (DNS_NEG_TTL_MS) so a resolver outage cannot pin a good hostname down.
+        val ttl = if (ranked.isEmpty()) DNS_NEG_TTL_MS else DNS_TTL_MS
+        dnsCache[host] = Cached(System.currentTimeMillis() + ttl, ranked)
         return ranked
     }
 

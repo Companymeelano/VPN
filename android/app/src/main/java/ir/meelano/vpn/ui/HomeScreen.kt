@@ -5,7 +5,9 @@ import ir.meelano.vpn.ui.theme.LocalPalette
 import ir.meelano.vpn.ui.theme.Motion
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -124,19 +126,29 @@ fun HomeScreen(vm: VpnViewModel) {
                     ),
                 ),
         ) {
-            AmbientGlow(
-                accent = when {
+            // The halo cross-fades between state colours instead of hard-switching (2.8.1): a lamp
+            // that snaps from blue to red reads as a glitch; a lamp that *becomes* red reads as a
+            // room. Both parameters animate together so colour and intensity never desync.
+            val glowAccent by animateColorAsState(
+                targetValue = when {
                     phase is ConnectPhase.Failed -> p.danger
                     connected -> p.accent
                     busy -> p.info
                     else -> p.accent
                 },
-                intensity = when {
+                animationSpec = tween<Color>(Motion.breathMs / 2),
+                label = "glowAccent",
+            )
+            val glowIntensity by animateFloatAsState(
+                targetValue = when {
                     connected -> if (p.isDark) 0.20f else 0.11f
                     busy -> if (p.isDark) 0.13f else 0.07f
                     else -> if (p.isDark) 0.07f else 0.045f
                 },
+                animationSpec = tween<Float>(Motion.breathMs / 2),
+                label = "glowIntensity",
             )
+            AmbientGlow(accent = glowAccent, intensity = glowIntensity)
 
             Column(
                 Modifier
