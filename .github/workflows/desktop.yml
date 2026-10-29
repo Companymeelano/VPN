@@ -1,0 +1,94 @@
+name: build windows
+
+# The Windows x64 client (NSIS installer + portable) — built only on windows-latest, because
+# an .exe cannot be produced on Linux runners and electron-builder's NSIS toolchain is
+# Windows-native. Two triggers, one hard rule:
+#
+#   • pull_request touching desktop/**  → typecheck + tests + build + package (no publishing)
+#   • push tag "desktop-v*"             → the same, then release with the two .exe files
+#
+# The hard rule, carried over from apk.yml: NOTHING is ever published from a branch push.
+# Publishing requires an explicit version tag, so "Latest" can never be squatted by a CI
+# experiment and a half-built artifact can never reach a user.
+
+on:
+  pull_request:
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop.yml"
+  push:
+    tags:
+      - "desktop-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: install (with the Electron binary — electron-builder packs it)
+        run: npm ci
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: unit tests (the shared contract)
+        run: npm test
+
+      - name: fetch Xray core (windows x64, pinned)
+        run: npm run fetch-core
+
+      - name: build (main + renderer)
+        run: npm run build
+
+      - name: package (NSIS installer + portable, x64)
+        run: npx electron-builder --x64 --publish never
+
+      - name: sha256
+        run: |
+          Get-ChildItem release -Filter *.exe | ForEach-Object {
+            $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$h  $($_.Name)" | Out-File -Encoding ascii "$($_.FullName).sha256"
+            Write-Host "$($_.Name): $h"
+          }
+
+      - name: guard — tag must match package.json version
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart("desktop-v")
+          $ver = (Get-Content package.json | ConvertFrom-Json).version
+          if ($tag -ne $ver) { Write-Error "tag version $tag != package.json $ver"; exit 1 }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ma-vpn-windows-x64
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.sha256
+          if-no-files-found: error
+
+      - name: publish release (version tags only — never a branch)
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title "MA VPN for Windows $($tag.TrimStart('desktop-v'))" --notes "نسخه نهایی ویندوز ۶۴بیت — نصب‌کننده و نسخه قابل حمل. بدون امضای کد؛ در اولین اجرا SmartScreen گزینه More info › Run anyway را نشان می‌دهد."
+          }
+          gh release upload $tag (Get-ChildItem release -Filter *.exe | ForEach-Object FullName) (Get-ChildItem release -Filter *.sha256 | ForEach-Object FullName) --clobber
