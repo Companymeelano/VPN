@@ -587,6 +587,12 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
         networkReconnect?.cancel()
         networkReconnect = serviceScope.launch {
             delay(900)
+            // The physical network just changed: every cached answer (SmartResolver's pick cache
+            // and NetGuard's DoH cache) was learned on the OLD path. A 30 s negative entry from a
+            // dead Wi-Fi must not stall the first cellular connect — this is the «به سختی متصل
+            // می‌شود بعد از جابه‌جایی» fix. Cheap (two map clears) and always correct to do.
+            ir.meelano.vpn.net.SmartResolver.clearCache()
+            ir.meelano.vpn.net.NetGuard.clearDnsCache()
             reconnectActive(reason)
         }
     }
@@ -657,7 +663,13 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
                 jobs.mapNotNull { job ->
                     val left = 4_000L - (System.currentTimeMillis() - resolveStarted)
                     if (left <= 0) return@mapNotNull null
-                    runCatching { kotlinx.coroutines.withTimeoutOrNull(left) { job.await() } }.getOrNull()
+                    try {
+                        kotlinx.coroutines.withTimeoutOrNull(left) { job.await() }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (_: Throwable) {
+                        null
+                    }
                 }.toMap()
             }
         }.getOrDefault(emptyMap())

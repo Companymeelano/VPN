@@ -19,7 +19,7 @@ import { parseSubscription, type NodeInfo } from "../shared/nodes";
 import { tuneFor } from "../shared/regime";
 import { candidateOrder, FailoverTracker, failoverDelayMs } from "../shared/failover";
 
-const APP_VERSION = "2.8.2";
+const APP_VERSION = "2.8.3";
 const DEFAULT_SETTINGS: AppSettingsState = {
   theme: "system",
   regime: "tight",
@@ -47,20 +47,36 @@ function loadJson<T>(file: string, fallback: T): T {
 // The subscription URL is a credential (the VIP link rule: never public, never shared). At
 // rest it is DPAPI-sealed via Electron safeStorage — the old plaintext `subscriptionUrl` key
 // is read once and immediately migrated to `subscriptionUrlEnc`.
+// Decryption is DEFERRED to hydrateSecrets() (called the moment the app is ready): safeStorage
+// is not reliably usable before app-ready on every platform, and a load-time failure must not
+// permanently strand the user's saved link.
+let pendingSubscriptionEnc = "";
+
 function loadSettings(): AppSettingsState {
   const raw = loadJson<Record<string, unknown>>(settingsFile, DEFAULT_SETTINGS as unknown as Record<string, unknown>);
   let url = typeof raw["subscriptionUrl"] === "string" ? (raw["subscriptionUrl"] as string) : "";
   const enc = raw["subscriptionUrlEnc"];
   if (typeof enc === "string" && enc) {
-    try {
-      url = safeStorage.decryptString(Buffer.from(enc, "base64"));
-    } catch {
-      /* keep whatever plaintext fallback existed */
+    if (url) {
+      // Both keys present: plaintext is the fresh value, drop the stale ciphertext.
+      pendingSubscriptionEnc = "";
+    } else {
+      pendingSubscriptionEnc = enc;
     }
   }
   const { subscriptionUrlEnc: _drop, ...rest } = raw;
   void _drop;
   return { ...DEFAULT_SETTINGS, ...(rest as Partial<AppSettingsState>), subscriptionUrl: url };
+}
+
+function hydrateSecrets(): void {
+  if (!pendingSubscriptionEnc) return;
+  try {
+    settings.subscriptionUrl = safeStorage.decryptString(Buffer.from(pendingSubscriptionEnc, "base64"));
+  } catch {
+    /* leave empty; the user re-enters the link and it re-seals on save */
+  }
+  pendingSubscriptionEnc = "";
 }
 
 const settings: AppSettingsState = loadSettings();
@@ -238,7 +254,10 @@ async function doConnect(requested: string | "best"): Promise<void> {
   if (plan.length === 0) {
     connection = {
       status: "error",
-      message: "همه‌ی سرورها تازه ناموفق بوده‌اند — چند لحظه دیگر دوباره تلاش کنید",
+      message:
+        requested !== "best"
+          ? "سرور انتخاب‌شده در فهرست پیدا نشد — فهرست را به‌روزرسانی کنید"
+          : "همه‌ی سرورها تازه ناموفق بوده‌اند — چند لحظه دیگر دوباره تلاش کنید",
     };
     broadcast();
     return;
@@ -455,6 +474,7 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
+    hydrateSecrets();
     createWindow();
     createTray();
     wireIpc();

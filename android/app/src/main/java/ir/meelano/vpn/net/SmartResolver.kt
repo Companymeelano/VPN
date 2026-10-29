@@ -3,8 +3,6 @@ package ir.meelano.vpn.net
 import java.net.InetAddress
 import java.util.Collections
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -55,11 +53,19 @@ object SmartResolver {
     private const val NEG_TTL_MS = 30_000L
 
     /**
-     * The whole lookup (both resolvers) is deadlined at [RESOLVE_BUDGET_MS]; DoH — the answer we
-     * actually trust — is awaited first and keeps its own NetGuard budget. The system lookup runs
-     * *concurrently* from t=0 (its result is usually ready the moment we ask for it) but can never
-     * hold the line past its slice: a hung carrier resolver used to be able to stall a connect for
-     * seconds per node, serialised over the whole candidate list — the «به سختی متصل می‌شود» tax.
+     * The whole lookup is deadlined at [RESOLVE_BUDGET_MS] of *wall time*. Two traps from the
+     * 2.8.1 shape are closed here:
+     *  - async+await looked bounded but was not: structured concurrency kept waiting for the
+     *    hung system lookup (InetAddress.getAllByName blocks its thread up to the native DNS
+     *    timeout, and coroutineScope waits for every child), so the "2.4 s budget" on paper
+     *    could still park a connect for seconds per node. The system lookup now runs on an
+     *    abandoned daemon thread joined with a timeout — the thread may linger, the caller
+     *    never does;
+     *  - runCatching around await swallowed CancellationException (the classic suspend
+     *    footgun: a cancelled resolve "returned" instead of cancelling). Cancellation is now
+     *    rethrown; every other failure degrades to silence.
+     *
+     * DoH (the answer we trust) keeps its own NetGuard budget and is awaited first.
      */
     private const val RESOLVE_BUDGET_MS = 2_400L
     private const val DOH_WAIT_MS = 2_000L
@@ -102,33 +108,54 @@ object SmartResolver {
         }
         cache[trimmed]?.let { c -> if (System.currentTimeMillis() < c.expiresAt) return@withContext c.pick }
         val started = System.currentTimeMillis()
-        val (sys, doh) = coroutineScope {
-            val s = async(Dispatchers.IO) {
-                runCatching {
-                    InetAddress.getAllByName(trimmed).map { it.hostAddress ?: "" }.filter { it.isNotBlank() }
-                }.getOrDefault(emptyList())
+
+        // System lookup on a throwaway daemon thread: getAllByName is a blocking OS call that no
+        // coroutine timeout can interrupt, and a structured child would make the whole scope wait
+        // for it anyway. join(timeout) is the honest bound — see the constants' rationale.
+        val sysHolder = java.util.concurrent.atomic.AtomicReference<List<String>?>(null)
+        val sysThread = Thread({
+            try {
+                sysHolder.set(
+                    InetAddress.getAllByName(trimmed).map { it.hostAddress ?: "" }.filter { it.isNotBlank() },
+                )
+            } catch (_: Throwable) {
+                sysHolder.set(emptyList())
             }
-            val d = async(Dispatchers.IO) {
-                runCatching { NetGuard.doh(trimmed) }.getOrDefault(emptyList())
-            }
-            // DoH first (trusted, self-bounded), then the system slice of what is left of the
-            // budget. Both were started at t=0, so "wait" here almost never costs wall time —
-            // this ordering only decides who gets *cut* when the network is being difficult.
-            val dohIps = runCatching {
-                withTimeoutOrNull(minOf(DOH_WAIT_MS, RESOLVE_BUDGET_MS)) { d.await() }
-            }.getOrNull() ?: emptyList()
-            val sysLeft = minOf(SYS_WAIT_MS, RESOLVE_BUDGET_MS - (System.currentTimeMillis() - started))
-            val sysIps = if (sysLeft > 0) {
-                runCatching { withTimeoutOrNull(sysLeft) { s.await() } }.getOrNull() ?: emptyList()
-            } else {
-                emptyList()
-            }
-            sysIps to dohIps
+        }, "smart-resolver-sys").apply {
+            isDaemon = true
+            start()
         }
+
+        val doh = try {
+            withTimeoutOrNull(DOH_WAIT_MS) { NetGuard.doh(trimmed) } ?: emptyList()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            emptyList()
+        }
+
+        val sysWait = minOf(SYS_WAIT_MS, RESOLVE_BUDGET_MS - (System.currentTimeMillis() - started))
+            .coerceAtLeast(50L)
+        try {
+            sysThread.join(sysWait)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
+        val sys = sysHolder.get() ?: emptyList()
+
         val result = pick(sys, doh)
         val ttl = if (result.ip != null) TTL_MS else NEG_TTL_MS
         cache[trimmed] = Cached(System.currentTimeMillis() + ttl, result)
         result
+    }
+
+    /**
+     * Drop every cached answer — called on network change (Wi-Fi ↔ cell). A negative entry
+     * learned on the old network must never stall the first connect on the new one, and CDN
+     * answers legitimately differ between carriers.
+     */
+    fun clearCache() {
+        cache.clear()
     }
 
     /** An IPv6 literal shape (contains ':' and only hex/colon) — checked without touching DNS. */

@@ -150,7 +150,7 @@ export async function fetchSubscription(url: string, timeoutMs = 15000): Promise
     const res = await fetch(url, {
       signal: controller.signal,
       redirect: "follow",
-      headers: { "User-Agent": "MA-VPN-Desktop/2.8.2" },
+      headers: { "User-Agent": "MA-VPN-Desktop/2.8.3" },
     });
     if (!res.ok) throw new Error(`http_${res.status}`);
     return await res.text();
