@@ -72,20 +72,20 @@ curl 'http://localhost/v/?action=selftest&key=<toolKey>'
 ## اندروید
 `android/app/src/main/java/ir/meelano/vpn/**` — یک ماژول Gradle واقعی (نه اسنیپت)، **با کامپایل موفق در CI**.
 
-> نسخه‌ی کدِ روی `main`: **`v2.8.1`** (تند کردنِ اتصال: حل نام‌ها موازی با سقفِ بودجه، DoH با پنج
-> resolver ایران‌پسند و پاسخ‌گیریِ زودهنگام، کشِ منفی، گرم‌کردنِ کش از شروع اپ، و سقفِ ۶ ثانیه‌ایِ
-> مسابقه‌ی نودها؛ به‌علاوه نرم‌شدنِ هاله‌ی صفحه‌ی اصلی). پیش از آن `v2.8.0` رفع ریشه‌ایِ «روی همراه اول
-> وصل نمی‌شود» با حل نامِ میزبان از روی DoH خارجی و دایال با IP + بخش «به‌روزرسانی برنامه» بود (PR
+> نسخه‌ی کدِ روی `main`: **`v2.8.2`** (رفع سه ایرادِ بازبینیِ دوم: بودجه‌ی حل نام واقعاً‌سقف‌دار شد —
+> lookup سیستم روی thread رهاشدنی با join زمان‌دار، نه coroutine که گیر می‌کرد؛ لغوِ coroutine دیگر
+> بلعیده نمی‌شود؛ کش DNS هنگام تغییر شبکه پاک می‌شود). پیش از آن `v2.8.1` تند کردنِ اتصال (حل نام موازی،
+> DoH پنج‌گانه، کش منفی، گرم‌سازی) و `v2.8.0` رفع ریشه‌ایِ «روی همراه اول وصل نمی‌شود» بود (PR
 > [#14](https://github.com/Companymeelano/VPN/pull/14)). انتشار APK امضاشده دیگر منتظرِ secretها
 > نیست: اگر `MEELANO_*` ست نشده باشند، workflow کلیدِ امضای پروژه را زمانِ اجرا از draftِ
 > `key-bootstrap-2.6.0` می‌خواند و با **همان گواهیِ `v2.6.0`** امضا و منتشر می‌کند (PR
 > [#15](https://github.com/Companymeelano/VPN/pull/15)). ست‌کردنِ secretها همچنان مسیرِ اصلی است؛
 > بعد از آن می‌توان draftهای کلید را حذف کرد.
 >
-> تازه‌ترین APK قابل‌نصبِ همین حالا: **`v2.8.1`** (نسخه‌ی نهایی، **امضاشده با کلید پروژه**) →
-> [`meelano-2.8.1-208001.apk`](https://github.com/Companymeelano/VPN/releases/download/v2.8.1/meelano-2.8.1-208001.apk)
-> (arm64؛ universal با `v7a`: `meelano-2.8.1-208001-universal.apk`؛
-> حجم‌ها و sha256: [`releases/tag/v2.8.1`](https://github.com/Companymeelano/VPN/releases/tag/v2.8.1)).
+> تازه‌ترین APK قابل‌نصبِ همین حالا: **`v2.8.2`** (نسخه‌ی نهایی، **امضاشده با کلید پروژه**) →
+> [`meelano-2.8.2-208002.apk`](https://github.com/Companymeelano/VPN/releases/download/v2.8.2/meelano-2.8.2-208002.apk)
+> (arm64؛ universal با `v7a`: `meelano-2.8.2-208002-universal.apk`؛
+> حجم‌ها و sha256: [`releases/tag/v2.8.2`](https://github.com/Companymeelano/VPN/releases/tag/v2.8.2)).
 > این بیلد `release` است (R8 + امضا با keystore پروژه، نه کلید debug) و هسته‌ی تونل
 > (libXray v26.9.9، bridge `libXray.LibXray`) در آن وصل است. بیلدهای `push` روی `main` عمداً
 > بی‌هسته و debug‌اند؛ فقط تگ به انتشار می‌رسد (جزئیات: §۱ و §۳-پ در [docs/ANDROID-BUILD.md](docs/ANDROID-BUILD.md)).
@@ -99,13 +99,14 @@ Xray-core ویندوز ۶۴بیت داخل بسته، inbounds محلی (mixed) 
 سه حالت ضدفیلتر (آرام/سفت/سیاهه) با fragmentation دقیقاً در گویش اندروید، failover خودکار، سینی ویندوز و
 تنظیمات (پوسته، اتصال خودکار، شروع با ویندوز). لینک اشتراک فقط روی همان رایانه ذخیره می‌شود.
 
-> نسخه‌ی نهایی ویندوز: **`2.8.2`** (رفعِ خروجِ ناپاک/اینترنتِ قطع، حلقه‌ی failover، دزدیِ نشان Latest،
-> قفل تک‌نمونه و چند ایراد دیگر — PR [#18](https://github.com/Companymeelano/VPN/pull/18)) →
-> [`MA-VPN-2.8.2-setup-x64.exe`](https://github.com/Companymeelano/VPN/releases/download/desktop-v2.8.2/MA-VPN-2.8.2-setup-x64.exe)
+> نسخه‌ی نهایی ویندوز: **`2.8.3`** (رفع هیدراته‌ی امنِ لینک اشتراک پس از ready و پیام خطای
+> سرورِ ناموجود — PR [#19](https://github.com/Companymeelano/VPN/pull/19)) →
+> [`MA-VPN-2.8.3-setup-x64.exe`](https://github.com/Companymeelano/VPN/releases/download/desktop-v2.8.3/MA-VPN-2.8.3-setup-x64.exe)
 > (نصب‌کننده) و
-> [`MA-VPN-2.8.2-portable-x64.exe`](https://github.com/Companymeelano/VPN/releases/download/desktop-v2.8.2/MA-VPN-2.8.2-portable-x64.exe)
-> (قابل‌حمل) · صفحه: [`releases/tag/desktop-v2.8.2`](https://github.com/Companymeelano/VPN/releases/tag/desktop-v2.8.2).
-> نسخه‌ی `2.8.1` ویندوز به‌خاطر باگِ «خروج از برنامه اینترنت را قطع می‌کرد» توصیه نمی‌شود.
+> [`MA-VPN-2.8.3-portable-x64.exe`](https://github.com/Companymeelano/VPN/releases/download/desktop-v2.8.3/MA-VPN-2.8.3-portable-x64.exe)
+> (قابل‌حمل) · صفحه: [`releases/tag/desktop-v2.8.3`](https://github.com/Companymeelano/VPN/releases/tag/desktop-v2.8.3).
+> نسخه‌ی `2.8.1` ویندوز به‌خاطر باگِ «خروج از برنامه اینترنت را قطع می‌کرد» توصیه نمی‌شود؛
+> `2.8.2` هم آن رفع را دارد ولی `2.8.3` جاری است.
 > ⚠️ چون گواهی Code Signing خریداری نشده، ویندوز در اولین اجرا SmartScreen نشان می‌دهد: **More info › Run anyway**.
 > بیلد روی CI (`windows-latest`، `.github/workflows/desktop.yml`) ساخته و روی تگ‌های `desktop-v*` منتشر می‌شود؛
 > انتشارهای دسکتاپ هرگز نشان `Latest` مخزن را از نسخه‌ی اندروید نمی‌گیرند (`--latest=false`).

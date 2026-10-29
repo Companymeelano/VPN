@@ -172,11 +172,18 @@ object NetGuard {
             }
             // Await in list order but against ONE shared deadline: a straggler beyond the budget is
             // left to its OkHttp callTimeout and simply not counted. An already-finished job costs
-            // zero, so ordering cannot slow the fast path down.
+            // zero, so ordering cannot slow the fast path down. Cancellation is rethrown — a
+            // cancelled doh() must never "return empty" and fake a resolution miss.
             jobs.mapNotNull { job ->
                 val left = DOH_BUDGET_MS - (System.currentTimeMillis() - started)
                 if (left <= 0) return@mapNotNull null
-                runCatching { withTimeoutOrNull(left) { job.await() } }.getOrNull()
+                try {
+                    withTimeoutOrNull(left) { job.await() }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (_: Throwable) {
+                    null
+                }
             }
         }
         // union, but a resolver that returns nothing contributes nothing: we want *candidates*,
@@ -189,6 +196,14 @@ object NetGuard {
         val ttl = if (ranked.isEmpty()) DNS_NEG_TTL_MS else DNS_TTL_MS
         dnsCache[host] = Cached(System.currentTimeMillis() + ttl, ranked)
         return ranked
+    }
+
+    /**
+     * Drop every cached DoH answer — called on network change together with SmartResolver's
+     * clearCache(); the two caches feed each other and both must forget the old network.
+     */
+    fun clearDnsCache() {
+        dnsCache.clear()
     }
 
     /** OkHttp's Dns is a Kotlin fun interface in 4.x and a Java interface in 3.x: write it the long way. */
