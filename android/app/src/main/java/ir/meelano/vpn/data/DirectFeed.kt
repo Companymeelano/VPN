@@ -208,6 +208,8 @@ object DirectFeed {
         deepProbe: suspend (List<FeedNode>) -> Map<String, ProxyScanner.Verdict> = { emptyMap() },
         /** Progressive delivery: tunnel candidates can paint while the deeper proxy scan continues. */
         onTunnelsReady: suspend (List<FeedNode>) -> Unit = {},
+        /** Real per-stage progress for the 3D dials (data/SyncProgress); never a simulated ramp. */
+        onProgress: (SyncProgress) -> Unit = {},
     ): Result = coroutineScope {
         val notes = ArrayList<String>(12)
         val tunnelPool = ArrayList<FeedNode>(parseCap)
@@ -217,6 +219,12 @@ object DirectFeed {
         var sourcesTotal = 0
         var skipped = 0
         var mirrored = 0
+        val fetchedCount = java.util.concurrent.atomic.AtomicInteger(0)
+        var fetchTotal = 0
+
+        fun stage(s: SyncProgress.Stage, done: Int, total: Int) {
+            runCatching { onProgress(SyncProgress(s, done, total)) }
+        }
 
         fun failureCategory(error: Throwable): String = when (error) {
             is FetchFailure -> error.category
@@ -230,6 +238,7 @@ object DirectFeed {
         /** Fetch one tier in parallel; each source's independent public routes are tried sequentially. */
         suspend fun CoroutineScope.pull(batch: List<Upstream>) {
             if (batch.isEmpty()) return
+            fetchTotal += batch.size
             val configCount = batch.count { it.kind != Kind.PROXY }.coerceAtLeast(1)
             val proxyCount = batch.count { it.kind == Kind.PROXY }.coerceAtLeast(1)
             data class Pulled(
@@ -261,16 +270,23 @@ object DirectFeed {
                             attempts += FetchOutcome(upstream.id, route, failureCategory(error))
                         }
                     }
+                    stage(SyncProgress.Stage.FETCH, fetchedCount.incrementAndGet(), fetchTotal)
                     Pulled(upstream, body, via, attempts)
                 }
             }.awaitAll()
             val tunnelBuckets = ArrayList<List<FeedNode>>()
             val proxyBuckets = ArrayList<List<FeedNode>>()
 
-            for ((upstream, body, via, outcomes) in bodies) {
+            stage(SyncProgress.Stage.PARSE, 0, bodies.size)
+            for ((parsedIndex, pulled) in bodies.withIndex()) {
+                val (upstream, body, via, outcomes) = pulled
                 sourcesTotal++
                 fetchOutcomes += outcomes
-                if (body.isNullOrBlank()) continue
+                if (body.isNullOrBlank()) {
+                    // the dial must still advance for a dead source, or PARSE never reaches its total
+                    stage(SyncProgress.Stage.PARSE, parsedIndex + 1, bodies.size)
+                    continue
+                }
                 sourcesOk++
                 if (via > 0) mirrored++
                 val sourceLimit = if (upstream.kind == Kind.PROXY) {
@@ -292,6 +308,7 @@ object DirectFeed {
                 if (proxies.isNotEmpty()) proxyBuckets += proxies
                 if (tunnels.isNotEmpty()) tunnelBuckets += tunnels
                 if (dialable.isEmpty()) notes += "«${upstream.id}» پاسخ داد ولی مسیرِ قابل‌دیال نداشت"
+                stage(SyncProgress.Stage.PARSE, parsedIndex + 1, bodies.size)
             }
 
             // Round-robin by source. Appending whole files lets the first giant repository spend every
@@ -316,8 +333,13 @@ object DirectFeed {
         suspend fun probeFresh(candidates: List<FeedNode>, limit: Int) {
             val fresh = candidates.filter { it.id !in rtt }.take(limit)
             if (fresh.isEmpty()) return
+            // The dial counts "probed out of everything we decided to probe" — honest even when the
+            // fallback tier adds candidates halfway through.
+            val planned = rtt.size + fresh.size
+            stage(SyncProgress.Stage.PROBE, rtt.size, planned)
             val got = runCatching { probe(fresh) }.getOrDefault(emptyMap())
             fresh.forEach { node -> rtt[node.id] = got[node.id] ?: -1L }
+            stage(SyncProgress.Stage.PROBE, rtt.size, planned)
         }
 
         var tunnelCandidates = NodeUri.dedupe(tunnelPool, max = parseCap)
@@ -346,6 +368,7 @@ object DirectFeed {
 
         // Only candidates that actually received a pre-probe result are published, but -1 is retained.
         // It means "TCP inconclusive", not "Xray tunnel dead". Successful hints sort first.
+        stage(SyncProgress.Stage.RANK, 0, 1)
         val tunnelRows = tunnelCandidates.mapNotNull { node ->
             val ms = rtt[node.id] ?: return@mapNotNull null
             if (ms >= 0) {
@@ -435,6 +458,7 @@ object DirectFeed {
             notes += "هیچ منبع عمومی در دسترس نبود؛ جزئیاتِ هر مسیر در گزارش عیب‌یابی ثبت شد"
         }
 
+        stage(SyncProgress.Stage.RANK, 1, 1)
         Result(
             nodes = tunnelRows + proxyRows,
             sourcesOk = sourcesOk,

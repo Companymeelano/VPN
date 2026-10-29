@@ -90,6 +90,31 @@
     <string name="group_vpn">اتصال و تونل</string>
     <string name="group_data">داده و حریم خصوصی</string>
     <string name="group_general">عمومی</string>
+    <string name="group_fetch">دریافت و فید</string>
+    <string name="group_appearance">ظاهر</string>
+    <string name="group_advanced">پیشرفته</string>
+    <string name="set_autofetch">دریافت خودکار فهرست</string>
+    <string name="set_autofetch_body">فهرست سرورهای رایگان و VIP در پس‌زمینه و با بازه‌ی انتخابی شما تازه می‌شود؛ بدون نیاز به بازکردن اپ.</string>
+    <string name="set_interval">بازه‌ی به‌روزرسانی خودکار</string>
+    <string name="set_interval_body">فهرست‌های عمومی هر چند ساعت یک‌بار عوض می‌شوند؛ ۶ ساعت تعادلِ تازگی و مصرف اینترنت است.</string>
+    <string name="save_settings">ذخیره‌ی تنظیمات</string>
+    <string name="settings_saved">تنظیمات ذخیره شد</string>
+    <string name="unsaved_hint">تغییرات ذخیره‌نشده</string>
+    <string name="smart_title">پروفایل هوشمند اتصال</string>
+    <string name="smart_body">بعد از دریافت و آزمایش سرورها، بهترین تنظیمات اتصال برای هر سرویس (رایگان یا VIP) همین‌جا محاسبه و با یک دکمه اعمال می‌شود.</string>
+    <string name="smart_open">باز کردن پروفایل هوشمند</string>
+    <string name="smart_vip_title">سرویس VIP</string>
+    <string name="smart_vip_sub">تنظیمات بهینه برای کانفیگ‌های اختصاصی شما</string>
+    <string name="smart_free_title">سرویس رایگان</string>
+    <string name="smart_free_sub">تنظیمات بهینه برای استخر سرورهای عمومی</string>
+    <string name="smart_apply">اعمال بهترین تنظیمات</string>
+    <string name="smart_no_node">هنوز مسیر سالمی در این سرویس نیست؛ اول همگام‌سازی کنید</string>
+    <string name="smart_note">این مقادیر از روی حالت شبکه، ترابریِ بهترین مسیرِ اندازه‌گیری‌شده و میانه‌ی پینگ همان سرویس محاسبه می‌شوند؛ با «ذخیره‌ی تنظیمات» پایدار می‌مانند.</string>
+    <string name="filter_country_all">همه‌ی کشورها</string>
+    <string name="filter_ping_all">هر پینگی</string>
+    <string name="filter_ping_200">زیر ۲۰۰ms</string>
+    <string name="filter_ping_400">زیر ۴۰۰ms</string>
+    <string name="filter_ping_1000">زیر ۱s</string>
     <string name="danger_zone">یک کلیک فاصله تا پاک‌شدن تنظیمات</string>
 
     <!-- onboarding / trust -->

@@ -54,6 +54,10 @@ class MeelanoApp : Application() {
             // walk over every installed app right there is a hesitation you can feel on a slow phone.
             runCatching { ir.meelano.vpn.data.PerAppRouting.scan(this@MeelanoApp) }
         }
+        // «دریافت خودکار»: periodic feed sync per the user's interval (data/FeedScheduler).
+        // Enqueued on every start: WorkManager dedupes by tag, so this is idempotent, and a changed
+        // interval is applied by the UPDATE policy inside schedule().
+        runCatching { ir.meelano.vpn.data.FeedScheduler.schedule(this) }
     }
 
     companion object {

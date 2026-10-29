@@ -188,8 +188,21 @@ class ServerFeedRepository(
 
     private val syncJobs = AtomicInteger(0)
     private val refreshLocks = mapOf(KIND_VIP to Mutex(), KIND_FREE to Mutex())
-    private fun beginSync() { syncJobs.incrementAndGet(); _syncing.value = true }
-    private fun endSync() { if (syncJobs.decrementAndGet().coerceAtLeast(0) == 0) _syncing.value = false }
+    private fun beginSync() {
+        syncJobs.incrementAndGet()
+        _syncing.value = true
+    }
+
+    private fun endSync() {
+        if (syncJobs.decrementAndGet().coerceAtLeast(0) == 0) {
+            _syncing.value = false
+            _syncProgress.value = SyncProgress.IDLE
+        }
+    }
+
+    /** Real per-stage progress of the running sync; the 3D dials read this (data/SyncProgress). */
+    private val _syncProgress = MutableStateFlow(SyncProgress.IDLE)
+    val syncProgress: StateFlow<SyncProgress> = _syncProgress
 
     /** every node we know about, indexed by id (what the service resolves a connect request from) */
     @Volatile private var index: Map<String, FeedNode> = emptyMap()
@@ -405,6 +418,9 @@ class ServerFeedRepository(
                         ProxyScanner.scan(
                             nodes = nodes,
                             protect = { socket -> MeelanoVpnService.protectFeedSocket(socket) },
+                            onProgress = { done, total ->
+                                _syncProgress.value = SyncProgress(SyncProgress.Stage.SCAN, done, total)
+                            },
                         )
                     },
                     onTunnelsReady = { tunnels ->
@@ -418,6 +434,7 @@ class ServerFeedRepository(
                             )
                         }
                     },
+                    onProgress = { _syncProgress.value = it },
                 )
             }
             _directNotes.value = res.notes
@@ -463,15 +480,22 @@ class ServerFeedRepository(
                 blob.append(it)
             }
         }
+        _syncProgress.value = SyncProgress(SyncProgress.Stage.FETCH, 1, 1)
         val parsed = NodeUri.parseBlob(blob.toString(), tier = KIND_VIP, brand = VIP_BRAND)
+        _syncProgress.value = SyncProgress(SyncProgress.Stage.PARSE, 1, 1)
         val head = NodeUri.dedupe(parsed, max = 48)
         val tunnels = head.filterNot { it.isRawProxy }
         val rawProxies = head.filter { it.isRawProxy }
+        _syncProgress.value = SyncProgress(SyncProgress.Stage.PROBE, 0, tunnels.size.coerceAtLeast(1))
         val rtt = probeBatch(tunnels)
+        _syncProgress.value = SyncProgress(SyncProgress.Stage.PROBE, tunnels.size, tunnels.size.coerceAtLeast(1))
         val proxyVerdicts = ProxyScanner.scan(
             nodes = rawProxies,
             limit = rawProxies.size,
             protect = { socket -> MeelanoVpnService.protectFeedSocket(socket) },
+            onProgress = { done, total ->
+                _syncProgress.value = SyncProgress(SyncProgress.Stage.SCAN, done, total)
+            },
         )
         val checkedAt = System.currentTimeMillis() / 1000L
         val nodes = head.mapIndexed { i, n ->
@@ -508,6 +532,7 @@ class ServerFeedRepository(
         if (sources > 0) notes += "اشتراکِ شخصی از لینکِ خودتان خوانده شد"
         if (sources == 0 && blob.toString().isBlank()) notes += "لینکِ اشتراک تنظیم نشده"
         notes += "${nodes.count { it.latencyMs != null }} نود از همین شبکه پاسخ داد"
+        _syncProgress.value = SyncProgress(SyncProgress.Stage.RANK, 1, 1)
         return DirectFeed.Result(nodes, sources, maxOf(1, sources), parsed.size, head.size, notes)
     }
 

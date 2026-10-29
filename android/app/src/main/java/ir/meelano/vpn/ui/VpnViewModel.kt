@@ -48,6 +48,9 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope, SharingStarted.Eagerly, emptyList())
     val syncing: StateFlow<Boolean> = repo.syncing.stateIn(
         viewModelScope, SharingStarted.Eagerly, false)
+    /** Real per-stage sync counters for the 3D progress dials (data/SyncProgress). */
+    val syncProgress: StateFlow<ir.meelano.vpn.data.SyncProgress> = repo.syncProgress.stateIn(
+        viewModelScope, SharingStarted.Eagerly, ir.meelano.vpn.data.SyncProgress.IDLE)
     val phase: StateFlow<ConnectPhase> = MeelanoVpnService.phase
     val traffic: StateFlow<Traffic> = MeelanoVpnService.traffic
     val trace: StateFlow<ir.meelano.vpn.vpn.TrafficTrace> = MeelanoVpnService.trace
@@ -69,6 +72,15 @@ class VpnViewModel(app: Application) : AndroidViewModel(app) {
 
     /** "خودکار" is a real choice, not a label: the best node of the merged list, stable ordering. */
     fun bestAuto(): FeedNode? = rankedCandidates().firstOrNull()
+
+    /**
+     * Best currently-known node of one service tier ("vip" or "free"), by the same ranking the
+     * auto-picker uses. The smart-profile sheet tunes settings for exactly the node this returns,
+     * so "بهترین تنظیمات برای سرویس شما" is never about a node the app would not actually dial.
+     */
+    fun bestFor(tier: String): FeedNode? = rankedCandidates().firstOrNull { n ->
+        if (tier.equals("vip", ignoreCase = true)) n.isVip else (!n.isVip && !n.isRawProxy)
+    }
 
     /** Ranked, dialable candidates for auto mode - one comparator shared by the tap and the ladder. */
     private fun rankedCandidates(): List<FeedNode> =

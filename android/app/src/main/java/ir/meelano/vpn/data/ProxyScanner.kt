@@ -84,6 +84,8 @@ object ProxyScanner {
         timeoutMs: Int = 4_500,
         protect: (Socket) -> Boolean = { true },
         request: suspend (FeedNode, Endpoint, Int, (Socket) -> Boolean) -> Check = ::requestThrough,
+        /** Real progress: one call per finished candidate, so the UI dial is never a simulation. */
+        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
     ): Map<String, Verdict> = coroutineScope {
         val candidates = nodes
             .filter { it.isRawProxy && !it.insecure }
@@ -91,6 +93,7 @@ object ProxyScanner {
             .take(limit.coerceAtLeast(0))
         if (candidates.isEmpty()) return@coroutineScope emptyMap()
         val gate = Semaphore(concurrency.coerceIn(1, 12))
+        val finished = java.util.concurrent.atomic.AtomicInteger(0)
         candidates.map { node ->
             async(Dispatchers.IO) {
                 gate.withPermit {
@@ -100,7 +103,9 @@ object ProxyScanner {
                                 .getOrElse { Check(endpoint.id, error = errorKey(it)) }
                         }
                     }.awaitAll()
-                    node.id to classify(checks)
+                    val verdict = classify(checks)
+                    onProgress(finished.incrementAndGet(), candidates.size)
+                    node.id to verdict
                 }
             }
         }.awaitAll().toMap()

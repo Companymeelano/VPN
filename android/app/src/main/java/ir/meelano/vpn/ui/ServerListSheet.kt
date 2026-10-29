@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import ir.meelano.vpn.R
 import ir.meelano.vpn.data.AppSettings
 import ir.meelano.vpn.data.FeedNode
+import ir.meelano.vpn.data.NodeFilters
 import ir.meelano.vpn.data.Prefs
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -98,30 +99,29 @@ fun ServerListSheet(
         )
     }
     var filter by remember { mutableStateOf(FILTER_ALL) }
+    // Country + ping filters (data/NodeFilters): the two axes a user actually narrows a 60-row
+    // list with. Country is remembered per session; "null" is the «همه» chip.
+    var country by remember { mutableStateOf<String?>(null) }
+    var maxPing by remember { mutableStateOf<Long?>(null) }
     var pinned by remember { mutableStateOf(Prefs.pinnedIds(ctx)) }
     // Which builder made this list, and what it had to throw away. Only interesting when the list looks
     // thin - which is precisely when a silent difference turns into a bug report.
     val feedNotes by vm.feedNotes.collectAsState()
+    val syncProgress by vm.syncProgress.collectAsState()
 
     val source = when (seg) {
         SEG_FREE -> free
         SEG_PROXY -> proxies
         else -> vip
     }
-    val rows = remember(source, filter, pinned) {
-        val base = when (filter) {
-            FILTER_NEAR -> source.filter { it.latencyMs != null }
-            FILTER_FAST -> source.filter { (it.latencyMs ?: 99_999L) <= 400 }
-            FILTER_WORKS -> source.filter { it.grade == "A" || it.grade == "B" }
-            else -> source
-        }
-        base.sortedWith(
-            compareByDescending<FeedNode> { it.id in pinned }
-                .thenBy { if (it.isUsable) 0 else 1 }
-                .thenBy { gradeRank(it.grade) }
-                .thenByDescending { it.reliability }
-                .thenBy { it.latencyMs ?: 99_999L }
-        )
+    val countries = remember(source) { NodeFilters.countries(source) }
+    // A tab switch can leave a stale country chip that filters everything out; clear it politely
+    // (never during composition — state writes there are a recomposition trap).
+    androidx.compose.runtime.LaunchedEffect(countries) {
+        if (country != null && countries.none { it == country }) country = null
+    }
+    val rows = remember(source, filter, pinned, country, maxPing) {
+        NodeFilters.sorted(NodeFilters.apply(source, filter, country, maxPing), pinned)
     }
 
     ModalBottomSheet(
@@ -195,6 +195,54 @@ fun ServerListSheet(
                 MeelanoChip(stringResource(R.string.filter_works), filter == FILTER_WORKS, { filter = FILTER_WORKS })
             }
 
+            // Country: one chip per country actually present in this tab (with its count), so the
+            // row is never a dead alphabet. Selecting a tab with no such country clears the chip.
+            if (countries.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 18.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    MeelanoChip(
+                        stringResource(R.string.filter_country_all),
+                        country == null,
+                        { country = null },
+                    )
+                    countries.forEach { code ->
+                        MeelanoChip(
+                            label = code,
+                            on = country == code,
+                            onClick = { country = if (country == code) null else code },
+                            count = source.count { it.cc != null && it.cc.equals(code, true) },
+                        )
+                    }
+                }
+            }
+
+            // Ping ceiling: «زیر ۲۰۰» and friends. Unmeasured rows are hidden by any ceiling —
+            // "fast" must never mean "unknown" (data/NodeFilters).
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                MeelanoChip(stringResource(R.string.filter_ping_all), maxPing == null, { maxPing = null })
+                listOf(200L to R.string.filter_ping_200, 400L to R.string.filter_ping_400, 1000L to R.string.filter_ping_1000)
+                    .forEach { (limit, labelRes) ->
+                        MeelanoChip(
+                            stringResource(labelRes),
+                            maxPing == limit,
+                            { maxPing = if (maxPing == limit) null else limit },
+                        )
+                    }
+            }
+
             Spacer(Modifier.height(6.dp))
 
             // "auto" is a row, not a checkbox buried in settings: it is the choice most users want.
@@ -210,8 +258,15 @@ fun ServerListSheet(
             Spacer(Modifier.height(2.dp))
 
             when {
+                // The staged 3D dial/bars *are* the loading state now: real counters (fetch → parse →
+                // probe → scan → rank) instead of grey skeletons that prove nothing is happening.
                 syncing && source.isEmpty() -> Column(Modifier.padding(vertical = 6.dp)) {
-                    repeat(4) { SkeletonRow() }
+                    SyncProgressPanel(
+                        progress = syncProgress,
+                        modifier = Modifier.padding(horizontal = 18.dp),
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    repeat(2) { SkeletonRow() }
                 }
                 rows.isEmpty() -> {
                     val err by vm.feedError.collectAsState()
