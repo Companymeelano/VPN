@@ -45,9 +45,9 @@ class NodeFiltersTest {
     }
 
     @Test fun `ping ceiling hides unmeasured rows too`() {
-        assertEquals(listOf("a", "d"), NodeFilters.apply(rows, NodeFilters.KIND_ALL, null, 200).map { it.id })
+        assertEquals(listOf("a", "d"), NodeFilters.apply(rows, NodeFilters.KIND_ALL, null, 200L).map { it.id })
         // combined with country
-        assertEquals(listOf("a"), NodeFilters.apply(rows, NodeFilters.KIND_ALL, "DE", 200).map { it.id })
+        assertEquals(listOf("a"), NodeFilters.apply(rows, NodeFilters.KIND_ALL, "DE", 200L).map { it.id })
     }
 
     @Test fun `countries are ordered by presence then name`() {

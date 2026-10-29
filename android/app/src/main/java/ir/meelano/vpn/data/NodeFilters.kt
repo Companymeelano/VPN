@@ -20,7 +20,7 @@ object NodeFilters {
         rows: List<FeedNode>,
         kind: Int,
         country: String?,
-        maxPingMs: Int?,
+        maxPingMs: Long?,
     ): List<FeedNode> {
         val byKind = when (kind) {
             KIND_NEAR -> rows.filter { it.latencyMs != null }
