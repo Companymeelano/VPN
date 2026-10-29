@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import ir.meelano.vpn.R
 import ir.meelano.vpn.data.AppSettings
 import ir.meelano.vpn.data.FeedNode
+import ir.meelano.vpn.data.NodeFilters
 import ir.meelano.vpn.data.Prefs
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
