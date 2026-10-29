@@ -21,6 +21,12 @@ export interface Tune {
   keepAliveSec: number;
   alpn: string;
   fingerprint: string;
+  /**
+   * TCP Fast Open. Off under active-DPI regimes: a TFO cookie exchange is a shape almost no
+   * browser produces, so it can fingerprint the very thing the fragmentation is hiding. Only
+   * CALM (SNI filtering only) may use it. This mirrors the Android connectionReuse wiring.
+   */
+  tfo: boolean;
 }
 
 const BASE: Tune = {
@@ -32,10 +38,11 @@ const BASE: Tune = {
   keepAliveSec: 0,
   alpn: "",
   fingerprint: "chrome",
+  tfo: false,
 };
 
 export const REGIMES: Record<RegimeId, Tune> = {
-  calm: { ...BASE, mux: true, keepAliveSec: 30, fragSize: 0 },
+  calm: { ...BASE, mux: true, keepAliveSec: 30, fragSize: 0, tfo: true },
   tight: {
     ...BASE,
     fragSize: 200,

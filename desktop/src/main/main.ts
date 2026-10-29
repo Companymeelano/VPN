@@ -9,16 +9,17 @@
  * Everything user-visible lives in the renderer; this file owns only system effects.
  */
 
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, shell, Tray } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, safeStorage, shell, Tray } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { XrayCore, fetchSubscription, tcpPing } from "./core";
 import { setSystemProxy } from "./proxy";
 import type { AppSettingsState, AppSnapshot, ConnectionState, SpeedPoint } from "../shared/contract";
-import { parseSubscription, rankByPing, type NodeInfo } from "../shared/nodes";
+import { parseSubscription, type NodeInfo } from "../shared/nodes";
 import { tuneFor } from "../shared/regime";
+import { candidateOrder, FailoverTracker, failoverDelayMs } from "../shared/failover";
 
-const APP_VERSION = "2.8.1";
+const APP_VERSION = "2.8.2";
 const DEFAULT_SETTINGS: AppSettingsState = {
   theme: "system",
   regime: "tight",
@@ -43,12 +44,44 @@ function loadJson<T>(file: string, fallback: T): T {
   }
 }
 
-const settings: AppSettingsState = loadJson(settingsFile, DEFAULT_SETTINGS);
+// The subscription URL is a credential (the VIP link rule: never public, never shared). At
+// rest it is DPAPI-sealed via Electron safeStorage — the old plaintext `subscriptionUrl` key
+// is read once and immediately migrated to `subscriptionUrlEnc`.
+function loadSettings(): AppSettingsState {
+  const raw = loadJson<Record<string, unknown>>(settingsFile, DEFAULT_SETTINGS as unknown as Record<string, unknown>);
+  let url = typeof raw["subscriptionUrl"] === "string" ? (raw["subscriptionUrl"] as string) : "";
+  const enc = raw["subscriptionUrlEnc"];
+  if (typeof enc === "string" && enc) {
+    try {
+      url = safeStorage.decryptString(Buffer.from(enc, "base64"));
+    } catch {
+      /* keep whatever plaintext fallback existed */
+    }
+  }
+  const { subscriptionUrlEnc: _drop, ...rest } = raw;
+  void _drop;
+  return { ...DEFAULT_SETTINGS, ...(rest as Partial<AppSettingsState>), subscriptionUrl: url };
+}
+
+const settings: AppSettingsState = loadSettings();
 let nodes: NodeInfo[] = loadJson<NodeInfo[]>(nodesFile, []);
 const pings = new Map<string, number>();
 
 function saveSettings(): void {
-  writeFileSync(settingsFile, JSON.stringify(settings, null, 2), "utf-8");
+  const { subscriptionUrl, ...rest } = settings;
+  const out: Record<string, unknown> = { ...rest, subscriptionUrl: "" };
+  if (subscriptionUrl) {
+    try {
+      if (safeStorage.isEncryptionAvailable()) {
+        out["subscriptionUrlEnc"] = safeStorage.encryptString(subscriptionUrl).toString("base64");
+      } else {
+        out["subscriptionUrl"] = subscriptionUrl;
+      }
+    } catch {
+      out["subscriptionUrl"] = subscriptionUrl;
+    }
+  }
+  writeFileSync(settingsFile, JSON.stringify(out, null, 2), "utf-8");
 }
 function saveNodes(): void {
   writeFileSync(nodesFile, JSON.stringify(nodes, null, 2), "utf-8");
@@ -60,6 +93,12 @@ let activeNodeId: string | null = null;
 let connectedSince = 0;
 const speed: SpeedPoint[] = [];
 let reconnectTimer: NodeJS.Timeout | null = null;
+/**
+ * True only between "we turned the system proxy on" and "we turned it off". Quit cleanup
+ * touches the proxy ONLY while this holds — a user who configured their own proxy must never
+ * have it disabled by our exit path.
+ */
+let proxyOwned = false;
 
 const core = new XrayCore(join(userDataDir, "profile"));
 
@@ -117,9 +156,40 @@ function createTray(): void {
 }
 
 let quitting = false;
-app.on("before-quit", () => {
+let cleanedUp = false;
+
+// Quit must CLEAN UP, not just raise a flag (the bug this replaces): Windows does not cascade
+// process death, so an un-stopped xray.exe outlives the app as an invisible tunnel, and an
+// untouched ProxyEnable=1 points every browser at a dead port. One async pass, then re-quit.
+app.on("before-quit", (e) => {
   quitting = true;
+  if (cleanedUp) return;
+  e.preventDefault();
+  cleanedUp = true;
+  void (async () => {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    try {
+      await core.stop();
+    } catch {
+      /* the forceKill exit hook is the backstop */
+    }
+    if (proxyOwned) {
+      try {
+        await setSystemProxy(false);
+      } catch {
+        /* leave it owned=false; the user can still fix it manually */
+      }
+      proxyOwned = false;
+    }
+    app.quit();
+  })();
 });
+
+// Belt and braces: even a crash must not orphan xray.exe.
+process.on("exit", () => core.forceKill());
 
 // ── snapshot plumbing ──────────────────────────────────────────────────────────
 function snapshot(): AppSnapshot {
@@ -140,12 +210,22 @@ function broadcast(): void {
 }
 
 // ── connection lifecycle ───────────────────────────────────────────────────────
-function pickNode(requested: string | "best"): NodeInfo | null {
+const tracker = new FailoverTracker();
+let consecutiveFailures = 0;
+/** A "best" connect walks up to this many distinct candidates before giving up honestly. */
+const MAX_WALK = 4;
+
+/**
+ * Attempt plan: a *specific* node is always tried (the user asked for it — a cooldown is a
+ * chooser hint, not a veto), while "best" walks the non-cooled, ping-ranked candidates so one
+ * dead node can never strand the whole connect.
+ */
+function attemptPlan(requested: string | "best"): NodeInfo[] {
   if (requested !== "best") {
-    return nodes.find((n) => n.id === requested) ?? null;
+    const n = nodes.find((x) => x.id === requested) ?? null;
+    return n ? [n] : [];
   }
-  const ranked = rankByPing(nodes, pings);
-  return ranked[0] ?? null;
+  return candidateOrder(nodes, pings, tracker).slice(0, MAX_WALK);
 }
 
 async function doConnect(requested: string | "best"): Promise<void> {
@@ -154,77 +234,94 @@ async function doConnect(requested: string | "best"): Promise<void> {
     broadcast();
     return;
   }
-  const node = pickNode(requested);
-  if (!node) {
-    connection = { status: "error", message: "سروری برای اتصال پیدا نشد" };
+  const plan = attemptPlan(requested);
+  if (plan.length === 0) {
+    connection = {
+      status: "error",
+      message: "همه‌ی سرورها تازه ناموفق بوده‌اند — چند لحظه دیگر دوباره تلاش کنید",
+    };
     broadcast();
     return;
   }
-  connection = { status: "connecting", node: node.name, step: "آماده‌سازی هسته" };
-  activeNodeId = node.id;
-  broadcast();
 
-  try {
-    const { tune } = tuneFor(settings.regime);
-    connection = { status: "connecting", node: node.name, step: "اتصال به سرور" };
+  let lastError = "اتصال برقرار نشد";
+  for (const node of plan) {
+    connection = { status: "connecting", node: node.name, step: "آماده‌سازی هسته" };
+    activeNodeId = node.id;
     broadcast();
-    await core.start(
-      node,
-      tune,
-      {
-        localPort: 10808,
-        directDomains: [".ir"],
-        allowLan: settings.lanAccess,
-      },
-      (code) => {
-        // Unexpected death while connected → failover, not silence.
-        if (!quitting && connection.status === "connected") {
-          const reason = code === 0 ? "هسته بسته شد" : `هسته با کد ${code} متوقف شد`;
-          void failover(node.id, reason);
-        }
-      },
-    );
-    // Give the core a moment to bind, then verify the local inbound answers.
-    await new Promise((r) => setTimeout(r, 600));
-    if (!core.isRunning()) throw new Error("core_exited_early");
 
-    if (settings.systemProxy) {
-      try {
-        await setSystemProxy(true);
-      } catch {
-        /* proxy is a convenience; the tunnel itself is the product */
+    try {
+      const { tune } = tuneFor(settings.regime);
+      connection = { status: "connecting", node: node.name, step: "اتصال به سرور" };
+      broadcast();
+      await core.start(
+        node,
+        tune,
+        {
+          localPort: 10808,
+          directDomains: [".ir"],
+          allowLan: settings.lanAccess,
+        },
+        (code) => {
+          // Unexpected death while connected → failover, not silence.
+          if (!quitting && connection.status === "connected") {
+            const reason = code === 0 ? "هسته بسته شد" : `هسته با کد ${code} متوقف شد`;
+            void failover(node.id, reason);
+          }
+        },
+      );
+      // Give the core a moment to bind, then verify it is actually up.
+      await new Promise((r) => setTimeout(r, 600));
+      if (!core.isRunning()) throw new Error("core_exited_early");
+
+      if (settings.systemProxy) {
+        try {
+          await setSystemProxy(true);
+          proxyOwned = true;
+        } catch {
+          /* proxy is a convenience; the tunnel itself is the product */
+        }
       }
+      tracker.succeeded(node.id);
+      consecutiveFailures = 0;
+      connectedSince = Date.now();
+      connection = {
+        status: "connected",
+        node: node.name,
+        since: connectedSince,
+        latencyMs: pings.get(node.id) ?? 0,
+        localPort: 10808,
+      };
+      broadcast();
+      return;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : "اتصال برقرار نشد";
+      tracker.markFailed(node.id);
+      await core.stop();
     }
-    connectedSince = Date.now();
-    const latency = pings.get(node.id) ?? 0;
-    connection = {
-      status: "connected",
-      node: node.name,
-      since: connectedSince,
-      latencyMs: latency,
-      localPort: 10808,
-    };
-  } catch (err) {
-    connection = {
-      status: "error",
-      message: err instanceof Error ? err.message : "اتصال برقرار نشد",
-    };
-    await core.stop();
   }
+  connection = { status: "error", message: `اتصال برقرار نشد — ${lastError}` };
   broadcast();
 }
 
 async function failover(deadNodeId: string, reason: string): Promise<void> {
-  connection = { status: "reconnecting", node: activeNodeId ?? "", reason };
-  broadcast();
-  const next = rankByPing(nodes, pings).filter((n) => n.id !== deadNodeId)[0];
+  tracker.markFailed(deadNodeId);
+  consecutiveFailures++;
+  const next = candidateOrder(nodes, pings, tracker)[0] ?? null;
   if (!next) {
-    connection = { status: "error", message: `${reason} — سرور جایگزینی نمانده` };
+    // The loop-stopper: every candidate is cooled. A truthful error beats an A↔B storm.
+    consecutiveFailures = 0;
+    connection = {
+      status: "error",
+      message: `${reason} — همه‌ی سرورهای جایگزین ناموفق بودند؛ دوباره تلاش کنید`,
+    };
     broadcast();
     return;
   }
+  connection = { status: "reconnecting", node: next.name, reason };
+  broadcast();
   if (reconnectTimer) clearTimeout(reconnectTimer);
-  reconnectTimer = setTimeout(() => void doConnect(next.id), 1200);
+  reconnectTimer = setTimeout(() => void doConnect("best"), failoverDelayMs(consecutiveFailures));
 }
 
 async function doDisconnect(): Promise<void> {
@@ -233,10 +330,13 @@ async function doDisconnect(): Promise<void> {
     reconnectTimer = null;
   }
   await core.stop();
-  try {
-    await setSystemProxy(false);
-  } catch {
-    /* best effort */
+  if (proxyOwned) {
+    try {
+      await setSystemProxy(false);
+    } catch {
+      /* best effort */
+    }
+    proxyOwned = false;
   }
   connection = { status: "idle" };
   activeNodeId = null;
@@ -266,9 +366,15 @@ async function refreshNodes(): Promise<number> {
 
 // ── speed meter (system-wide interface counters) ───────────────────────────────
 let lastBytes: { at: number; total: number } | null = null;
+let sampling = false;
 const PS_COUNTER = `Get-Counter '\\Network Interface(*)\\Bytes Total/sec' -ErrorAction SilentlyContinue | ForEach-Object { $_.CounterSamples | Measure-Object -Property CookedValue -Sum | Select-Object -ExpandProperty Sum }`;
 
 function sampleSpeed(): void {
+  // PowerShell is not free: spawn it only when someone can see the chart (window open) or the
+  // tunnel is up. The old unconditional 2 s poll kept a shell alive forever in the tray.
+  if (!(win?.isVisible() ?? false) && connection.status !== "connected") return;
+  if (sampling) return;
+  sampling = true;
   const { spawn } = require("node:child_process") as typeof import("node:child_process");
   const child = spawn(
     "powershell.exe",
@@ -278,13 +384,14 @@ function sampleSpeed(): void {
   let out = "";
   child.stdout.on("data", (d: Buffer) => (out += d.toString()));
   child.on("exit", () => {
+    sampling = false;
     const value = Number(out.trim().replace(",", "."));
     if (Number.isFinite(value) && value >= 0) {
       const now = Date.now();
       if (lastBytes) {
         const dt = (now - lastBytes.at) / 1000;
         if (dt > 0) {
-          speed.push({ t: now, down: value, up: 0 });
+          speed.push({ t: now, down: value });
           if (speed.length > 180) speed.splice(0, speed.length - 90);
           broadcast();
         }
@@ -305,9 +412,17 @@ function wireIpc(): void {
     Object.assign(settings, patch ?? {});
     saveSettings();
     app.setLoginItemSettings({ openAtLogin: settings.autoStart });
-    if (!settings.systemProxy && connection.status === "connected") {
+    // Proxy follows the switch live in both directions (the old code only ever disabled it,
+    // so flipping the switch ON mid-session silently did nothing until the next connect).
+    if (connection.status === "connected") {
       try {
-        await setSystemProxy(false);
+        if (settings.systemProxy) {
+          await setSystemProxy(true);
+          proxyOwned = true;
+        } else if (proxyOwned) {
+          await setSystemProxy(false);
+          proxyOwned = false;
+        }
       } catch {
         /* best effort */
       }
@@ -328,22 +443,34 @@ function wireIpc(): void {
 }
 
 // ── boot ───────────────────────────────────────────────────────────────────────
-app.whenReady().then(() => {
-  createWindow();
-  createTray();
-  wireIpc();
-  app.setLoginItemSettings({ openAtLogin: settings.autoStart });
-  setInterval(sampleSpeed, 2000);
-  if (settings.subscriptionUrl.trim()) {
-    void refreshNodes().catch(() => void 0);
-    void testAllPings().catch(() => void 0);
-  }
-  if (settings.autoConnect && nodes.length > 0) {
-    void doConnect("best");
-  }
-  app.on("activate", () => win?.show());
-});
+// One instance, one tunnel: a second copy would fight the first over local port 10808 and
+// the system proxy. A second launch just raises the existing window.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    win?.show();
+    win?.focus();
+  });
 
-app.on("window-all-closed", () => {
-  /* keep the tray and the tunnel alive on Windows — closing the window is not quitting */
-});
+  app.whenReady().then(() => {
+    createWindow();
+    createTray();
+    wireIpc();
+    app.setLoginItemSettings({ openAtLogin: settings.autoStart });
+    setInterval(sampleSpeed, 2000);
+    if (settings.subscriptionUrl.trim()) {
+      void refreshNodes().catch(() => void 0);
+      void testAllPings().catch(() => void 0);
+    }
+    if (settings.autoConnect && nodes.length > 0) {
+      void doConnect("best");
+    }
+    app.on("activate", () => win?.show());
+  });
+
+  app.on("window-all-closed", () => {
+    /* keep the tray and the tunnel alive on Windows — closing the window is not quitting */
+  });
+}

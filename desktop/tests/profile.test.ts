@@ -82,7 +82,7 @@ describe("buildConfig", () => {
     expect(outbounds.some((o) => o["tag"] === "meelano-fragment")).toBe(false);
   });
 
-  it("keep-alive on → tcpFastOpen on; the ss protocol maps to shadowsocks", () => {
+  it("keep-alive on → tcpFastOpen on (calm only); the ss protocol maps to shadowsocks", () => {
     const ss = parseNodeUri(
       `ss://${Buffer.from("aes-128-gcm:pw").toString("base64")}@1.2.3.4:8388#s`,
     )!;
@@ -90,6 +90,29 @@ describe("buildConfig", () => {
     const proxy = (cfg["outbounds"] as Array<Record<string, unknown>>)[0]!;
     expect(proxy["protocol"]).toBe("shadowsocks");
     const stream = proxy["streamSettings"] as Record<string, unknown>;
-    expect((stream["sockopt"] as Record<string, unknown>)["tcpFastOpen"]).toBe(true); // calm has keepAlive
+    expect((stream["sockopt"] as Record<string, unknown>)["tcpFastOpen"]).toBe(true); // calm: tfo allowed
+
+    // TFO is a DPI fingerprint under active interference — tight/blackout keep it off.
+    const tight = buildConfig(tlsNode, tuneFor("tight").tune);
+    const tightStream = (tight["outbounds"] as Array<Record<string, unknown>>)[0]!["streamSettings"] as Record<
+      string,
+      unknown
+    >;
+    expect((tightStream["sockopt"] as Record<string, unknown>)["tcpFastOpen"]).toBe(false);
+  });
+
+  it("httpupgrade keeps its own transport (never downgraded to tcp)", () => {
+    const n = parseNodeUri(
+      "vless://11111111-2222-3333-4444-555555555555@ex.com:443?type=httpupgrade&security=tls&sni=ex.com&path=%2Fup&host=cdn.example.com#u",
+    )!;
+    const cfg = buildConfig(n, tuneFor("tight").tune);
+    const stream = (cfg["outbounds"] as Array<Record<string, unknown>>)[0]!["streamSettings"] as Record<
+      string,
+      unknown
+    >;
+    expect(stream["network"]).toBe("httpupgrade");
+    const up = stream["httpupgradeSettings"] as Record<string, unknown>;
+    expect(up["path"]).toBe("/up");
+    expect(up["host"]).toBe("cdn.example.com");
   });
 });

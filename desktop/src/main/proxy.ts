@@ -26,11 +26,19 @@ Add-Type -TypeDefinition $signature -ErrorAction SilentlyContinue
 [WinInet]::InternetSetOption(0, 37, 0, 0) | Out-Null
 `;
 
+// WinINET wildcards only accept a trailing "*", so RFC-1918 172.16.0.0/12 is spelled out
+// sixteen times. One "172.16.*" (the old shortcut) silently put 172.17-31 LANs through the
+// tunnel — the exact range most consumer routers and NAS boxes sit in.
+const LAN_BYPASS =
+  "<-loopback>;localhost;127.*;10.*;192.168.*;" +
+  Array.from({ length: 16 }, (_, i) => `172.${16 + i}.*`).join(";") +
+  ";*.ir;<local>";
+
 const SET_ON = PS(`
 $k = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings"
 Set-ItemProperty -Path $k -Name ProxyEnable -Value 1 -Type DWord
 Set-ItemProperty -Path $k -Name ProxyServer -Value "http=127.0.0.1:10808;https=127.0.0.1:10808;socks=127.0.0.1:10808"
-Set-ItemProperty -Path $k -Name ProxyOverride -Value "<-loopback>;localhost;127.*;10.*;192.168.*;172.16.*;*.ir;<local>"
+Set-ItemProperty -Path $k -Name ProxyOverride -Value "${LAN_BYPASS}"
 Set-ItemProperty -Path $k -Name AutoConfigURL -Value "" -Type String
 `);
 

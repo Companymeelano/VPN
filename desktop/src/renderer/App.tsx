@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppSettingsState, AppSnapshot, ConnectionState, MeelanoApi } from "../shared/contract";
 import type { NodeInfo } from "../shared/nodes";
 import { formatBytes, formatDuration, formatMs, formatSpeed, lri, toFa } from "../shared/format";

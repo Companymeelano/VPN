@@ -99,13 +99,16 @@ Xray-core ویندوز ۶۴بیت داخل بسته، inbounds محلی (mixed) 
 سه حالت ضدفیلتر (آرام/سفت/سیاهه) با fragmentation دقیقاً در گویش اندروید، failover خودکار، سینی ویندوز و
 تنظیمات (پوسته، اتصال خودکار، شروع با ویندوز). لینک اشتراک فقط روی همان رایانه ذخیره می‌شود.
 
-> نسخه‌ی نهایی ویندوز: **`2.8.1`** →
-> [`MA-VPN-2.8.1-setup-x64.exe`](https://github.com/Companymeelano/VPN/releases/download/desktop-v2.8.1/MA-VPN-2.8.1-setup-x64.exe)
+> نسخه‌ی نهایی ویندوز: **`2.8.2`** (رفعِ خروجِ ناپاک/اینترنتِ قطع، حلقه‌ی failover، دزدیِ نشان Latest،
+> قفل تک‌نمونه و چند ایراد دیگر — PR [#18](https://github.com/Companymeelano/VPN/pull/18)) →
+> [`MA-VPN-2.8.2-setup-x64.exe`](https://github.com/Companymeelano/VPN/releases/download/desktop-v2.8.2/MA-VPN-2.8.2-setup-x64.exe)
 > (نصب‌کننده) و
-> [`MA-VPN-2.8.1-portable-x64.exe`](https://github.com/Companymeelano/VPN/releases/download/desktop-v2.8.1/MA-VPN-2.8.1-portable-x64.exe)
-> (قابل‌حمل) · صفحه: [`releases/tag/desktop-v2.8.1`](https://github.com/Companymeelano/VPN/releases/tag/desktop-v2.8.1).
+> [`MA-VPN-2.8.2-portable-x64.exe`](https://github.com/Companymeelano/VPN/releases/download/desktop-v2.8.2/MA-VPN-2.8.2-portable-x64.exe)
+> (قابل‌حمل) · صفحه: [`releases/tag/desktop-v2.8.2`](https://github.com/Companymeelano/VPN/releases/tag/desktop-v2.8.2).
+> نسخه‌ی `2.8.1` ویندوز به‌خاطر باگِ «خروج از برنامه اینترنت را قطع می‌کرد» توصیه نمی‌شود.
 > ⚠️ چون گواهی Code Signing خریداری نشده، ویندوز در اولین اجرا SmartScreen نشان می‌دهد: **More info › Run anyway**.
-> بیلد روی CI (`windows-latest`، `.github/workflows/desktop.yml`) ساخته و روی تگ‌های `desktop-v*` منتشر می‌شود.
+> بیلد روی CI (`windows-latest`، `.github/workflows/desktop.yml`) ساخته و روی تگ‌های `desktop-v*` منتشر می‌شود؛
+> انتشارهای دسکتاپ هرگز نشان `Latest` مخزن را از نسخه‌ی اندروید نمی‌گیرند (`--latest=false`).
 
 
 ```
