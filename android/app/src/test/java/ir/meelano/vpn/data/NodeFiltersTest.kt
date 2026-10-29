@@ -55,7 +55,8 @@ class NodeFiltersTest {
     }
 
     @Test fun `median ping ignores unmeasured rows`() {
-        assertEquals(120L, NodeFilters.medianPingMs(rows))
+        // measured = [50, 120, 380, 900] → upper-middle = 380
+        assertEquals(380L, NodeFilters.medianPingMs(rows))
         assertNull(NodeFilters.medianPingMs(rows.filter { it.latencyMs == null }))
     }
 
