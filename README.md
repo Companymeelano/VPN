@@ -72,15 +72,16 @@ curl 'http://localhost/v/?action=selftest&key=<toolKey>'
 ## اندروید
 `android/app/src/main/java/ir/meelano/vpn/**` — یک ماژول Gradle واقعی (نه اسنیپت)، **با کامپایل موفق در CI**.
 
-> تازه‌ترین APK قابل‌نصب: **`v2.5.0`** (نسخه‌ی نهایی، **امضاشده با کلید پروژه**) →
-> [`meelano-2.5.0-205000.apk`](https://github.com/Companymeelano/VPN/releases/download/v2.5.0/meelano-2.5.0-205000.apk)
-> (۵۵٬۲۱۹٬۳۶۱ بایت · sha256 `7a8e35e4…d49fc7d3` · اثر گواهی `71f1e7b5…637b8b27`؛
-> universal با `v7a`: `meelano-2.5.0-205000-universal.apk`).
+> تازه‌ترین APK قابل‌نصب: **`v2.6.1`** (نسخه‌ی نهایی، **امضاشده با کلید پروژه**) →
+> [`meelano-2.6.1-206001.apk`](https://github.com/Companymeelano/VPN/releases/download/v2.6.1/meelano-2.6.1-206001.apk)
+> (arm64؛ universal با `v7a`: `meelano-2.6.1-206001-universal.apk`؛
+> اندازه، sha256 و اثر گواهی دقیقاً در یادداشت همان ریلیز است:
+> [`releases/tag/v2.6.1`](https://github.com/Companymeelano/VPN/releases/tag/v2.6.1)).
 > این بیلد `release` است (R8 + امضا با keystore پروژه، نه کلید debug) و هسته‌ی تونل
 > (libXray v26.9.9، bridge `libXray.LibXray`) در آن وصل است. بیلدهای `push` روی `main` عمداً
 > بی‌هسته و debug‌اند؛ فقط تگ به انتشار می‌رسد (جزئیات: §۱ و §۳-پ در [docs/ANDROID-BUILD.md](docs/ANDROID-BUILD.md)).
-> اگر روی گوشی نسخه‌ای با کلید دیگری نصب است، یک‌بار حذف/نصب لازم است؛ از این نسخه به بعد آپدیت
-> بدون حذف کار می‌کند (همان اثر گواهی).
+> از `v2.6.0` به بعد اثر گواهی ثابت است (`5cb5722f…4edec`) و آپدیت بدون حذف کار می‌کند؛ اگر نسخه‌ای
+> با کلید قدیمیِ ۲٫۵٫۰ داری، یک‌بار حذف/نصب لازم است.
 > هویت بصری و آیکن: [docs/BRAND.md](docs/BRAND.md) — نشان، یک `M` با دهانه‌ی تونل.
 
 
