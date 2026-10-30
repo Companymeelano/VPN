@@ -114,6 +114,7 @@
     <string name="upd_hero_checking">در حال بررسی آخرین نسخه…</string>
     <string name="upd_saved">فایل در گوشی ذخیره شد</string>
     <string name="upd_saved_verifying">در گوشی ذخیره شد — در حال تأیید امضا…</string>
+    <string name="upd_saved_to">در پوشه‌ی دانلودها هم نگه‌داری شد: %1$s</string>
     <string name="upd_link_title">لینک مستقیم دریافت</string>
     <string name="upd_honesty">اندروید نصب بی‌صدا را فقط به Device Owner اجازه می‌دهد؛ برای همین یک تأیید دستی لازم است.</string>
     <string name="unsaved_hint">تغییرات ذخیره‌نشده</string>

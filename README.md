@@ -72,20 +72,19 @@ curl 'http://localhost/v/?action=selftest&key=<toolKey>'
 ## اندروید
 `android/app/src/main/java/ir/meelano/vpn/**` — یک ماژول Gradle واقعی (نه اسنیپت)، **با کامپایل موفق در CI**.
 
-> نسخه‌ی کدِ روی `main`: **`v2.9.0`** (اصلاح رندر اعداد/متن‌ها بر اساس اسکرین‌شات‌های واقعی: رفع «۲۰۷۳۵ روز
-> پیش» (ثانیه در برابر میلی‌ثانیه)، جداسازی دوجهته‌ی «زیر ۲۰۰ms» و ساعت سشن، ارقام فارسی در همه‌جا، رفع
-> بریدگی متن تنظیمات، کم‌رنگ‌کردن ردیف‌های ردشده، «هرگز» به‌جای «—»). پیش از آن `v2.8.2` سقف واقعیِ حل نام،
-> `v2.8.1` تند کردنِ اتصال و `v2.8.0` رفع ریشه‌ایِ «روی همراه اول وصل نمی‌شود» بود (PR
-> [#14](https://github.com/Companymeelano/VPN/pull/14)). انتشار APK امضاشده دیگر منتظرِ secretها
+> نسخه‌ی کدِ روی `main`: **`v2.9.1`** (جریانِ کاملِ به‌روزرسانی: بررسی نسخه، دانلود با نوار پیشرفت، تأیید امضا/sha256،
+> **ذخیره‌ی فایل نصب در پوشه‌ی دانلودهای گوشی** (`Download/MA-VPN/`) برای نصب مجدد، و نصبِ یک‌لمسی؛ به‌علاوه‌ی
+> اصلاحات اسکرین‌شات‌های ۲.۹.۰). پیش از آن `v2.8.2` سقف واقعیِ حل نام و `v2.8.0` رفع ریشه‌ایِ «روی همراه اول وصل
+> نمی‌شود» بود (PR [#14](https://github.com/Companymeelano/VPN/pull/14)). انتشار APK امضاشده دیگر منتظرِ secretها
 > نیست: اگر `MEELANO_*` ست نشده باشند، workflow کلیدِ امضای پروژه را زمانِ اجرا از draftِ
 > `key-bootstrap-2.6.0` می‌خواند و با **همان گواهیِ `v2.6.0`** امضا و منتشر می‌کند (PR
 > [#15](https://github.com/Companymeelano/VPN/pull/15)). ست‌کردنِ secretها همچنان مسیرِ اصلی است؛
 > بعد از آن می‌توان draftهای کلید را حذف کرد.
 >
-> تازه‌ترین APK قابل‌نصبِ همین حالا: **`v2.9.0`** (نسخه‌ی نهایی، **امضاشده با کلید پروژه**) →
-> [`meelano-2.9.0-209000.apk`](https://github.com/Companymeelano/VPN/releases/download/v2.9.0/meelano-2.9.0-209000.apk)
-> (arm64؛ universal با `v7a`: `meelano-2.9.0-209000-universal.apk`؛
-> حجم‌ها و sha256: [`releases/tag/v2.9.0`](https://github.com/Companymeelano/VPN/releases/tag/v2.9.0)).
+> تازه‌ترین APK قابل‌نصبِ همین حالا: **`v2.9.1`** (نسخه‌ی نهایی، **امضاشده با کلید پروژه**) →
+> [`meelano-2.9.1-209001.apk`](https://github.com/Companymeelano/VPN/releases/download/v2.9.1/meelano-2.9.1-209001.apk)
+> (arm64؛ universal با `v7a`: `meelano-2.9.1-209001-universal.apk`؛
+> حجم‌ها و sha256: [`releases/tag/v2.9.1`](https://github.com/Companymeelano/VPN/releases/tag/v2.9.1)).
 > این بیلد `release` است (R8 + امضا با keystore پروژه، نه کلید debug) و هسته‌ی تونل
 > (libXray v26.9.9، bridge `libXray.LibXray`) در آن وصل است. بیلدهای `push` روی `main` عمداً
 > بی‌هسته و debug‌اند؛ فقط تگ به انتشار می‌رسد (جزئیات: §۱ و §۳-پ در [docs/ANDROID-BUILD.md](docs/ANDROID-BUILD.md)).
@@ -99,17 +98,29 @@ Xray-core ویندوز ۶۴بیت داخل بسته، inbounds محلی (mixed) 
 سه حالت ضدفیلتر (آرام/سفت/سیاهه) با fragmentation دقیقاً در گویش اندروید، failover خودکار، سینی ویندوز و
 تنظیمات (پوسته، اتصال خودکار، شروع با ویندوز). لینک اشتراک فقط روی همان رایانه ذخیره می‌شود.
 
-> نسخه‌ی نهایی ویندوز: **`2.8.3`** (رفع هیدراته‌ی امنِ لینک اشتراک پس از ready و پیام خطای
-> سرورِ ناموجود — PR [#19](https://github.com/Companymeelano/VPN/pull/19)) →
-> [`MA-VPN-2.8.3-setup-x64.exe`](https://github.com/Companymeelano/VPN/releases/download/desktop-v2.8.3/MA-VPN-2.8.3-setup-x64.exe)
+> نسخه‌ی نهایی ویندوز: **`2.8.4`** (بخشِ به‌روزرسانیِ درون‌برنامه‌ای: بررسی نسخه، دانلودِ نصب‌کننده با تأیید sha256
+> **در پوشه‌ی Downloads**، نصب روی نسخه‌ی فعلی بدون از‌دست‌رفتن تنظیمات — به‌علاوه‌ی رفع هیدراته‌ی امن ۲.۸.۳) →
+> [`MA-VPN-2.8.4-setup-x64.exe`](https://github.com/Companymeelano/VPN/releases/download/desktop-v2.8.4/MA-VPN-2.8.4-setup-x64.exe)
 > (نصب‌کننده) و
-> [`MA-VPN-2.8.3-portable-x64.exe`](https://github.com/Companymeelano/VPN/releases/download/desktop-v2.8.3/MA-VPN-2.8.3-portable-x64.exe)
-> (قابل‌حمل) · صفحه: [`releases/tag/desktop-v2.8.3`](https://github.com/Companymeelano/VPN/releases/tag/desktop-v2.8.3).
-> نسخه‌ی `2.8.1` ویندوز به‌خاطر باگِ «خروج از برنامه اینترنت را قطع می‌کرد» توصیه نمی‌شود؛
-> `2.8.2` هم آن رفع را دارد ولی `2.8.3` جاری است.
+> [`MA-VPN-2.8.4-portable-x64.exe`](https://github.com/Companymeelano/VPN/releases/download/desktop-v2.8.4/MA-VPN-2.8.4-portable-x64.exe)
+> (قابل‌حمل) · صفحه: [`releases/tag/desktop-v2.8.4`](https://github.com/Companymeelano/VPN/releases/tag/desktop-v2.8.4).
 > ⚠️ چون گواهی Code Signing خریداری نشده، ویندوز در اولین اجرا SmartScreen نشان می‌دهد: **More info › Run anyway**.
 > بیلد روی CI (`windows-latest`، `.github/workflows/desktop.yml`) ساخته و روی تگ‌های `desktop-v*` منتشر می‌شود؛
 > انتشارهای دسکتاپ هرگز نشان `Latest` مخزن را از نسخه‌ی اندروید نمی‌گیرند (`--latest=false`).
+
+### ⚠️ «فایل exe به‌جای نصب، فروشگاه مایکروسافت (Store) را باز می‌کند» — راه‌حل
+
+این رفتار یک باگِ برنامه نیست؛ ویندوز در **حالت S** (یا حالت S فعال) فقط اجازه‌ی نصبِ برنامه‌های
+فروشگاه مایکروسافت را می‌دهد و هر `exe` دیگری را به Store هدایت می‌کند. خروج از حالت S **رایگان و
+یک‌طرفه** است (دوباره نمی‌توان به حالت S برگشت):
+
+1. **Settings › System › Activation** (تنظیمات › سیستم › فعال‌سازی)
+2. بخش **S mode** → دکمه‌ی **«Get out of S mode» / «خروج از حالت S»** (Shop/Store را باز می‌کند؛
+   دکمه‌ی «Get» را بزنید — هیچ هزینه‌ای ندارد)
+3. بعد از خروج، همان فایل `MA-VPN-2.8.4-setup-x64.exe` را دوباره اجرا کنید
+
+اگر به‌جای Store، پنجره‌ی آبی **«Windows protected your PC»** دیدید (SmartScreen): **More info › Run anyway**.
+هر دو حالت پس از نصبِ یک‌باره، در به‌روزرسانی‌های درون‌برنامه‌ای تکرار نمی‌شوند.
 
 
 ```

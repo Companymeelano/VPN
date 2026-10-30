@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppSettingsState, AppSnapshot, ConnectionState, MeelanoApi } from "../shared/contract";
 import type { NodeInfo } from "../shared/nodes";
+import type { UpdateCheck } from "../shared/update";
 import { formatBytes, formatDuration, formatMs, formatSpeed, lri, toFa } from "../shared/format";
 import { REGIME_LABELS, type RegimeId } from "../shared/regime";
 
@@ -12,16 +13,52 @@ declare global {
 
 type Tab = "connect" | "servers" | "settings";
 
+type UpdatePhase = "idle" | "downloading" | "ready" | "error";
+
 const api = () => window.meelano;
 
 export default function App(): JSX.Element {
   const [snap, setSnap] = useState<AppSnapshot | null>(null);
   const [tab, setTab] = useState<Tab>("connect");
   const [now, setNow] = useState(Date.now());
+  const [upd, setUpd] = useState<UpdateCheck | null>(null);
+  const [updPhase, setUpdPhase] = useState<UpdatePhase>("idle");
+  const [updPct, setUpdPct] = useState(0);
+  const [updError, setUpdError] = useState("");
 
   useEffect(() => {
     void api().getSnapshot().then(setSnap);
     return api().onSnapshot(setSnap);
+  }, []);
+
+  // One silent update check per launch — the strip only appears when something newer exists.
+  useEffect(() => {
+    void api()
+      .checkUpdate()
+      .then((u) => setUpd(u))
+      .catch(() => undefined);
+    return api().onUpdateProgress((p) => {
+      setUpdPhase("downloading");
+      setUpdPct(p.percent);
+    });
+  }, []);
+
+  const startDownload = useCallback(async () => {
+    if (!upd) return;
+    setUpdPhase("downloading");
+    setUpdPct(0);
+    setUpdError("");
+    try {
+      await api().downloadUpdate();
+      setUpdPhase("ready");
+    } catch (e) {
+      setUpdPhase("error");
+      setUpdError(String((e as Error)?.message ?? e));
+    }
+  }, [upd]);
+
+  const install = useCallback(() => {
+    void api().installUpdate().catch(() => setUpdPhase("error"));
   }, []);
 
   // One shared clock for every «مدت اتصال» chip — a ticker per component re-renders too much.
@@ -56,11 +93,40 @@ export default function App(): JSX.Element {
         </nav>
 
         <main className="content">
+          {upd && (
+            <UpdateStrip
+              upd={upd}
+              phase={updPhase}
+              pct={updPct}
+              error={updError}
+              onDownload={() => void startDownload()}
+              onInstall={install}
+              onOpenFile={() => void api().openUpdateFile()}
+              onDismiss={() => setUpd(null)}
+            />
+          )}
           {tab === "connect" && (
             <ConnectPanel snap={snap} conn={conn} busy={busy} now={now} onOpenServers={() => setTab("servers")} />
           )}
           {tab === "servers" && <ServersPanel snap={snap} />}
-          {tab === "settings" && <SettingsPanel snap={snap} />}
+          {tab === "settings" && (
+            <SettingsPanel
+              snap={snap}
+              upd={upd}
+              updPhase={updPhase}
+              updPct={updPct}
+              onDownload={() => void startDownload()}
+              onInstall={install}
+              onOpenFile={() => void api().openUpdateFile()}
+              onCheck={async () => {
+                try {
+                  setUpd(await api().checkUpdate());
+                } catch {
+                  /* stay silent */
+                }
+              }}
+            />
+          )}
         </main>
       </div>
     </div>
@@ -325,7 +391,25 @@ function NodeRow({ node, ping, active }: { node: NodeInfo; ping?: number; active
 }
 
 // ────────────────────────────────────────────────────────────── settings
-function SettingsPanel({ snap }: { snap: AppSnapshot }): JSX.Element {
+function SettingsPanel({
+  snap,
+  upd,
+  updPhase,
+  updPct,
+  onDownload,
+  onInstall,
+  onOpenFile,
+  onCheck,
+}: {
+  snap: AppSnapshot;
+  upd: UpdateCheck | null;
+  updPhase: UpdatePhase;
+  updPct: number;
+  onDownload: () => void;
+  onInstall: () => void;
+  onOpenFile: () => void;
+  onCheck: () => void;
+}): JSX.Element {
   const [saved, setSaved] = useState(false);
   const s = snap.settings;
 
@@ -410,6 +494,62 @@ function SettingsPanel({ snap }: { snap: AppSnapshot }): JSX.Element {
       </section>
 
       <section className="card set-card">
+        <h3>به‌روزرسانی</h3>
+        <Row label="نسخه‌ی نصب‌شده">{lri("v" + snap.appVersion)}</Row>
+        {upd ? (
+          <>
+            <Row label="نسخه‌ی جدید">
+              <span className="ok-text">{lri("v" + upd.version)}</span>
+            </Row>
+            <p className="muted">
+              حجم {lri(formatBytes(upd.sizeBytes))} — نصب‌کننده در پوشه‌ی Downloads ذخیره و سپس اجرا می‌شود؛
+              نصب روی نسخه‌ی فعلی، بدون از‌دست‌رفتن تنظیمات.
+            </p>
+            {updPhase === "downloading" && (
+              <div className="upd-progress">
+                <div className="upd-progress-fill" style={{ width: `${updPct}%` }} />
+                <span className="upd-progress-label">{toFa(updPct)}٪</span>
+              </div>
+            )}
+            <div className="btn-row">
+              {updPhase === "idle" && (
+                <button className="btn btn-primary" onClick={onDownload}>
+                  دانلود و نصب نسخه‌ی جدید
+                </button>
+              )}
+              {updPhase === "downloading" && (
+                <button className="btn" disabled>
+                  در حال دانلود…
+                </button>
+              )}
+              {updPhase === "ready" && (
+                <>
+                  <button className="btn btn-primary" onClick={onInstall}>
+                    نصب و راه‌اندازی مجدد
+                  </button>
+                  <button className="btn" onClick={onOpenFile}>
+                    نمایش فایل در Downloads
+                  </button>
+                </>
+              )}
+              {updPhase === "error" && (
+                <button className="btn" onClick={onDownload}>
+                  تلاش دوباره
+                </button>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="muted">شما روی تازه‌ترین نسخه هستید ✓</p>
+            <button className="btn" onClick={onCheck}>
+              بررسی نسخه‌ی جدید
+            </button>
+          </>
+        )}
+      </section>
+
+      <section className="card set-card">
         <h3>درباره</h3>
         <Row label="نسخه‌ی برنامه">{lri("MA VPN " + snap.appVersion)}</Row>
         <Row label="هسته">{lri("Xray-core " + snap.coreVersion)}</Row>
@@ -417,6 +557,63 @@ function SettingsPanel({ snap }: { snap: AppSnapshot }): JSX.Element {
           صفحه‌ی نسخه‌ها
         </button>
       </section>
+    </div>
+  );
+}
+
+/** The quiet strip at the top of every tab when a newer desktop release exists. */
+function UpdateStrip({
+  upd,
+  phase,
+  pct,
+  error,
+  onDownload,
+  onInstall,
+  onOpenFile,
+  onDismiss,
+}: {
+  upd: UpdateCheck;
+  phase: UpdatePhase;
+  pct: number;
+  error: string;
+  onDownload: () => void;
+  onInstall: () => void;
+  onOpenFile: () => void;
+  onDismiss: () => void;
+}): JSX.Element {
+  return (
+    <div className="banner banner-info upd-strip">
+      <span className="upd-strip-text">
+        نسخه‌ی جدید {lri("v" + upd.version)} آماده است
+        {phase === "downloading" && ` — ${toFa(pct)}٪`}
+        {phase === "ready" && " — دانلود کامل و تأیید شد ✓"}
+        {phase === "error" && error ? ` — خطا: ${error}` : ""}
+      </span>
+      <span className="upd-strip-actions">
+        {phase === "idle" && (
+          <button className="chip chip-on" onClick={onDownload}>
+            دانلود و نصب
+          </button>
+        )}
+        {phase === "ready" && (
+          <>
+            <button className="chip chip-on" onClick={onInstall}>
+              نصب
+            </button>
+            <button className="chip" onClick={onOpenFile}>
+              نمایش فایل
+            </button>
+          </>
+        )}
+        {phase === "error" && (
+          <button className="chip chip-on" onClick={onDownload}>
+            تلاش دوباره
+          </button>
+        )}
+        <button className="chip" onClick={onDismiss} aria-label="بستن">
+          بعداً
+        </button>
+      </span>
     </div>
   );
 }

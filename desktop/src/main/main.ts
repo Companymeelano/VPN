@@ -14,12 +14,13 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { XrayCore, fetchSubscription, tcpPing } from "./core";
 import { setSystemProxy } from "./proxy";
+import { checkForUpdate, downloadUpdate, installUpdate, openUpdateFile } from "./update";
 import type { AppSettingsState, AppSnapshot, ConnectionState, SpeedPoint } from "../shared/contract";
 import { parseSubscription, type NodeInfo } from "../shared/nodes";
 import { tuneFor } from "../shared/regime";
 import { candidateOrder, FailoverTracker, failoverDelayMs } from "../shared/failover";
 
-const APP_VERSION = "2.8.3";
+const APP_VERSION = "2.8.4";
 const DEFAULT_SETTINGS: AppSettingsState = {
   theme: "system",
   regime: "tight",
@@ -457,6 +458,16 @@ function wireIpc(): void {
   ipcMain.on("app:openExternal", (_e, url: string) => {
     if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
   });
+  ipcMain.handle("update:check", () => checkForUpdate().catch(() => null));
+  ipcMain.handle("update:download", () =>
+    downloadUpdate((percent, bytes, total) => {
+      win?.webContents.send("update:progress", { percent, bytes, total });
+    }),
+  );
+  ipcMain.handle("update:install", async () => {
+    await installUpdate();
+  });
+  ipcMain.handle("update:openFile", () => openUpdateFile());
   ipcMain.on("window:minimize", () => win?.minimize());
   ipcMain.on("window:close", () => win?.hide());
 }
