@@ -1088,9 +1088,9 @@ data class FeedNode(
 
 data class ProbeResult(val nodeId: String, val ok: Boolean, val latencyMs: Long, val error: String?)
 
-/** Latin digits → Persian digits. Kept local to the data layer (ui/Fa.kt owns the UI copy). */
+/** Latin digits → Persian digits (U+06F0 set — NOT the Arabic U+0660 set: ۰۱۲۳ vs ٠١٢٣). */
 internal fun toFaDigits(s: String): String = buildString(s.length) {
-    for (c in s) append(if (c in '0'..'9') (c - '0' + 1632).toChar() else c)
+    for (c in s) append(if (c in '0'..'9') (c - '0' + 1776).toChar() else c)
 }
 
 /**
