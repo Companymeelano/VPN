@@ -35,6 +35,8 @@
         tools:ignore="QueryAllPackagesPermission" />
     <!-- self-update: the system only allows this after the user grants it in the installer prompt -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- legacy only (API 23–28): the update APK copy into public Downloads; Android 10+ uses MediaStore -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <!-- Android 11+ needs this declared before we can launch the "install unknown apps" screen -->
     <queries>
         <intent>

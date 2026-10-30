@@ -149,8 +149,9 @@ fun UpdateSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                     onAction = { vm.updates.checkAsync() },
                 )
                 is UpdateManager.State.BlockedNeedPermission -> {
-                    val file = (state as UpdateManager.State.BlockedNeedPermission).file
-                    SavedStrip(file = file)
+                    val st = state as UpdateManager.State.BlockedNeedPermission
+                    val file = st.file
+                    SavedStrip(file = file, savedPath = st.savedPath)
                     Notice(
                         text = stringResource(R.string.upd_noperm),
                         color = p.warn,
@@ -175,8 +176,9 @@ fun UpdateSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                     )
                 }
                 is UpdateManager.State.ReadyToInstall -> {
-                    val file = (state as UpdateManager.State.ReadyToInstall).file
-                    SavedStrip(file = file)
+                    val st = state as UpdateManager.State.ReadyToInstall
+                    val file = st.file
+                    SavedStrip(file = file, savedPath = st.savedPath)
                     Notice(
                         text = stringResource(R.string.upd_ready),
                         color = p.accent,
@@ -367,7 +369,7 @@ private fun DownloadDial(percent: Int, bytes: Long, total: Long, speed: Long, ca
 
 /** «در گوشی ذخیره شد» — the state the user asked to see at 100 %: the file exists on the phone. */
 @Composable
-private fun SavedStrip(file: java.io.File) {
+private fun SavedStrip(file: java.io.File, savedPath: String? = null) {
     val p = LocalPalette.current
     Row(
         Modifier
@@ -391,6 +393,12 @@ private fun SavedStrip(file: java.io.File) {
                 fontSize = 10.sp, color = p.faint, maxLines = 1,
                 style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"),
             )
+            if (savedPath != null) {
+                Text(
+                    stringResource(R.string.upd_saved_to, savedPath),
+                    fontSize = 10.sp, color = p.faint, maxLines = 2,
+                )
+            }
         }
     }
 }

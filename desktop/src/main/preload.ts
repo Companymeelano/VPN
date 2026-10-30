@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AppSnapshot, AppSettingsState, MeelanoApi } from "../shared/contract";
+import type { AppSnapshot, AppSettingsState, MeelanoApi, UpdateProgress } from "../shared/contract";
+import type { UpdateCheck } from "../shared/update";
 
 /**
  * The only bridge. contextIsolation is on and nodeIntegration is off — the renderer sees
@@ -19,6 +20,15 @@ const api: MeelanoApi = {
     const handler = (_e: Electron.IpcRendererEvent, snap: AppSnapshot) => cb(snap);
     ipcRenderer.on("app:snapshotChanged", handler);
     return () => ipcRenderer.removeListener("app:snapshotChanged", handler);
+  },
+  checkUpdate: () => ipcRenderer.invoke("update:check") as Promise<UpdateCheck | null>,
+  downloadUpdate: () => ipcRenderer.invoke("update:download") as Promise<string>,
+  installUpdate: () => ipcRenderer.invoke("update:install") as Promise<void>,
+  openUpdateFile: () => ipcRenderer.invoke("update:openFile") as Promise<void>,
+  onUpdateProgress: (cb) => {
+    const handler = (_e: Electron.IpcRendererEvent, p: UpdateProgress) => cb(p);
+    ipcRenderer.on("update:progress", handler);
+    return () => ipcRenderer.removeListener("update:progress", handler);
   },
 };
 

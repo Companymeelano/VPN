@@ -55,8 +55,9 @@ class UpdateManager(private val context: Context, private val baseUrl: String = 
             val bytesPerSec: Long = 0L,
         ) : State()
         object Verifying : State()
-        data class ReadyToInstall(val info: UpdateInfo, val file: File) : State()
-        data class BlockedNeedPermission(val info: UpdateInfo, val file: File) : State()
+        /** [savedPath] is the user-visible copy in Downloads/MA-VPN — «ذخیره در فضای گوشی». */
+        data class ReadyToInstall(val info: UpdateInfo, val file: File, val savedPath: String? = null) : State()
+        data class BlockedNeedPermission(val info: UpdateInfo, val file: File, val savedPath: String? = null) : State()
         data class Failed(val reason: String) : State()
     }
 
@@ -208,11 +209,15 @@ class UpdateManager(private val context: Context, private val baseUrl: String = 
                 }
             }
             validateArchive(file, info)?.let { throw IllegalStateException(it) }
+            // «ذخیره‌سازی در فضای گوشی»: keep a user-visible copy in Downloads/MA-VPN. The cache
+            // copy is what the installer runs (FileProvider), the Downloads copy survives cache
+            // clears and app uninstalls — the file a user can tap again later («نصب مجدد»).
+            val saved = exportToDownloads(file, info)
             if (!canInstall()) {
-                _state.value = State.BlockedNeedPermission(info, file)
+                _state.value = State.BlockedNeedPermission(info, file, saved)
                 return@launch
             }
-            _state.value = State.ReadyToInstall(info, file)
+            _state.value = State.ReadyToInstall(info, file, saved)
             launchInstaller(file)
         } catch (t: Throwable) {
             part.delete()
@@ -266,6 +271,46 @@ class UpdateManager(private val context: Context, private val baseUrl: String = 
     fun permissionIntent(): Intent =
         Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + context.packageName))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    /**
+     * Copy the verified APK into public Downloads/MA-VPN so it lives in the user's own storage.
+     * MediaStore on Android 10+ (no permission needed), plain file below that (best-effort with
+     * the legacy WRITE_EXTERNAL_STORAGE grant — if the copy fails the install flow is unaffected).
+     * Returns the display path like "Download/MA-VPN/meelano-2.9.1-209001.apk", or null.
+     */
+    private fun exportToDownloads(src: File, info: UpdateInfo): String? = runCatching {
+        val name = "meelano-${info.versionName}-${info.versionCode}.apk"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)
+                put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/vnd.android.package-archive")
+                put(
+                    android.provider.MediaStore.Downloads.RELATIVE_PATH,
+                    android.os.Environment.DIRECTORY_DOWNLOADS + "/MA-VPN",
+                )
+                put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
+            }
+            val resolver = context.contentResolver
+            val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: return@runCatching null
+            resolver.openOutputStream(uri)?.use { out -> src.inputStream().use { it.copyTo(out) } }
+                ?: return@runCatching null
+            values.clear()
+            values.put(android.provider.MediaStore.Downloads.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+            android.os.Environment.DIRECTORY_DOWNLOADS + "/MA-VPN/" + name
+        } else {
+            val dir = java.io.File(
+                android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS),
+                "MA-VPN",
+            )
+            if (!dir.exists() && !dir.mkdirs()) return@runCatching null
+            val dst = java.io.File(dir, name)
+            src.copyTo(dst, overwrite = true)
+            android.media.MediaScannerConnection.scanFile(context, arrayOf(dst.absolutePath), null, null)
+            android.os.Environment.DIRECTORY_DOWNLOADS + "/MA-VPN/" + name
+        }
+    }.getOrNull()
 
     /** MUST mirror Version::canonical() on the server, field order included. */
     private fun canonical(

@@ -6,6 +6,7 @@
 
 import type { NodeInfo } from "./nodes";
 import type { RegimeId } from "./regime";
+import type { UpdateCheck } from "./update";
 
 export type ConnectionState =
   | { status: "idle" }
@@ -42,6 +43,13 @@ export interface AppSnapshot {
   coreVersion: string;
 }
 
+/** Progress of the in-app installer download (bytes of the saved setup.exe). */
+export interface UpdateProgress {
+  percent: number;
+  bytes: number;
+  total: number;
+}
+
 export interface MeelanoApi {
   getSnapshot(): Promise<AppSnapshot>;
   connect(nodeId: string | "best"): Promise<void>;
@@ -53,4 +61,13 @@ export interface MeelanoApi {
   minimize(): void;
   close(): void;
   onSnapshot(cb: (snap: AppSnapshot) => void): () => void;
+  /** null = already on the newest desktop release. */
+  checkUpdate(): Promise<UpdateCheck | null>;
+  /** Downloads the setup installer to the user's Downloads folder and verifies its sha256. */
+  downloadUpdate(): Promise<string>;
+  /** Runs the saved installer (upgrade in place) and quits the app. */
+  installUpdate(): Promise<void>;
+  /** Reveals the downloaded installer in Explorer. */
+  openUpdateFile(): Promise<void>;
+  onUpdateProgress(cb: (p: UpdateProgress) => void): () => void;
 }
