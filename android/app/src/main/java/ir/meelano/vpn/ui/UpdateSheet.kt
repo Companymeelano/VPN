@@ -150,7 +150,8 @@ fun UpdateSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                 )
                 is UpdateManager.State.BlockedNeedPermission -> {
                     val st = state as UpdateManager.State.BlockedNeedPermission
-                    SavedStrip(file = st.file, savedPath = st.savedPath)
+                    val file = st.file
+                    SavedStrip(file = file, savedPath = st.savedPath)
                     Notice(
                         text = stringResource(R.string.upd_noperm),
                         color = p.warn,
