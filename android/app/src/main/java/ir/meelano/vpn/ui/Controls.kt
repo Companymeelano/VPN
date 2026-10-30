@@ -565,7 +565,7 @@ fun MeelanoChip(
             if (count >= 0) {
                 Spacer(Modifier.width(5.dp))
                 Text(
-                    count.toString(),
+                    toFa(count),
                     color = if (on) ink else p.faint,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,

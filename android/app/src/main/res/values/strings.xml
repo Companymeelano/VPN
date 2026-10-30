@@ -129,9 +129,10 @@
     <string name="smart_note">این مقادیر از روی حالت شبکه، ترابریِ بهترین مسیرِ اندازه‌گیری‌شده و میانه‌ی پینگ همان سرویس محاسبه می‌شوند؛ با «ذخیره‌ی تنظیمات» پایدار می‌مانند.</string>
     <string name="filter_country_all">همه‌ی کشورها</string>
     <string name="filter_ping_all">هر پینگی</string>
-    <string name="filter_ping_200">زیر ۲۰۰ms</string>
-    <string name="filter_ping_400">زیر ۴۰۰ms</string>
-    <string name="filter_ping_1000">زیر ۱s</string>
+    <!-- LRI…PDI (‪…‬) isolates the mixed «۲۰۰ms» run: without it RTL re-orders to «زیرms۲۰۰». -->
+    <string name="filter_ping_200">زیر &#x2066;۲۰۰ms&#x2069;</string>
+    <string name="filter_ping_400">زیر &#x2066;۴۰۰ms&#x2069;</string>
+    <string name="filter_ping_1000">زیر &#x2066;۱۰۰۰ms&#x2069;</string>
     <string name="danger_zone">یک کلیک فاصله تا پاک‌شدن تنظیمات</string>
 
     <!-- onboarding / trust -->

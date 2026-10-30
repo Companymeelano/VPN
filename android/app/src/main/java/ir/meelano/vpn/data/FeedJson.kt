@@ -25,7 +25,7 @@ object FeedJson {
         }
         FeedPayload(
             kind = o.optString("kind"),
-            generatedAt = o.optLong("generatedAt"),
+            generatedAt = normalizeEpochMs(o.optLong("generatedAt")),
             ttl = o.optInt("ttl", 300),
             nodes = nodes,
         )

@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
@@ -365,12 +366,12 @@ fun ServerListSheet(
 /** "وی‌آی‌پی ۴" — count in a superscript-ish tabular style so the label width never jitters */
 @Composable
 private fun label(res: Int, count: Int): String =
-    stringResource(res) + if (count > 0) "  ·  $count" else ""
+    stringResource(res) + if (count > 0) "  ·  " + iso(toFa(count)) else ""
 
 /** Proxy tab shows healthy/scanned, making rejected rows and scan progress explicit at a glance. */
 @Composable
 private fun proxyLabel(clean: Int, total: Int): String =
-    stringResource(R.string.seg_proxy) + if (total > 0) "  ·  $clean/$total" else ""
+    stringResource(R.string.seg_proxy) + if (total > 0) "  ·  " + faIso("$clean/$total") else ""
 
 /*
  * The two-choice control (وی‌آی‌پی / رایگان) is the kit's `MeelanoSegmented`: a carved well with one
@@ -490,7 +491,13 @@ private fun AutoRow(on: Boolean, onChange: (Boolean) -> Unit, title: String, bod
                 fontWeight = FontWeight.SemiBold,
             )
             Spacer(Modifier.height(2.dp))
-            Text(body, fontSize = 11.sp, color = p.faint, maxLines = 2, lineHeight = 16.sp)
+            // Ellipsis, not Clip: maxLines=2 with the default overflow used to slice the second
+            // line mid-glyph («… بدون چ[ک]» on the settings screen). Three lines fit every body
+            // string in strings.xml on a 360dp screen; anything longer earns a real ellipsis.
+            Text(
+                body, fontSize = 11.sp, color = p.faint,
+                maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 16.sp,
+            )
         }
         Spacer(Modifier.size(12.dp))
         MeelanoSwitch(checked = on, onChange = onChange)
@@ -500,16 +507,27 @@ private fun AutoRow(on: Boolean, onChange: (Boolean) -> Unit, title: String, bod
 /** grade order: A first. Shared with the row sort in this sheet and the auto-pick in VpnViewModel. */
 internal fun gradeRank(g: String) = when (g) { "A" -> 0; "B" -> 1; "C" -> 2; else -> 3 }
 
-/** Persian relative time; "لحظاتی پیش" beats a raw timestamp because nobody reads a clock under stress */
+/**
+ * Persian relative time; "لحظاتی پیش" beats a raw timestamp because nobody reads a clock under stress.
+ *
+ * The seconds trap (the «۲۰۷۳۵ روز پیش» bug): feed payloads carry `generatedAt` from PHP `time()`
+ * — SECONDS — while this helper measures in milliseconds. A naive subtraction turned "چند دقیقه
+ * پیش" into "۵۶ سال پیش". [epochMs] normalises both shapes (a value under 10^11 cannot be a
+ * millisecond epoch in this century), and the cache paths that store milliseconds stay correct.
+ * "never" reads «هرگز», never a dangling "—".
+ */
 internal fun relTime(ts: Long): String {
-    if (ts <= 0) return "—"
-    val d = System.currentTimeMillis() - ts
+    val ms = ir.meelano.vpn.data.normalizeEpochMs(ts)
+    if (ms <= 0) return "هرگز"
+    val d = System.currentTimeMillis() - ms
+    if (d < 0) return "لحظاتی پیش" // clock skew: the future is "just now", not "-۳ روز پیش"
     val m = d / 60_000
     return when {
         m < 1 -> "لحظاتی پیش"
-        m < 60 -> "$m دقیقه پیش"
-        m < 60 * 24 -> "${m / 60} ساعت پیش"
-        else -> "${m / (60 * 24)} روز پیش"
+        m < 60 -> "${toFa(m)} دقیقه پیش"
+        m < 60 * 24 -> "${toFa(m / 60)} ساعت پیش"
+        m < 60 * 24 * 2 -> "دیروز"
+        else -> "${toFa(m / (60 * 24))} روز پیش"
     }
 }
 
