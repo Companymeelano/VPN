@@ -492,18 +492,26 @@ private fun Flag(cc: String?, modifier: Modifier = Modifier) {
         )
     }
 }
-fun humanRate(bytesPerSec: Long): String = when {
-    bytesPerSec <= 0 -> "0 KB/s"
-    bytesPerSec < 1024 -> "$bytesPerSec B/s"
-    bytesPerSec < 1024 * 1024 -> String.format("%.0f KB/s", bytesPerSec / 1024.0)
-    else -> String.format("%.1f MB/s", bytesPerSec / 1048576.0)
+fun humanRate(bytesPerSec: Long): String {
+    val s = when {
+        bytesPerSec <= 0 -> "0 KB/s"
+        bytesPerSec < 1024 -> "$bytesPerSec B/s"
+        bytesPerSec < 1024 * 1024 -> String.format("%.0f KB/s", bytesPerSec / 1024.0)
+        else -> String.format("%.1f MB/s", bytesPerSec / 1048576.0)
+    }
+    return faIso(s)
 }
 
+/**
+ * The session clock, isolated: a bare "05:23" inside RTL text re-orders to "23:05" on screen.
+ * Persian digits + LRI…PDI keep mm:ss reading left-to-right wherever it sits.
+ */
 fun humanDuration(seconds: Int): String {
     val h = seconds / 3600
     val m = (seconds % 3600) / 60
     val s = seconds % 60
-    return if (h > 0) String.format("%d:%02d:%02d", h, m, s) else String.format("%02d:%02d", m, s)
+    val clock = if (h > 0) String.format("%d:%02d:%02d", h, m, s) else String.format("%02d:%02d", m, s)
+    return faIso(clock)
 }
 
 /**
@@ -612,7 +620,7 @@ fun ServerRow(
                 else -> stringResource(R.string.proxy_status_dead)
             }
         }
-        node.subtitle + " · " + status + " · " + (node.reliability.coerceIn(0f, 1f) * 100).toInt() + "٪"
+        node.subtitle + " · " + status + " · " + toFa((node.reliability.coerceIn(0f, 1f) * 100).toInt()) + "٪"
     } else node.subtitle
     Row(
         Modifier
@@ -648,10 +656,13 @@ fun ServerRow(
         Column(Modifier.weight(1f)) {
             Text(node.name, color = p.text, fontSize = 14.sp)
             Text(
-                rowSubtitle, color = p.muted, fontSize = 11.sp, maxLines = 1,
+                toFa(rowSubtitle), color = p.muted, fontSize = 11.sp, maxLines = 1,
                 style = TextStyle(fontFeatureSettings = "tnum"),
             )
         }
+        // A rejected proxy shows a *grey* bar and muted latency: the old red bar + bright "2.2s"
+        // next to «رد: پاسخ سالم نبود» read as "fast and healthy" at a glance — the exact wrong story.
+        val rejected = !node.isUsable
         // quality bar instead of a raw number: comparable at a glance across rows
         Box(
             Modifier
@@ -671,14 +682,18 @@ fun ServerRow(
                     // lit at its own top edge: a filled bar reads as paint, a bar with a highlight reads
                     // as liquid standing in a groove - and at 4dp that is the only difference visible
                     .background(
-                        Brush.verticalGradient(listOf(accent.copy(alpha = 1f), accent.copy(alpha = 0.62f))),
+                        if (rejected) {
+                            Brush.verticalGradient(listOf(p.muted.copy(alpha = 0.45f), p.muted.copy(alpha = 0.28f)))
+                        } else {
+                            Brush.verticalGradient(listOf(accent.copy(alpha = 1f), accent.copy(alpha = 0.62f)))
+                        },
                         RoundedCornerShape(2.dp),
                     )
             )
         }
         Spacer(Modifier.width(10.dp))
         Text(
-            node.latencyLabel, color = accent, fontSize = 12.sp,
+            node.latencyLabel, color = if (rejected) p.muted else accent, fontSize = 12.sp,
             style = TextStyle(fontFeatureSettings = "tnum"),
         )
     }

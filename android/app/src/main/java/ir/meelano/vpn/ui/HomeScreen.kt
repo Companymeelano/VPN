@@ -393,7 +393,7 @@ private fun BottomRow(nodes: Int, syncing: Boolean, onServers: () -> Unit, onSet
         verticalAlignment = Alignment.CenterVertically,
     ) {
         MeelanoButton(
-            label = if (syncing) "…" else stringResource(R.string.set_server_count, nodes),
+            label = if (syncing) "…" else toFa(stringResource(R.string.set_server_count, nodes)),
             onClick = onServers,
             tone = BtnTone.Tonal,
             size = BtnSize.Small,
@@ -492,7 +492,7 @@ private fun UpdateBanner(version: String, size: String, onOpen: () -> Unit, onSk
         Spacer(Modifier.size(10.dp))
         Column(Modifier.weight(1f)) {
             Text(stringResource(R.string.upd_title), color = p.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Text("v$version · $size", color = p.muted, fontSize = 11.sp)
+            Text(faIso("v$version · $size"), color = p.muted, fontSize = 11.sp)
         }
         Column(horizontalAlignment = Alignment.End) {
             MeelanoButton(
@@ -513,15 +513,18 @@ private fun UpdateBanner(version: String, size: String, onOpen: () -> Unit, onSk
     }
 }
 
-internal fun humanSize(bytes: Long): String = when {
-    bytes <= 0 -> "—"
-    bytes < 1024 -> "$bytes B"
-    bytes < 1048576 -> String.format("%.0f KB", bytes / 1024.0)
-    else -> String.format("%.1f MB", bytes / 1048576.0)
+internal fun humanSize(bytes: Long): String {
+    val s = when {
+        bytes <= 0 -> return "—"
+        bytes < 1024 -> "$bytes B"
+        bytes < 1048576 -> String.format("%.0f KB", bytes / 1024.0)
+        else -> String.format("%.1f MB", bytes / 1048576.0)
+    }
+    return faIso(s) // «۱۲٫۱ MB» — Persian digits, Latin unit kept and isolated
 }
 
 /** connect-stage percentage; the Persian percent sign, because this sits inside Persian copy */
-internal fun pct(v: Float): String = (v.coerceIn(0f, 1f) * 100).roundToInt().toString() + "٪"
+internal fun pct(v: Float): String = toFa((v.coerceIn(0f, 1f) * 100).roundToInt()) + "٪"
 
 /** the feed ships only a 2-letter code; the app owns the Persian country names (never the vendor's) */
 internal fun FeedNode.countryFa(): String = cc?.trim()?.uppercase()?.let { CcFa.of(it) } ?: "—"

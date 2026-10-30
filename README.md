@@ -72,20 +72,20 @@ curl 'http://localhost/v/?action=selftest&key=<toolKey>'
 ## اندروید
 `android/app/src/main/java/ir/meelano/vpn/**` — یک ماژول Gradle واقعی (نه اسنیپت)، **با کامپایل موفق در CI**.
 
-> نسخه‌ی کدِ روی `main`: **`v2.8.2`** (رفع سه ایرادِ بازبینیِ دوم: بودجه‌ی حل نام واقعاً‌سقف‌دار شد —
-> lookup سیستم روی thread رهاشدنی با join زمان‌دار، نه coroutine که گیر می‌کرد؛ لغوِ coroutine دیگر
-> بلعیده نمی‌شود؛ کش DNS هنگام تغییر شبکه پاک می‌شود). پیش از آن `v2.8.1` تند کردنِ اتصال (حل نام موازی،
-> DoH پنج‌گانه، کش منفی، گرم‌سازی) و `v2.8.0` رفع ریشه‌ایِ «روی همراه اول وصل نمی‌شود» بود (PR
+> نسخه‌ی کدِ روی `main`: **`v2.9.0`** (اصلاح رندر اعداد/متن‌ها بر اساس اسکرین‌شات‌های واقعی: رفع «۲۰۷۳۵ روز
+> پیش» (ثانیه در برابر میلی‌ثانیه)، جداسازی دوجهته‌ی «زیر ۲۰۰ms» و ساعت سشن، ارقام فارسی در همه‌جا، رفع
+> بریدگی متن تنظیمات، کم‌رنگ‌کردن ردیف‌های ردشده، «هرگز» به‌جای «—»). پیش از آن `v2.8.2` سقف واقعیِ حل نام،
+> `v2.8.1` تند کردنِ اتصال و `v2.8.0` رفع ریشه‌ایِ «روی همراه اول وصل نمی‌شود» بود (PR
 > [#14](https://github.com/Companymeelano/VPN/pull/14)). انتشار APK امضاشده دیگر منتظرِ secretها
 > نیست: اگر `MEELANO_*` ست نشده باشند، workflow کلیدِ امضای پروژه را زمانِ اجرا از draftِ
 > `key-bootstrap-2.6.0` می‌خواند و با **همان گواهیِ `v2.6.0`** امضا و منتشر می‌کند (PR
 > [#15](https://github.com/Companymeelano/VPN/pull/15)). ست‌کردنِ secretها همچنان مسیرِ اصلی است؛
 > بعد از آن می‌توان draftهای کلید را حذف کرد.
 >
-> تازه‌ترین APK قابل‌نصبِ همین حالا: **`v2.8.2`** (نسخه‌ی نهایی، **امضاشده با کلید پروژه**) →
-> [`meelano-2.8.2-208002.apk`](https://github.com/Companymeelano/VPN/releases/download/v2.8.2/meelano-2.8.2-208002.apk)
-> (arm64؛ universal با `v7a`: `meelano-2.8.2-208002-universal.apk`؛
-> حجم‌ها و sha256: [`releases/tag/v2.8.2`](https://github.com/Companymeelano/VPN/releases/tag/v2.8.2)).
+> تازه‌ترین APK قابل‌نصبِ همین حالا: **`v2.9.0`** (نسخه‌ی نهایی، **امضاشده با کلید پروژه**) →
+> [`meelano-2.9.0-209000.apk`](https://github.com/Companymeelano/VPN/releases/download/v2.9.0/meelano-2.9.0-209000.apk)
+> (arm64؛ universal با `v7a`: `meelano-2.9.0-209000-universal.apk`؛
+> حجم‌ها و sha256: [`releases/tag/v2.9.0`](https://github.com/Companymeelano/VPN/releases/tag/v2.9.0)).
 > این بیلد `release` است (R8 + امضا با keystore پروژه، نه کلید debug) و هسته‌ی تونل
 > (libXray v26.9.9، bridge `libXray.LibXray`) در آن وصل است. بیلدهای `push` روی `main` عمداً
 > بی‌هسته و debug‌اند؛ فقط تگ به انتشار می‌رسد (جزئیات: §۱ و §۳-پ در [docs/ANDROID-BUILD.md](docs/ANDROID-BUILD.md)).

@@ -1071,13 +1071,35 @@ data class FeedNode(
      */
     val tune: ir.meelano.vpn.net.TunePatch = ir.meelano.vpn.net.TunePatch.Empty,
 ) {
-    val latencyLabel: String get() = latencyMs?.let { if (it < 1000) "$it" else String.format("%.1fs", it / 1000.0) } ?: "—"
+    /**
+     * «۸۶۰ms» / «۲٫۲s» — Persian digits, and the digit+unit run bidi-isolated (an unisolated
+     * «۲٫۲s» re-orders to «s۲٫۲» inside RTL). The old label rendered Latin («860», «2.2s») and
+     * dropped the unit under 1000 ms — two voices on one screen.
+     */
+    val latencyLabel: String get() = latencyMs?.let {
+        val raw = if (it < 1000) "${toFaDigits(it.toString())}ms"
+        else "${toFaDigits(String.format("%.1f", it / 1000.0).replace('.', '٫'))}s"
+        "\u2066" + raw + "\u2069"
+    } ?: "—"
     val isVip: Boolean get() = tier == "vip"
     val isRawProxy: Boolean get() = proto.lowercase() in setOf("http", "socks", "socks5")
     val isUsable: Boolean get() = !isRawProxy || platformStatus == ProxyScanner.CLEAN
 }
 
 data class ProbeResult(val nodeId: String, val ok: Boolean, val latencyMs: Long, val error: String?)
+
+/** Latin digits → Persian digits. Kept local to the data layer (ui/Fa.kt owns the UI copy). */
+internal fun toFaDigits(s: String): String = buildString(s.length) {
+    for (c in s) append(if (c in '0'..'9') (c - '0' + 1632).toChar() else c)
+}
+
+/**
+ * Seconds-or-millis → millis. The feed's `generatedAt` comes from PHP `time()` (seconds) while
+ * local cache paths use System.currentTimeMillis(); comparing the two raw mis-ordered recency
+ * and produced relTime's «۲۰۷۳۵ روز پیش». An epoch in seconds is ~1.8×10⁹, in millis ~1.8×10¹² —
+ * any value under 10^11 in this product is seconds.
+ */
+internal fun normalizeEpochMs(ts: Long): Long = if (ts in 1 until 100_000_000_000L) ts * 1000 else ts
 
 /** pinned / active-id persistence: keep it off SharedPreferences.commit() on the main thread. */
 object Prefs {
