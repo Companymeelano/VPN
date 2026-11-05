@@ -342,13 +342,13 @@ private fun DownloadDial(percent: Int, bytes: Long, total: Long, speed: Long, ca
     ) {
         StageDial3D(
             overallFraction = if (total > 0) (bytes.toFloat() / total).coerceIn(0f, 1f) else clamped / 100f,
-            percentText = "$clamped%",
+            percentText = toFa(clamped) + "٪",
             active = clamped < 100,
             size = 128.dp,
         )
         Spacer(Modifier.height(10.dp))
         Text(
-            caption.ifBlank { stringResource(R.string.upd_downloading, clamped) },
+            caption.ifBlank { stringResource(R.string.upd_downloading, toFa(clamped)) },
             fontSize = 12.5.sp,
             color = p.text,
             fontWeight = FontWeight.Medium,
@@ -358,7 +358,7 @@ private fun DownloadDial(percent: Int, bytes: Long, total: Long, speed: Long, ca
             buildString {
                 append(humanSize(bytes))
                 if (total > 0) append(" از ").append(humanSize(total))
-                if (speed > 0) append("  ·  ").append(humanSize(speed)).append("/s")
+                if (speed > 0) append("  ·  ").append(humanRate(speed))
             },
             fontSize = 11.sp,
             color = p.faint,

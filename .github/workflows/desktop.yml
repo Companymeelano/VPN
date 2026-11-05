@@ -53,7 +53,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: desktop/resources/core
-          key: xray-core-win64-v26.10.29
+          key: xray-core-win64-v26.10.31
 
       - name: fetch Xray core (windows x64, pinned)
         run: npm run fetch-core

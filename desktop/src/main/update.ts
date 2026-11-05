@@ -109,46 +109,54 @@ export async function downloadUpdate(
   if (!check) throw new Error("no_update");
   const target = `${app.getPath("downloads")}/${`MA-VPN-${check.version}-setup-x64.exe`}`;
 
-  await new Promise<void>((resolve, reject) => {
-    const req = httpsGet(check.setupUrl, { headers: { "User-Agent": `MA-VPN-Desktop/${APP_VERSION}` } }, (res) => {
-      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        res.resume();
-        downloadTo(target, res.headers.location, check.sizeBytes, onProgress).then(resolve, reject);
-        return;
-      }
-      if (res.statusCode !== 200) {
-        res.resume();
-        reject(new Error(`http_${res.statusCode}`));
-        return;
-      }
-      const out = createWriteStream(target);
-      let done = 0;
-      res.on("data", (chunk: Buffer) => {
-        done += chunk.length;
-        if (check.sizeBytes > 0 && done > check.sizeBytes * 1.02 + 1024) {
-          req.destroy(new Error("download_too_large"));
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const req = httpsGet(check.setupUrl, { headers: { "User-Agent": `MA-VPN-Desktop/${APP_VERSION}` } }, (res) => {
+        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume();
+          // the redirect path is the REAL download path (GitHub assets always 302) — it gets
+          // the same size guard and stream-error handling as the direct one.
+          downloadTo(target, res.headers.location, check.sizeBytes, onProgress).then(resolve, reject);
           return;
         }
-        onProgress(check.sizeBytes > 0 ? Math.min(100, Math.floor((done * 100) / check.sizeBytes)) : 0, done, check.sizeBytes);
+        if (res.statusCode !== 200) {
+          res.resume();
+          reject(new Error(`http_${res.statusCode}`));
+          return;
+        }
+        const out = createWriteStream(target);
+        let done = 0;
+        res.on("data", (chunk: Buffer) => {
+          done += chunk.length;
+          if (check.sizeBytes > 0 && done > check.sizeBytes * 1.02 + 1024) {
+            req.destroy(new Error("download_too_large"));
+            return;
+          }
+          onProgress(check.sizeBytes > 0 ? Math.min(100, Math.floor((done * 100) / check.sizeBytes)) : 0, done, check.sizeBytes);
+        });
+        res.on("error", reject);
+        res.pipe(out);
+        out.on("finish", () => out.close(() => resolve()));
+        out.on("error", reject);
       });
-      res.pipe(out);
-      out.on("finish", () => out.close(() => resolve()));
-      out.on("error", reject);
+      req.setTimeout(30_000, () => req.destroy(new Error("timeout")));
+      req.on("error", reject);
     });
-    req.setTimeout(30_000, () => req.destroy(new Error("timeout")));
-    req.on("error", reject);
-  });
 
-  // verify against the release's own .sha256 sidecar before anything may run
-  const sidecar = await fetchText(check.sha256Url);
-  const expected = parseSha256File(sidecar);
-  const actual = await sha256File(target);
-  if (!expected || expected !== actual) {
+    // verify against the release's own .sha256 sidecar before anything may run
+    const sidecar = await fetchText(check.sha256Url);
+    const expected = parseSha256File(sidecar);
+    const actual = await sha256File(target);
+    if (!expected || expected !== actual) {
+      throw new Error("checksum_mismatch");
+    }
+    savedPath = target;
+    return target;
+  } catch (e) {
+    // a half-written installer in the user's Downloads is worse than no installer
     await unlink(target).catch(() => undefined);
-    throw new Error("checksum_mismatch");
+    throw e;
   }
-  savedPath = target;
-  return target;
 }
 
 function downloadTo(
@@ -168,8 +176,13 @@ function downloadTo(
       let done = 0;
       res.on("data", (chunk: Buffer) => {
         done += chunk.length;
+        if (total > 0 && done > total * 1.02 + 1024) {
+          req.destroy(new Error("download_too_large"));
+          return;
+        }
         onProgress(total > 0 ? Math.min(100, Math.floor((done * 100) / total)) : 0, done, total);
       });
+      res.on("error", reject);
       res.pipe(out);
       out.on("finish", () => out.close(() => resolve()));
       out.on("error", reject);

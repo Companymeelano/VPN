@@ -231,7 +231,7 @@ fun SyncProgressPanel(progress: SyncProgress, modifier: Modifier = Modifier) {
             StageBar3D(
                 label = stageTitle(stage),
                 stageFraction = frac,
-                detail = if (isCurrent && progress.total > 0) "${progress.done}/${progress.total}"
+                detail = if (isCurrent && progress.total > 0) faIso("${progress.done}/${progress.total}")
                 else if (reached) "✓" else "—",
                 active = isCurrent,
                 reached = reached && !isCurrent,

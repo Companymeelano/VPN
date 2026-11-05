@@ -181,7 +181,7 @@
     <string name="upd_skipping">این نسخه را رد می‌کنم</string>
     <string name="upd_mandatory">برای ادامه‌ی کار اپ باید به‌روز شود</string>
     <string name="upd_verifying">بررسی سلامت فایل</string>
-    <string name="upd_downloading">دریافت %1$d٪</string>
+    <string name="upd_downloading">دریافت %1$s٪</string>
     <string name="upd_ready">آماده‌ی نصب — یک تأیید لازم است</string>
     <string name="upd_corrupt">فایل نصب سالم نبود؛ دوباره تلاش می‌کنیم</string>
     <string name="upd_noperm">اجازه‌ی نصب از این منبع را روشن کن</string>
