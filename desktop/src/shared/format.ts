@@ -62,7 +62,10 @@ export function formatDuration(totalSeconds: number, locale: "fa" | "en" = "fa")
   const sec = s % 60;
   const pad = (n: number) => String(n).padStart(2, "0");
   const clock = h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
-  return locale === "fa" ? lri(clock) : clock;
+  // Persian digits, not just an isolated Latin clock — «۱۲:۰۵» with LRI/PDI around the run,
+  // mirroring humanIsoClock on Android. (This used to render «12:05» — Latin inside the rule
+  // that says every visible digit is Persian.)
+  return locale === "fa" ? lri(toFa(clock)) : clock;
 }
 
 /** Speed → «۳٫۲ مگابایت/ثانیه». Negative/NaN clamps to zero (a counter reset must not render «-…»). */

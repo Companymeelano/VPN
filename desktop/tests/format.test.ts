@@ -43,10 +43,15 @@ describe("formatMs", () => {
 });
 
 describe("formatDuration", () => {
-  it("renders mm:ss and h:mm:ss under bidi isolation", () => {
-    expect(formatDuration(75)).toBe("\u2066" + "01:15" + "\u2069");
-    expect(formatDuration(3671)).toBe("\u2066" + "1:01:11" + "\u2069");
-    expect(formatDuration(-3)).toBe("\u2066" + "00:00" + "\u2069");
+  it("renders mm:ss and h:mm:ss in Persian digits under bidi isolation", () => {
+    // the v2.9.0 rule: every visible digit is U+06F0-set («۰۱:۱۵», not an isolated «01:15»),
+    // mirroring humanIsoClock on Android
+    expect(formatDuration(75)).toBe("\u2066" + "۰۱:۱۵" + "\u2069");
+    expect(formatDuration(3671)).toBe("\u2066" + "۱:۰۱:۱۱" + "\u2069");
+    expect(formatDuration(-3)).toBe("\u2066" + "۰۰:۰۰" + "\u2069");
+  });
+  it("en locale keeps the ASCII clock", () => {
+    expect(formatDuration(75, "en")).toBe("01:15");
   });
 });
 

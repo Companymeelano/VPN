@@ -308,6 +308,9 @@ class ServerFeedRepository(
                 delay(BUILDING_RETRY_MS)
             }
         } catch (t: Throwable) {
+            // Cancellation is not a fetch failure: propagate it (A2 family — a swallowed
+            // CancellationException lets stale code keep painting after the scope died).
+            if (t is kotlinx.coroutines.CancellationException) throw t
             Log.w(TAG, "refresh $kind failed: ${t.message}")   // offline -> keep showing cache
             _lastError.value = "refresh_$kind: ${t.message ?: t.javaClass.simpleName}"
         } finally {
@@ -457,6 +460,7 @@ class ServerFeedRepository(
             // No probeAndReconcile(): these were dialed *now*, from this network. Re-probing 12 sockets
             // for a number we already have is exactly the duplicated work that made the old build slow.
         } catch (t: Throwable) {
+            if (t is kotlinx.coroutines.CancellationException) throw t   // A2 hygiene
             Log.w(TAG, "direct $kind failed: ${t.message}")
             _lastError.value = "public_refresh_failed"
         } finally {

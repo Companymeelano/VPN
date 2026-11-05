@@ -383,7 +383,7 @@ private fun StatusLine(phase: ConnectPhase, node: FeedNode?) {
                 "هسته‌ی تونل در این بیلد وصل نشده است · بیلد ${ir.meelano.vpn.BuildConfig.BUILD_ID.ifBlank { "؟" }}" to p.warn
             else -> "اتصال برقرار نشد" to p.danger
         }
-        else -> "در حال اتصال… ${(phase.progress * 100).toInt()}%" to p.muted
+        else -> "در حال اتصال… ${pct(phase.progress)}" to p.muted
     }
     // a "چرا نشد" that only says "نشد" is how support tickets become loops: the raw reason rides
     // under the friendly line (latin code, tiny, muted - readable in a screenshot, invisible otherwise)
