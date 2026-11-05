@@ -50,6 +50,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import ir.meelano.vpn.BuildConfig
 import ir.meelano.vpn.R
 import ir.meelano.vpn.data.AppSettings
@@ -142,6 +143,13 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
     val initial = remember { draftFrom() }
     val dirty = draft != initial
     var savedFlash by remember { mutableStateOf(false) }
+    // The «بسته شد بدون سیو» guard: every exit from this sheet funnels through here, and a dirty
+    // draft gets a real choice instead of a silent grave. This is the whole reason settings used
+    // to vanish: the sheet closed on any outside tap and the draft simply went with it.
+    var confirmClose by remember { mutableStateOf(false) }
+    fun attemptClose() {
+        if (dirty) confirmClose = true else onDismiss()
+    }
     LaunchedEffect(savedFlash) {
         if (savedFlash) {
             delay(2_200)
@@ -173,7 +181,7 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
     }
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { attemptClose() },
         sheetState = sheet,
         containerColor = p.surface,
         contentColor = p.text,
@@ -184,7 +192,7 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                 Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(bottom = 20.dp),
+                    .padding(bottom = 132.dp),
             ) {
                 // A header + close button. The extra Column is not decoration: Modifier.align is a
                 // ColumnScope API, and LazyColumn's item scope is not one - without it this does not compile.
@@ -210,7 +218,7 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                             MeelanoIconButton(
                                 iconRes = R.drawable.ic_close,
                                 contentDescription = stringResource(R.string.close),
-                                onClick = onDismiss,
+                                onClick = { attemptClose() },
                                 sizeDp = 38.dp,
                                 corner = 12.dp,
                             )
@@ -220,7 +228,7 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
 
                 // ── «پروفایل هوشمند» — the section that tunes the app for the service chosen ──
                 item {
-                    MeelanoPanel(title = stringResource(R.string.smart_title)) {
+                    MeelanoPanel(title = stringResource(R.string.smart_title), iconRes = R.drawable.ic_bolt) {
                         Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
                             Text(
                                 stringResource(R.string.smart_body),
@@ -241,7 +249,7 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
 
                 // ── «دریافت و فید» — automatic fetching, its schedule, and the data dials ──
                 item {
-                    MeelanoPanel(title = stringResource(R.string.group_fetch)) {
+                    MeelanoPanel(title = stringResource(R.string.group_fetch), iconRes = R.drawable.ic_refresh) {
                         SwitchRow(
                             title = stringResource(R.string.set_autofetch),
                             body = stringResource(R.string.set_autofetch_body),
@@ -296,7 +304,7 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
 
                 // ── «به‌روزرسانی برنامه» — the new automatic version-check section ──
                 item {
-                    MeelanoPanel(title = stringResource(R.string.group_update)) {
+                    MeelanoPanel(title = stringResource(R.string.group_update), iconRes = R.drawable.ic_download) {
                         SwitchRow(
                             title = stringResource(R.string.set_autocheck),
                             body = stringResource(R.string.set_autocheck_body),
@@ -360,7 +368,7 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
 
                 // ── «منابع و سرویس» — where the lists come from, and the user's own VIP ──
                 item {
-                    MeelanoPanel(title = stringResource(R.string.group_feed)) {
+                    MeelanoPanel(title = stringResource(R.string.group_feed), iconRes = R.drawable.ic_server) {
                         Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
                             Text(
                                 stringResource(R.string.feed_source_direct_title),
@@ -481,7 +489,7 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
 
                 // ── «اتصال» — the tunnel's behaviour switches ──
                 item {
-                    MeelanoPanel(title = stringResource(R.string.group_vpn)) {
+                    MeelanoPanel(title = stringResource(R.string.group_vpn), iconRes = R.drawable.ic_shield) {
                         SwitchRow(
                             title = stringResource(R.string.set_keepalive),
                             body = stringResource(R.string.set_keepalive_body),
@@ -514,7 +522,7 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
 
                 // ── «ضدفیلتر» — the four transport dials + MTU ──
                 item {
-                    MeelanoPanel(title = stringResource(R.string.group_resist)) {
+                    MeelanoPanel(title = stringResource(R.string.group_resist), iconRes = R.drawable.ic_speed) {
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
                             Text(
                                 stringResource(R.string.set_regime),
@@ -588,7 +596,7 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
 
                 // ── «مسیریابی» — per-app rules; instant-apply because they rebuild the tunnel ──
                 item {
-                    MeelanoPanel(title = stringResource(R.string.group_routing)) {
+                    MeelanoPanel(title = stringResource(R.string.group_routing), iconRes = R.drawable.ic_apps) {
                         SwitchRow(
                             title = stringResource(R.string.set_routing_enabled),
                             body = stringResource(R.string.set_routing_enabled_body),
@@ -641,7 +649,7 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
 
                 // ── «ظاهر» — motion; the theme toggle lives on the home top bar ──
                 item {
-                    MeelanoPanel(title = stringResource(R.string.group_appearance)) {
+                    MeelanoPanel(title = stringResource(R.string.group_appearance), iconRes = R.drawable.ic_theme_auto) {
                         SwitchRow(
                             title = stringResource(R.string.set_reduced),
                             body = stringResource(R.string.set_reduced_body),
@@ -653,7 +661,7 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
 
                 // ── «پیشرفته» — the local probe readout, diagnostics, and the reset ──
                 item {
-                    MeelanoPanel(title = stringResource(R.string.group_advanced)) {
+                    MeelanoPanel(title = stringResource(R.string.group_advanced), iconRes = R.drawable.ic_settings) {
                         Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
                             Text(
                                 stringResource(R.string.probe_title),
@@ -721,28 +729,6 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                     }
                 }
 
-                // ── the save bar: the one place settings leave the draft ──
-                item {
-                    Spacer(Modifier.height(14.dp))
-                    Column(Modifier.padding(horizontal = 18.dp)) {
-                        if (dirty) {
-                            Text(
-                                stringResource(R.string.unsaved_hint),
-                                fontSize = 11.sp, color = p.warn,
-                                modifier = Modifier.padding(bottom = 6.dp),
-                            )
-                        }
-                        MeelanoButton(
-                            label = stringResource(R.string.save_settings),
-                            onClick = { commit() },
-                            tone = BtnTone.Primary,
-                            size = BtnSize.Large,
-                            fill = true,
-                            enabled = dirty,
-                        )
-                    }
-                }
-
                 // Version + the watchdog state dot.
                 item {
                     Row(
@@ -769,13 +755,135 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
             MeelanoSaveToast(
                 visible = savedFlash,
                 message = stringResource(R.string.settings_saved),
-                modifier = Modifier.align(Alignment.BottomCenter),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 104.dp),
+            )
+            // The sticky save bar: always in reach, never below the fold. The old bar lived at
+            // the end of the list — one flick past it and «saved» was never in reach, which is
+            // exactly how settings closed un-saved. The scrim dissolves the content above it.
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.Transparent,
+                                p.surface.copy(alpha = 0.94f),
+                                p.surface,
+                            ),
+                        ),
+                    )
+                    .navigationBarsPadding()
+                    .padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 12.dp),
+            ) {
+                if (dirty) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    ) {
+                        Box(
+                            Modifier
+                                .size(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(p.warn),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            stringResource(R.string.unsaved_hint),
+                            fontSize = 11.sp,
+                            color = p.warn,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+                MeelanoButton(
+                    label = stringResource(R.string.save_settings),
+                    onClick = { commit() },
+                    tone = BtnTone.Primary,
+                    size = BtnSize.Large,
+                    fill = true,
+                    enabled = dirty,
+                )
+            }
+        }
+        if (confirmClose) {
+            UnsavedCloseDialog(
+                onSaveClose = {
+                    confirmClose = false
+                    commit()
+                    onDismiss()
+                },
+                onKeepEditing = { confirmClose = false },
+                onDiscard = {
+                    confirmClose = false
+                    onDismiss()
+                },
             )
         }
         if (diagnostics) DiagnosticsSheet(vm = vm, onDismiss = { diagnostics = false })
         if (routing) AppRoutingSheet(onDismiss = { routing = false })
         if (smart) SmartProfileSheet(vm = vm, onDismiss = { smart = false })
         if (updateSheet) UpdateSheet(vm = vm, onDismiss = { updateSheet = false })
+    }
+}
+
+/**
+ * The unsaved-changes choice, in the kit's own language: three clear exits, no footguns.
+ * «ذخیره و بستن» leads because it is almost always what the user meant; «بستن بدون ذخیره» is
+ * last and ghost-toned so it can never be tapped by momentum.
+ */
+@Composable
+private fun UnsavedCloseDialog(
+    onSaveClose: () -> Unit,
+    onKeepEditing: () -> Unit,
+    onDiscard: () -> Unit,
+) {
+    val p = LocalPalette.current
+    Dialog(onDismissRequest = onKeepEditing) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(Brush.verticalGradient(listOf(p.surfaceHigh, p.surface)))
+                .border(1.dp, p.tint(0.12f), RoundedCornerShape(20.dp))
+                .padding(horizontal = 20.dp, vertical = 18.dp),
+        ) {
+            Text(
+                stringResource(R.string.unsaved_title),
+                fontSize = 15.sp, fontWeight = FontWeight.Bold, color = p.text,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                stringResource(R.string.unsaved_body),
+                fontSize = 12.sp, color = p.muted, lineHeight = 18.sp,
+            )
+            Spacer(Modifier.height(16.dp))
+            MeelanoButton(
+                label = stringResource(R.string.unsaved_save_close),
+                onClick = onSaveClose,
+                tone = BtnTone.Primary,
+                size = BtnSize.Medium,
+                fill = true,
+            )
+            Spacer(Modifier.height(8.dp))
+            MeelanoButton(
+                label = stringResource(R.string.unsaved_keep_editing),
+                onClick = onKeepEditing,
+                tone = BtnTone.Tonal,
+                size = BtnSize.Medium,
+                fill = true,
+            )
+            Spacer(Modifier.height(6.dp))
+            MeelanoButton(
+                label = stringResource(R.string.unsaved_discard),
+                onClick = onDiscard,
+                tone = BtnTone.Ghost,
+                size = BtnSize.Medium,
+                fill = true,
+            )
+        }
     }
 }
 
