@@ -12,7 +12,10 @@ import { fileURLToPath } from "node:url";
 import extract from "extract-zip";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const VERSION = "v26.10.29";
+// v26.10.29 was YANKED upstream (the tag 404s) — the exact failure the retry loop then turned
+// into three slow red herrings. Pin bumped to the current v26.10 line; keep the pin (releases
+// must be reproducible) and bump deliberately when upstream prunes.
+const VERSION = "v26.10.31";
 const URL = `https://github.com/XTLS/Xray-core/releases/download/${VERSION}/Xray-windows-64.zip`;
 const OUT = join(ROOT, "resources", "core");
 const ZIP = join(ROOT, "resources", `xray-${VERSION}-win64.zip`);
