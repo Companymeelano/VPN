@@ -265,7 +265,7 @@ private fun ServiceTuneCard(
         if (best != null) {
             Text(
                 "بهترین مسیر: ${best.name}  ·  ${best.proto}  ·  " +
-                    (best.latencyMs?.let { "${it}ms" } ?: "—"),
+                    (best.latencyMs?.let { faIso("${it}ms") } ?: "—"),
                 fontSize = 11.5.sp, color = p.muted, lineHeight = 16.sp,
             )
         } else {
@@ -276,8 +276,8 @@ private fun ServiceTuneCard(
         }
         Spacer(Modifier.height(8.dp))
         Text(
-            "$measured/${usable.size} مسیر اندازه‌گیری شد" +
-                (median?.let { "  ·  میانه‌ی پینگ ${it}ms" } ?: ""),
+            faIso("$measured/${usable.size}") + " مسیر اندازه‌گیری شد" +
+                (median?.let { "  ·  میانه‌ی پینگ " + faIso("${it}ms") } ?: ""),
             fontSize = 10.5.sp,
             color = p.faint,
             style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"),
@@ -311,10 +311,10 @@ private fun ServiceTuneCard(
 private fun AdviceChips(advice: SmartProfile.Advice) {
     val p = LocalPalette.current
     val items = listOf(
-        "تکه‌تکه‌سازی" to if (advice.fragment) "${advice.fragSize}B" else "خاموش",
-        "Mux" to if (advice.mux) "${advice.muxConcurrency}×" else "خاموش",
-        "MTU" to advice.mtu.toString(),
-        "Keepalive" to "${advice.keepAliveSec}s",
+        "تکه‌تکه‌سازی" to if (advice.fragment) faIso("${advice.fragSize}B") else "خاموش",
+        "Mux" to if (advice.mux) faIso("${advice.muxConcurrency}×") else "خاموش",
+        "MTU" to faIso(advice.mtu.toString()),
+        "Keepalive" to faIso("${advice.keepAliveSec}s"),
     )
     Row(
         Modifier

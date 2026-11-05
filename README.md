@@ -72,19 +72,19 @@ curl 'http://localhost/v/?action=selftest&key=<toolKey>'
 ## اندروید
 `android/app/src/main/java/ir/meelano/vpn/**` — یک ماژول Gradle واقعی (نه اسنیپت)، **با کامپایل موفق در CI**.
 
-> نسخه‌ی کدِ روی `main`: **`v2.9.2`** (رفع ریشه‌ی «اتصال طول می‌کشد» و «قطع بعد از چند ثانیه»: تلاش مجددِ واقعیِ
-> پروب (کامنت می‌گفت هست، کد نبود)، سقفِ آرام‌سازیِ پروب، دروازه‌ی اتصالِ هوشمند (فقط «هیچ ترافیکی نرفت» رد می‌کند)،
-> فاصله‌ی بازبینیِ سلامت ۵s؛ به‌علاوه‌ی تنظیماتِ دسته‌بندی‌شده با آیکن، **نوارِ ذخیره‌ی چسبان** و پنجره‌ی
-> «تغییرات ذخیره‌نشده» هنگام بستن). پیش از آن `v2.9.1` جریانِ کاملِ به‌روزرسانی و `v2.9.0` اصلاحات اسکرین‌شات‌ها بود.
-> انتشار APK امضاشده دیگر منتظرِ secretها نیست: اگر `MEELANO_*` ست نشده باشند، workflow کلیدِ امضای پروژه را
-> زمانِ اجرا از draftِ `key-bootstrap-2.6.0` می‌خواند و با **همان گواهیِ `v2.6.0`** امضا و منتشر می‌کند (PR
+> نسخه‌ی کدِ روی `main`: **`v2.9.3`** (تکمیلِ قاعده‌ی «ارقام فارسی + جداسازی دوجهته» در همه‌ی سطوح باقی‌مانده —
+> صفحه‌ی دانلودِ به‌روزرسانی، پروفایل هوشمند، خوانشِ پروب، نوار پیشرفت؛ به‌علاوه بهداشتِ لغو در UpdateManager و
+> پاک‌سازیِ ردیفِ یتیمِ MediaStore). پیش از آن `v2.9.2` رفعِ «اتصال طول می‌کشد/قطع ۸ثانیه‌ای» + تنظیماتِ لاکچری،
+> `v2.9.1` جریانِ کاملِ به‌روزرسانی و `v2.9.0` اصلاحات اسکرین‌شات‌ها بود. انتشار APK امضاشده دیگر منتظرِ secretها
+> نیست: اگر `MEELANO_*` ست نشده باشند، workflow کلیدِ امضای پروژه را زمانِ اجرا از draftِ
+> `key-bootstrap-2.6.0` می‌خواند و با **همان گواهیِ `v2.6.0`** امضا و منتشر می‌کند (PR
 > [#15](https://github.com/Companymeelano/VPN/pull/15)). ست‌کردنِ secretها همچنان مسیرِ اصلی است؛
 > بعد از آن می‌توان draftهای کلید را حذف کرد.
 >
-> تازه‌ترین APK قابل‌نصبِ همین حالا: **`v2.9.2`** (نسخه‌ی نهایی، **امضاشده با کلید پروژه**) →
-> [`meelano-2.9.2-209002.apk`](https://github.com/Companymeelano/VPN/releases/download/v2.9.2/meelano-2.9.2-209002.apk)
-> (arm64؛ universal با `v7a`: `meelano-2.9.2-209002-universal.apk`؛
-> حجم‌ها و sha256: [`releases/tag/v2.9.2`](https://github.com/Companymeelano/VPN/releases/tag/v2.9.2)).
+> تازه‌ترین APK قابل‌نصبِ همین حالا: **`v2.9.3`** (نسخه‌ی نهایی، **امضاشده با کلید پروژه**) →
+> [`meelano-2.9.3-209003.apk`](https://github.com/Companymeelano/VPN/releases/download/v2.9.3/meelano-2.9.3-209003.apk)
+> (arm64؛ universal با `v7a`: `meelano-2.9.3-209003-universal.apk`؛
+> حجم‌ها و sha256: [`releases/tag/v2.9.3`](https://github.com/Companymeelano/VPN/releases/tag/v2.9.3)).
 > این بیلد `release` است (R8 + امضا با keystore پروژه، نه کلید debug) و هسته‌ی تونل
 > (libXray v26.9.9، bridge `libXray.LibXray`) در آن وصل است. بیلدهای `push` روی `main` عمداً
 > بی‌هسته و debug‌اند؛ فقط تگ به انتشار می‌رسد (جزئیات: §۱ و §۳-پ در [docs/ANDROID-BUILD.md](docs/ANDROID-BUILD.md)).
@@ -98,12 +98,12 @@ Xray-core ویندوز ۶۴بیت داخل بسته، inbounds محلی (mixed) 
 سه حالت ضدفیلتر (آرام/سفت/سیاهه) با fragmentation دقیقاً در گویش اندروید، failover خودکار، سینی ویندوز و
 تنظیمات (پوسته، اتصال خودکار، شروع با ویندوز). لینک اشتراک فقط روی همان رایانه ذخیره می‌شود.
 
-> نسخه‌ی نهایی ویندوز: **`2.8.4`** (بخشِ به‌روزرسانیِ درون‌برنامه‌ای: بررسی نسخه، دانلودِ نصب‌کننده با تأیید sha256
-> **در پوشه‌ی Downloads**، نصب روی نسخه‌ی فعلی بدون از‌دست‌رفتن تنظیمات — به‌علاوه‌ی رفع هیدراته‌ی امن ۲.۸.۳) →
-> [`MA-VPN-2.8.4-setup-x64.exe`](https://github.com/Companymeelano/VPN/releases/download/desktop-v2.8.4/MA-VPN-2.8.4-setup-x64.exe)
+> نسخه‌ی نهایی ویندوز: **`2.8.5`** (مقاوم‌سازیِ دانلودِ به‌روزرسانی: سقفِ اندازه در مسیرِ redirect، مدیریتِ خطای
+> stream، پاک‌سازیِ فایلِ ناقص، و درست‌شدنِ پیامِ «تازه‌ترین نسخه» بعد از «بعداً» — به‌علاوه‌ی قابلیت‌های ۲.۸.۴) →
+> [`MA-VPN-2.8.5-setup-x64.exe`](https://github.com/Companymeelano/VPN/releases/download/desktop-v2.8.5/MA-VPN-2.8.5-setup-x64.exe)
 > (نصب‌کننده) و
-> [`MA-VPN-2.8.4-portable-x64.exe`](https://github.com/Companymeelano/VPN/releases/download/desktop-v2.8.4/MA-VPN-2.8.4-portable-x64.exe)
-> (قابل‌حمل) · صفحه: [`releases/tag/desktop-v2.8.4`](https://github.com/Companymeelano/VPN/releases/tag/desktop-v2.8.4).
+> [`MA-VPN-2.8.5-portable-x64.exe`](https://github.com/Companymeelano/VPN/releases/download/desktop-v2.8.5/MA-VPN-2.8.5-portable-x64.exe)
+> (قابل‌حمل) · صفحه: [`releases/tag/desktop-v2.8.5`](https://github.com/Companymeelano/VPN/releases/tag/desktop-v2.8.5).
 > ⚠️ چون گواهی Code Signing خریداری نشده، ویندوز در اولین اجرا SmartScreen نشان می‌دهد: **More info › Run anyway**.
 > بیلد روی CI (`windows-latest`، `.github/workflows/desktop.yml`) ساخته و روی تگ‌های `desktop-v*` منتشر می‌شود؛
 > انتشارهای دسکتاپ هرگز نشان `Latest` مخزن را از نسخه‌ی اندروید نمی‌گیرند (`--latest=false`).

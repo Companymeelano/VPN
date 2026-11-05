@@ -25,6 +25,9 @@ export default function App(): JSX.Element {
   const [updPhase, setUpdPhase] = useState<UpdatePhase>("idle");
   const [updPct, setUpdPct] = useState(0);
   const [updError, setUpdError] = useState("");
+  // «بعداً» hides the STRIP, never the fact. Clearing `upd` instead made the settings card
+  // claim «شما روی تازه‌ترین نسخه هستید» while a newer release was sitting right there.
+  const [stripHidden, setStripHidden] = useState(false);
 
   useEffect(() => {
     void api().getSnapshot().then(setSnap);
@@ -93,7 +96,7 @@ export default function App(): JSX.Element {
         </nav>
 
         <main className="content">
-          {upd && (
+          {upd && !stripHidden && (
             <UpdateStrip
               upd={upd}
               phase={updPhase}
@@ -102,7 +105,7 @@ export default function App(): JSX.Element {
               onDownload={() => void startDownload()}
               onInstall={install}
               onOpenFile={() => void api().openUpdateFile()}
-              onDismiss={() => setUpd(null)}
+              onDismiss={() => setStripHidden(true)}
             />
           )}
           {tab === "connect" && (
@@ -120,7 +123,9 @@ export default function App(): JSX.Element {
               onOpenFile={() => void api().openUpdateFile()}
               onCheck={async () => {
                 try {
-                  setUpd(await api().checkUpdate());
+                  const found = await api().checkUpdate();
+                  setUpd(found);
+                  if (found) setStripHidden(false);
                 } catch {
                   /* stay silent */
                 }

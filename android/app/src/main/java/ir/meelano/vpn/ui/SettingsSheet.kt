@@ -675,9 +675,10 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                                         val probes = o.optInt("probes")
                                         val alive = (probes - (o.optDouble("tcpFail", 0.0) * probes).toInt()).coerceAtLeast(0)
                                         buildString {
-                                            append("$alive/$probes گره از این مسیر پاسخ داد")
+                                            append(faIso("$alive/$probes"))
+                                            append(" گره از این مسیر پاسخ داد")
                                             val rtt = o.optLong("rtt")
-                                            if (rtt > 0) append(" · میانه‌ی تأخیر ${rtt}ms")
+                                            if (rtt > 0) append(" · میانه‌ی تأخیر ").append(faIso("${rtt}ms"))
                                             append(" · DNS ")
                                             append(if (o.optBoolean("dnsPoisoned")) "دروغ گفته" else "سالم")
                                         }

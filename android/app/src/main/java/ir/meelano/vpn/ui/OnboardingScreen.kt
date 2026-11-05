@@ -349,7 +349,7 @@ private fun StepCard(
                     )
                 } else {
                     Text(
-                        "$index",
+                        toFa(index),
                         fontSize = 11.sp,
                         color = if (open) p.accent else p.muted,
                         fontWeight = FontWeight.Bold,

@@ -110,6 +110,9 @@ class UpdateManager(private val context: Context, private val baseUrl: String = 
                 info
             }
         }.getOrElse {
+            // Cancellation is not "offline": a cancelled check must propagate, not be misread as
+            // a silent idle (the A2 family — runCatching around suspend code swallows it).
+            if (it is kotlinx.coroutines.CancellationException) throw it
             _state.value = State.Idle      // offline is normal: stay silent, retry on next launch
             null
         }
@@ -220,6 +223,8 @@ class UpdateManager(private val context: Context, private val baseUrl: String = 
             _state.value = State.ReadyToInstall(info, file, saved)
             launchInstaller(file)
         } catch (t: Throwable) {
+            // Cancellation propagates; only real failures land in State.Failed (A2 hygiene).
+            if (t is kotlinx.coroutines.CancellationException) throw t
             part.delete()
             file.delete()
             _state.value = State.Failed(t.message ?: "download_failed")
@@ -293,11 +298,20 @@ class UpdateManager(private val context: Context, private val baseUrl: String = 
             val resolver = context.contentResolver
             val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                 ?: return@runCatching null
-            resolver.openOutputStream(uri)?.use { out -> src.inputStream().use { it.copyTo(out) } }
-                ?: return@runCatching null
-            values.clear()
-            values.put(android.provider.MediaStore.Downloads.IS_PENDING, 0)
-            resolver.update(uri, values, null, null)
+            try {
+                resolver.openOutputStream(uri)?.use { out -> src.inputStream().use { it.copyTo(out) } }
+                    ?: run {
+                        // a pending ghost row would sit invisible in Downloads forever
+                        runCatching { resolver.delete(uri, null, null) }
+                        return@runCatching null
+                    }
+                values.clear()
+                values.put(android.provider.MediaStore.Downloads.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+            } catch (t: Throwable) {
+                runCatching { resolver.delete(uri, null, null) }
+                throw t
+            }
             android.os.Environment.DIRECTORY_DOWNLOADS + "/MA-VPN/" + name
         } else {
             val dir = java.io.File(
