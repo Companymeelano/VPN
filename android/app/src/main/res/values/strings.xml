@@ -118,6 +118,11 @@
     <string name="upd_link_title">لینک مستقیم دریافت</string>
     <string name="upd_honesty">اندروید نصب بی‌صدا را فقط به Device Owner اجازه می‌دهد؛ برای همین یک تأیید دستی لازم است.</string>
     <string name="unsaved_hint">تغییرات ذخیره‌نشده</string>
+    <string name="unsaved_title">تغییرات ذخیره نشده</string>
+    <string name="unsaved_body">تغییراتی در تنظیمات انجام داده‌اید که هنوز ذخیره نشده‌اند؛ اگر بدون ذخیره ببندید، از بین می‌روند.</string>
+    <string name="unsaved_save_close">ذخیره و بستن</string>
+    <string name="unsaved_keep_editing">ادامه‌ی ویرایش</string>
+    <string name="unsaved_discard">بستن بدون ذخیره</string>
     <string name="smart_title">پروفایل هوشمند اتصال</string>
     <string name="smart_body">بعد از دریافت و آزمایش سرورها، بهترین تنظیمات اتصال برای هر سرویس (رایگان یا VIP) همین‌جا محاسبه و با یک دکمه اعمال می‌شود.</string>
     <string name="smart_open">باز کردن پروفایل هوشمند</string>

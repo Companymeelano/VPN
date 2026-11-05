@@ -3,6 +3,7 @@ package ir.meelano.vpn.vpn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.CacheControl
 import okhttp3.OkHttpClient
@@ -65,6 +66,14 @@ class TunnelProbe(
         val usable: Boolean get() = okCount >= 2 || cloudflareOk
 
         /**
+         * The connect gate: "nothing moved at all" is the only verdict that may refuse a connect.
+         * A round with `internet` but without `usable` (wrong statuses — geo-block, intercept) is
+         * accepted and left for the health monitor to rotate softly; killing it here is what made
+         * connect burn through the whole candidate walk on slow links.
+         */
+        val dead: Boolean get() = !usable && !internet
+
+        /**
          * Median successful-check latency. The old "slowest check" punished a node for its one
          * unlucky endpoint and overwrote a genuinely fast path in the health ledger.
          */
@@ -91,7 +100,22 @@ class TunnelProbe(
         classify(checks)
     }
 
+    /**
+     * One endpoint, up to two attempts with a short breath between them.
+     *
+     * This is the retry the orchestrator's contract always claimed ("the probe itself retries
+     * inside TunnelProbe") but the code never did — one dropped SYN on a just-born tunnel (radio
+     * still ramping, DNS still cold) failed the whole connect and sent the walk to the next
+     * candidate. A successful second attempt reports *its own* latency, never the sum.
+     */
     private suspend fun check(endpoint: Endpoint): Check = withContext(Dispatchers.IO) {
+        val first = tryOnce(endpoint)
+        if (first.status != null) return@withContext first
+        delay(RETRY_GAP_MS)
+        tryOnce(endpoint)
+    }
+
+    private fun tryOnce(endpoint: Endpoint): Check {
         val started = System.nanoTime()
         val request = Request.Builder()
             .url(endpoint.url)
@@ -99,7 +123,7 @@ class TunnelProbe(
             .cacheControl(CacheControl.FORCE_NETWORK)
             .header("Connection", "close")
             .build()
-        runCatching {
+        return runCatching {
             client.newCall(request).execute().use { response ->
                 Check(endpoint.id, response.code, elapsedMs(started))
             }
@@ -117,5 +141,8 @@ class TunnelProbe(
 
         fun classify(checks: List<Check>): Result = Result(checks)
         private fun elapsedMs(started: Long): Long = (System.nanoTime() - started) / 1_000_000L
+
+        /** Breath between the two attempts: long enough for a retransmit, short enough to stay invisible. */
+        private const val RETRY_GAP_MS = 700L
     }
 }

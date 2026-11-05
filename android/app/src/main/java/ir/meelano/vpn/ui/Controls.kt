@@ -762,6 +762,7 @@ fun MeelanoSwitch(
 fun MeelanoPanel(
     modifier: Modifier = Modifier,
     title: String = "",
+    iconRes: Int? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val p = LocalPalette.current
@@ -787,14 +788,41 @@ fun MeelanoPanel(
             .padding(top = if (title.isEmpty()) 2.dp else 10.dp, bottom = 2.dp),
     ) {
         if (title.isNotEmpty()) {
-            Text(
-                title,
-                color = p.faint,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.4.sp,
-                modifier = Modifier.padding(start = 14.dp, bottom = 4.dp),
-            )
+            Row(
+                Modifier.padding(start = 14.dp, end = 14.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // The section's tile: a small lit square the eye learns to scan by. Optional so
+                // panels without a natural icon keep the plain letter-spaced label.
+                if (iconRes != null) {
+                    Box(
+                        Modifier
+                            .size(24.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(p.accent.copy(alpha = 0.20f), p.accent.copy(alpha = 0.08f)),
+                                ),
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            painterResource(iconRes),
+                            contentDescription = null,
+                            modifier = Modifier.size(13.dp),
+                            tint = p.accent,
+                        )
+                    }
+                    Spacer(Modifier.width(9.dp))
+                }
+                Text(
+                    title,
+                    color = p.faint,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.4.sp,
+                )
+            }
         }
         content()
     }

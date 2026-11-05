@@ -60,6 +60,15 @@ class TunnelProbeTest {
     }
 
     @Test
+    fun theConnectGateOnlyRefusesATunnelWhereNothingMoved() {
+        // usable-but-odd statuses reach the health monitor, not the candidate-walk bonfire:
+        // gate = `dead` (!usable && !internet), pinned here as the orchestrator's contract.
+        assertFalse(result(302, 200, 200).dead)   // wrong statuses, but traffic moved
+        assertFalse(result(204, null, null).dead) // cloudflare alone is alive
+        assertTrue(result(null, null, null).dead) // silence is the only death
+    }
+
+    @Test
     fun noResponsesMeansNoTunnelInternet() {
         val r = result(null, null, null)
         assertFalse(r.clean)

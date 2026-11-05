@@ -187,7 +187,13 @@ class VpnOrchestrator(
         // Usable, not spotless: one geo-blocked or jitter-dropped platform probe is recorded as
         // the node's platform verdict by the caller, but a tunnel that provably moves internet
         // traffic must not be torn down for it (see TunnelProbe's two-tier verdict).
-        if (!probe.usable) error(probe.reason)
+        //
+        // The gate is now two-sided: refuse the connect only when NOTHING moved (TunnelProbe
+        // `dead`). A round where a platform answered with the wrong status is a fact about the
+        // exit (geo-block, intercept), not proof of a dead tunnel — the health monitor rotates a
+        // persistently-unusable node softly a few seconds later instead of burning the whole
+        // candidate walk here, which is what «اتصال طول می‌کشد و وصل نمی‌شود» actually was.
+        if (probe.dead) error(probe.reason)
         return probe
     }
 
@@ -317,13 +323,15 @@ class VpnOrchestrator(
         private const val DNS_VIRTUAL4 = "1.1.1.1"
         private const val DNS_VIRTUAL6 = "2606:4700:4700::1111"
         private const val MAX_CANDIDATES = 8
-        // 350 ms (was 650): enough for the first packets to cross a fresh TUN — the probe itself
-        // retries inside TunnelProbe — but 300 ms faster to «متصل شد» on every connect and every
-        // failover hop. With SmartResolver pre-warmed, the handshake dominates; this was pure tax.
-        private const val PROBE_SETTLE_MS = 350L
+        // 600 ms (was 350): the first packets cross a fresh TUN, DNS through the core is still
+        // cold, and the radio is still ramping. TunnelProbe now retries once on its own — this
+        // settle is only the floor before the *first* attempt; it is not the safety net anymore.
+        private const val PROBE_SETTLE_MS = 600L
         private const val HEALTH_INITIAL_DELAY_MS = 8_000L
         private const val HEALTH_INTERVAL_MS = 12_000L
-        private const val HEALTH_RECHECK_MS = 3_000L
+        // 5 s (was 3): the first failed proof re-checks, but a congested cell deserves a breath
+        // before the second verdict — two probes landing in the same bad second are one event.
+        private const val HEALTH_RECHECK_MS = 5_000L
         private const val HEALTH_FAILURES = 2
         private const val FAILURE_COOLDOWN_MS = 3 * 60_000L
         private const val PLATFORM_COOLDOWN_MS = 15 * 60_000L
