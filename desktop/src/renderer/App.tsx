@@ -219,7 +219,7 @@ function ConnectPanel(props: {
         </h1>
         <p className="hero-sub">
           {conn.status === "connecting" && conn.step}
-          {conn.status === "connected" && `سرور ${conn.node} · پینگ ${formatMs(conn.latencyMs)}`}
+          {conn.status === "connected" && `سرور ${lri(conn.node)} · پینگ ${formatMs(conn.latencyMs)}`}
           {conn.status === "reconnecting" && conn.reason}
           {conn.status === "error" && conn.message}
           {conn.status === "idle" && (snap.nodes.length > 0 ? `سرور انتخاب‌شده: ${activeName}` : "ابتدا لینک اشتراک را وارد کنید")}
