@@ -20,7 +20,7 @@ import { parseSubscription, type NodeInfo } from "../shared/nodes";
 import { tuneFor } from "../shared/regime";
 import { candidateOrder, FailoverTracker, failoverDelayMs } from "../shared/failover";
 
-const APP_VERSION = "2.8.4";
+const APP_VERSION = app.getVersion();
 const DEFAULT_SETTINGS: AppSettingsState = {
   theme: "system",
   regime: "tight",
@@ -29,6 +29,7 @@ const DEFAULT_SETTINGS: AppSettingsState = {
   autoConnect: false,
   subscriptionUrl: "",
   lanAccess: true,
+  dnsProvider: "auto",
 };
 
 // ── persisted state ────────────────────────────────────────────────────────────
@@ -218,7 +219,7 @@ function snapshot(): AppSnapshot {
     activeNodeId,
     speed: speed.slice(-90),
     appVersion: APP_VERSION,
-    coreVersion: "v26.10.29",
+    coreVersion: "v26.10.31",
   };
 }
 
@@ -281,6 +282,7 @@ async function doConnect(requested: string | "best"): Promise<void> {
           localPort: 10808,
           directDomains: [".ir"],
           allowLan: settings.lanAccess,
+          dnsProvider: settings.dnsProvider,
         },
         (code) => {
           // Unexpected death while connected → failover, not silence.

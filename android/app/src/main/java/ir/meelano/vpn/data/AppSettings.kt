@@ -38,6 +38,8 @@ object AppSettings {
         private set
     var secureDns by mutableStateOf(true)
         private set
+    var dnsProvider by mutableStateOf("auto")
+        private set
     var reducedMotion by mutableStateOf(false)
         private set
     var autoUpdate by mutableStateOf(true)
@@ -105,6 +107,7 @@ object AppSettings {
         smartReconnect = p.getBoolean("smart_reconnect", true)
         killSwitch = p.getBoolean("kill_switch", true)
         secureDns = p.getBoolean("secure_dns", true)
+        dnsProvider = normalizeDnsProvider(p.getString("dns_provider", "auto"))
         reducedMotion = p.getBoolean("reduced_motion", false)
         regime = p.getString("regime", "tight") ?: "tight"
         fragmentAuto = p.getBoolean("fragment_auto", true)
@@ -137,6 +140,8 @@ object AppSettings {
     fun setSmartReconnect(c: Context, v: Boolean) = write(c, "smart_reconnect", v) { smartReconnect = v }
     fun setKillSwitch(c: Context, v: Boolean) = write(c, "kill_switch", v) { killSwitch = v }
     fun setSecureDns(c: Context, v: Boolean) = write(c, "secure_dns", v) { secureDns = v }
+    fun setDnsProvider(c: Context, v: String) = write(c, "dns_provider", normalizeDnsProvider(v)) { dnsProvider = normalizeDnsProvider(v) }
+    private fun normalizeDnsProvider(v: String?) = if (v == "google" || v == "cloudflare") v else "auto"
     fun setReducedMotion(c: Context, v: Boolean) = write(c, "reduced_motion", v) { reducedMotion = v }
     fun setAutoUpdate(c: Context, v: Boolean) = write(c, "auto_update", v) { autoUpdate = v }
     fun setAutoCheckUpdate(c: Context, v: Boolean) = write(c, "auto_check_update", v) { autoCheckUpdate = v }
@@ -211,7 +216,7 @@ object AppSettings {
 
     private fun publish() {
         _snapshot.value = mapOf(
-            "smart" to smartReconnect, "kill" to killSwitch, "dns" to secureDns,
+            "smart" to smartReconnect, "kill" to killSwitch, "dns" to secureDns, "dnsProvider" to dnsProvider,
             "motion" to reducedMotion, "update" to autoUpdate, "fb" to feedback,
             "theme" to themeMode, "auto" to autoSelect, "seen" to seenVersion,
             "regime" to regime, "frag" to fragmentAuto, "mux" to muxEnabled,

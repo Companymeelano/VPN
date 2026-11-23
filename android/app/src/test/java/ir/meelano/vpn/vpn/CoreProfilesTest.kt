@@ -64,6 +64,19 @@ class CoreProfilesTest {
         ((p["outbounds"] as List<Any?>)[0]) as Map<String, Any?>
 
     @Test
+    fun dnsPreferenceReordersWithoutRemovingFallbacks() {
+        val default = CoreProfiles.dnsServers("auto")
+        assertEquals(default, CoreProfiles.dnsServers("unknown"))
+        assertEquals("https://8.8.8.8/dns-query", CoreProfiles.dnsServers("google").first())
+        assertEquals("https://1.1.1.1/dns-query", CoreProfiles.dnsServers("cloudflare").first())
+        assertEquals(default.toSet(), CoreProfiles.dnsServers("google").toSet())
+        val p = CoreProfiles.plan(node(), Tune.Default, CoreEngine.XRAY, dnsProvider = "google")
+        @Suppress("UNCHECKED_CAST")
+        val servers = p.path("dns", "servers") as List<Map<String, Any?>>
+        assertEquals("https://8.8.8.8/dns-query", servers.first()["address"])
+    }
+
+    @Test
     fun xrayDialectUsesTheNamesXrayActuallyParses() {
         val p = profile(node())
         val o = outbound(p)

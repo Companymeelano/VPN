@@ -286,4 +286,7 @@
     <string name="routing_apply_connected">تغییرها هنگام بستن این صفحه با اتصالِ مجددِ همان نود اعمال می‌شود</string>
     <string name="routing_apply_next">تغییرها در اتصال بعدی اعمال می‌شود</string>
     <string name="routing_reset_override">بازگردانی به تشخیص خودکار</string>
+    <string name="dns_provider_title">DNS سرویس‌ها</string>
+    <string name="dns_auto">خودکار</string>
+    <string name="dns_provider_body">اولویت DNS رمزگذاری‌شده در تونل؛ در صورت نیاز از سایر گزینه‌ها استفاده می‌شود. برای اعمال، دوباره متصل شوید. DNS به‌تنهایی دسترسی به سرویس‌های محدود را تضمین نمی‌کند.</string>
 </resources>

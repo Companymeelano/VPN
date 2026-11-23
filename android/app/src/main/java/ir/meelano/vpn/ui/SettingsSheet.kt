@@ -78,6 +78,7 @@ private data class SettingsDraft(
     val smartReconnect: Boolean = true,
     val killSwitch: Boolean = true,
     val secureDns: Boolean = true,
+    val dnsProvider: String = "auto",
     val autoConnectOnBoot: Boolean = true,
     val regime: String = "tight",
     val fragmentAuto: Boolean = true,
@@ -96,6 +97,7 @@ private fun draftFrom(): SettingsDraft = SettingsDraft(
     smartReconnect = AppSettings.smartReconnect,
     killSwitch = AppSettings.killSwitch,
     secureDns = AppSettings.secureDns,
+    dnsProvider = AppSettings.dnsProvider,
     autoConnectOnBoot = AppSettings.autoConnectOnBoot,
     regime = AppSettings.regime,
     fragmentAuto = AppSettings.fragmentAuto,
@@ -140,7 +142,7 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
 
     // ── the draft: edited live, written only by the save button ──────────────────────────────
     var draft by remember { mutableStateOf(draftFrom()) }
-    val initial = remember { draftFrom() }
+    var initial by remember { mutableStateOf(draftFrom()) }
     val dirty = draft != initial
     var savedFlash by remember { mutableStateOf(false) }
     // The «بسته شد بدون سیو» guard: every exit from this sheet funnels through here, and a dirty
@@ -160,6 +162,7 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
         AppSettings.setSmartReconnect(ctx, draft.smartReconnect)
         AppSettings.setKillSwitch(ctx, draft.killSwitch)
         AppSettings.setSecureDns(ctx, draft.secureDns)
+        AppSettings.setDnsProvider(ctx, draft.dnsProvider)
         AppSettings.setAutoConnectOnBoot(ctx, draft.autoConnectOnBoot)
         AppSettings.setRegime(ctx, draft.regime)
         AppSettings.setFragmentAuto(ctx, draft.fragmentAuto)
@@ -177,6 +180,7 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
         runCatching { if (draft.smartReconnect) KeepAlive.enableWatchdog(ctx) else KeepAlive.disableWatchdog(ctx) }
         runCatching { FeedScheduler.schedule(ctx) }
         runCatching { ir.meelano.vpn.update.UpdateScheduler.schedule(ctx) }
+        initial = draft
         savedFlash = true
     }
 
@@ -517,6 +521,20 @@ fun SettingsSheet(vm: VpnViewModel, onDismiss: () -> Unit) {
                             on = draft.autoConnectOnBoot,
                             onChange = { draft = draft.copy(autoConnectOnBoot = it) },
                         )
+                    }
+                }
+
+                item {
+                    MeelanoPanel(title = stringResource(R.string.dns_provider_title), iconRes = R.drawable.ic_shield) {
+                        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                            MeelanoSegmented(
+                                items = listOf(stringResource(R.string.dns_auto), faIso("Cloudflare"), faIso("Google")),
+                                index = when (draft.dnsProvider) { "cloudflare" -> 1; "google" -> 2; else -> 0 },
+                                onIndex = { draft = draft.copy(dnsProvider = listOf("auto", "cloudflare", "google")[it]) },
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(stringResource(R.string.dns_provider_body), fontSize = 11.sp, color = p.faint, lineHeight = 16.sp)
+                        }
                     }
                 }
 
