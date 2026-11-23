@@ -1,22 +1,19 @@
 /**
  * Xray core lifecycle: locate the bundled core, write a profile, run it, keep it honest.
  *
- * Health is deliberately *not* "the process is alive": a config error or a dead node keeps
- * xray.exe running while moving nothing. Two signals count — the process exited (fail fast),
- * and a tiny HTTP probe through the local inbound answers (proof the tunnel moves traffic).
- * Both are checked on the main thread's timer; the probe runs through the proxy itself, so it
- * also exercises the exact path the user's traffic will take.
+ * Startup currently checks only whether the child remains alive; it does not prove that the
+ * remote server can carry traffic. Callers must not treat that check as an end-to-end probe.
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { buildConfig, type ProfileOptions } from "../shared/profile";
 import type { NodeInfo } from "../shared/nodes";
 import type { Tune } from "../shared/regime";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+// The Electron main process is bundled as CommonJS; import.meta.url is unavailable there.
+const HERE = __dirname;
 
 /** resources/core sits next to dist/ in a packaged app; the repo layout during dev differs. */
 export function coreBinary(): string | null {

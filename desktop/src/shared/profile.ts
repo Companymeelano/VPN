@@ -29,6 +29,14 @@ export const DOH_SERVERS: Array<{ address: string; domains?: string[] }> = [
   { address: "https://9.9.9.9/dns-query" },
 ];
 
+/** Prefer one provider without removing fallback resolvers. Unknown settings use the default. */
+export function dnsServers(provider?: string): typeof DOH_SERVERS {
+  const preferred = provider === "google" ? "https://8.8.8.8/dns-query"
+    : provider === "cloudflare" ? "https://1.1.1.1/dns-query" : null;
+  return preferred ? [...DOH_SERVERS.filter((s) => s.address === preferred),
+    ...DOH_SERVERS.filter((s) => s.address !== preferred)] : [...DOH_SERVERS];
+}
+
 const LAN_CIDR = [
   "10.0.0.0/8",
   "172.16.0.0/12",
@@ -63,6 +71,7 @@ export interface ProfileOptions {
   directDomains: string[];
   /** Allow LAN traffic instead of blocking it (kill-switch off). */
   allowLan: boolean;
+  dnsProvider?: "auto" | "cloudflare" | "google";
 }
 
 export const DEFAULT_PROFILE_OPTIONS: ProfileOptions = {
@@ -241,7 +250,7 @@ export function buildConfig(
     outbounds,
     dns: {
       queryStrategy: "UseIPv4",
-      servers: DOH_SERVERS.map((s) => ({ address: s.address, timeoutMs: 4000 })),
+      servers: dnsServers(opts.dnsProvider).map((s) => ({ address: s.address, timeoutMs: 4000 })),
     },
     routing: { domainStrategy: "IPIfNonMatch", rules },
   };

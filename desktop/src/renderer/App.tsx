@@ -446,6 +446,21 @@ function SettingsPanel({
       </section>
 
       <section className="card set-card">
+        <h3>DNS سرویس‌ها</h3>
+        <Row label="اولویت DNS رمزگذاری‌شده">
+          <div className="chips">
+            {(["auto", "cloudflare", "google"] as const).map((id) => (
+              <button key={id} className={`chip${(s.dnsProvider ?? "auto") === id ? " chip-on" : ""}`}
+                onClick={() => void patch({ dnsProvider: id })}>
+                {id === "auto" ? "خودکار" : id === "cloudflare" ? lri("Cloudflare") : lri("Google")}
+              </button>
+            ))}
+          </div>
+        </Row>
+        <p className="muted">برای اعمال، دوباره متصل شوید. این تنظیم فقط DNS برنامه‌های عبوری از پروکسی را تغییر می‌دهد؛ DNS به‌تنهایی دسترسی به سرویس‌های محدود را تضمین نمی‌کند.</p>
+      </section>
+
+      <section className="card set-card">
         <h3>ضدفیلتر</h3>
         <Row label="حالت">
           <div className="chips">

@@ -238,7 +238,8 @@ object CoreProfiles {
         tune: ir.meelano.vpn.net.Tune = ir.meelano.vpn.net.Tune.Default,
         engine: CoreEngine = this.engine,
         dialAddress: String = "",
-    ): String = render(plan(node, tune, engine, dialAddress))
+        dnsProvider: String = "auto",
+    ): String = render(plan(node, tune, engine, dialAddress, dnsProvider))
 
     /** The parsed profile as nested maps/lists. The unit tests in app/src/test read *this*, not a string. */
     fun plan(
@@ -246,10 +247,11 @@ object CoreProfiles {
         tune: ir.meelano.vpn.net.Tune,
         engine: CoreEngine = this.engine,
         dialAddress: String = "",
+        dnsProvider: String = "auto",
     ): Map<String, Any?> {
         val s = specFor(node, tune, dialAddress)
         return when (engine) {
-            CoreEngine.XRAY -> xray(s)
+            CoreEngine.XRAY -> xray(s, dnsProvider)
             CoreEngine.SING_BOX -> singBox(s)
         }
     }
@@ -367,7 +369,7 @@ object CoreProfiles {
 
     /* ------------------------------------------------------------------ Xray (MPL-2.0) dialect */
 
-    private fun xray(s: Spec): Map<String, Any?> {
+    private fun xray(s: Spec, dnsProvider: String = "auto"): Map<String, Any?> {
         // The pinned v26 core supports (and recommends) this simplified one-endpoint form. It also
         // avoids the easy-to-miss vnext[].users[] nesting that made earlier VLESS/VMess profiles carry
         // an endpoint but no credential at all.
@@ -516,7 +518,7 @@ object CoreProfiles {
         // route only when the underlying network really has global v6 - VpnOrchestrator).
         profile["dns"] = mapOf(
             "queryStrategy" to "UseIPv4",
-            "servers" to DNS_SERVERS.map { mapOf("address" to it, "tag" to "proxy", "timeoutMs" to 4000) },
+            "servers" to dnsServers(dnsProvider).map { mapOf("address" to it, "tag" to "proxy", "timeoutMs" to 4000) },
         )
         val outbounds = mutableListOf<Map<String, Any?>>(outbound)
         if (fragmentWanted) {
@@ -773,7 +775,17 @@ object CoreProfiles {
     private const val ECH_DOH = "https://1.1.1.1/dns-query"
     private const val FRAGMENT_TAG = "fragment"
 
-    /** In-tunnel DoH, by IP, in try-order: Cloudflare, Google, AliDNS (historically last to be throttled). */
+    /** Known, IP-addressed DoH providers; unknown values keep the existing default order. */
+    fun dnsServers(provider: String): List<String> {
+        val preferred = when (provider) {
+            "google" -> "https://8.8.8.8/dns-query"
+            "cloudflare" -> "https://1.1.1.1/dns-query"
+            else -> return DNS_SERVERS
+        }
+        return listOf(preferred) + DNS_SERVERS.filterNot { it == preferred }
+    }
+
+    /** In-tunnel DoH, by IP, in default try-order. */
     private val DNS_SERVERS = listOf(
         DOH_ENDPOINT,
         "https://8.8.8.8/dns-query",

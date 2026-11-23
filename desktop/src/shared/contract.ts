@@ -23,6 +23,7 @@ export interface AppSettingsState {
   autoConnect: boolean;
   subscriptionUrl: string;
   lanAccess: boolean;
+  dnsProvider: "auto" | "cloudflare" | "google";
 }
 
 export interface SpeedPoint {

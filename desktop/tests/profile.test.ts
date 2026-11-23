@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildConfig, DOH_SERVERS, fragInterval, fragRange } from "../src/shared/profile";
+import { buildConfig, DOH_SERVERS, dnsServers, fragInterval, fragRange } from "../src/shared/profile";
 import { tuneFor } from "../src/shared/regime";
 import { parseNodeUri } from "../src/shared/nodes";
 
@@ -114,5 +114,17 @@ describe("buildConfig", () => {
     const up = stream["httpupgradeSettings"] as Record<string, unknown>;
     expect(up["path"]).toBe("/up");
     expect(up["host"]).toBe("cdn.example.com");
+  });
+});
+
+
+describe("DNS preference", () => {
+  it("changes priority without dropping fallbacks and rejects unknown values", () => {
+    expect(dnsServers("cloudflare")[0]?.address).toBe("https://1.1.1.1/dns-query");
+    expect(dnsServers("google")[0]?.address).toBe("https://8.8.8.8/dns-query");
+    expect(dnsServers("bad")).toEqual(DOH_SERVERS);
+    expect(new Set(dnsServers("cloudflare").map((s) => s.address)).size).toBe(DOH_SERVERS.length);
+    const cfg = buildConfig(tlsNode, tuneFor("tight").tune, { localPort: 10808, directDomains: [], allowLan: true, dnsProvider: "cloudflare" });
+    expect(((cfg.dns as { servers: { address: string }[] }).servers)[0]?.address).toBe("https://1.1.1.1/dns-query");
   });
 });

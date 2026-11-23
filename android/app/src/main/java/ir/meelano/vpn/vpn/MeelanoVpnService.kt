@@ -629,6 +629,7 @@ class MeelanoVpnService : VpnService(), TunnelEngine {
             protect = ::protect,
             tune = ir.meelano.vpn.data.AppSettings.tuneFor(node),
             dialAddress = dialAddress,
+            dnsProvider = ir.meelano.vpn.data.AppSettings.dnsProvider,
         )
 
     override suspend fun orderCandidates(nodes: List<FeedNode>): List<FeedNode> = withContext(Dispatchers.IO) {
